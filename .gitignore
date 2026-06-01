@@ -1,0 +1,9 @@
+.run/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.log
+*.pid
+gateway_config.json
+data/
+.venv/
