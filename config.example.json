@@ -5,7 +5,6 @@
   "target_mode": "production",
   "manual_url": "",
   "server_url": "wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws",
-  "auth_token": "",
   "listen_udp_host": "0.0.0.0",
   "listen_udp_port": 13250,
   "listen_discovery_host": "0.0.0.0",

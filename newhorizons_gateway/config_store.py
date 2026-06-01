@@ -20,7 +20,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "target_mode": "production",
     "manual_url": "",
     "server_url": PRODUCTION_URL,
-    "auth_token": "",
     "listen_udp_host": "0.0.0.0",
     "listen_udp_port": 13250,
     "listen_discovery_host": "0.0.0.0",
@@ -86,7 +85,6 @@ class GatewayConfigStore:
             "NEWHORIZONS_GATEWAY_ID": "gateway_id",
             "NEWHORIZONS_GATEWAY_ENABLED": "enabled",
             "NEWHORIZONS_GATEWAY_NAME": "gateway_name",
-            "NEWHORIZONS_GATEWAY_TOKEN": "auth_token",
         }
         for env_name, key in env_map.items():
             value = os.getenv(env_name)
@@ -109,6 +107,7 @@ class GatewayConfigStore:
         config["target_mode"] = str(config.get("target_mode") or "production")
         if config["target_mode"] not in ("production", "local", "manual"):
             config["target_mode"] = "production"
+        config.pop("auth_token", None)
         if not isinstance(config.get("denied_devices"), list):
             config["denied_devices"] = []
         config["denied_devices"] = sorted({str(uid).strip().upper() for uid in config["denied_devices"] if str(uid).strip()})

@@ -30,6 +30,19 @@ class FakeUpstream:
 
 
 class GatewayWebUiTest(unittest.TestCase):
+    def test_gateway_config_no_longer_persists_token(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+
+            self.assertNotIn("auth_token", store.snapshot())
+
+    def test_gateway_startup_has_no_token_env_override(self):
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        host_script = (ROOT / "scripts" / "start_gateway_host.sh").read_text(encoding="utf-8")
+
+        self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", compose)
+        self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", host_script)
+
     def test_target_server_form_is_not_overwritten_while_dirty(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
 
@@ -70,7 +83,7 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("TCP control", web_source)
         self.assertNotIn("TCP</th>", web_source)
 
-    def test_gateway_web_ui_removes_os_eyebrow_and_adds_id_enable_update_controls(self):
+    def test_gateway_web_ui_removes_os_eyebrow_and_keeps_update_controls(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
 
         self.assertNotIn('<div class="eyebrow">New Horizons OS</div>', web_source)
@@ -82,6 +95,19 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('id="check-update"', web_source)
         self.assertIn('id="download-update"', web_source)
         self.assertIn('id="apply-update"', web_source)
+        self.assertIn('id="refresh-now"', web_source)
+        self.assertIn('id="discover-nearby"', web_source)
+        self.assertIn('id="nearby-toggle"', web_source)
+        self.assertIn('data-i18n="operations"', web_source)
+        self.assertNotIn('id="toggle-nearby"', web_source)
+
+    def test_gateway_setup_wizard_prefetches_id_once_without_overwriting_input(self):
+        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+
+        self.assertIn("let setupGatewayIdSuggested = false", web_source)
+        self.assertIn("if (!hasGatewayId && !setupGatewayIdSuggested)", web_source)
+        self.assertIn('document.getElementById("setup-gateway-id-input").value = payload.gateway_id || ""', web_source)
+        self.assertIn("setupGatewayIdSuggested = true", web_source)
 
     def test_gateway_config_defaults_disabled_and_persists_enable_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -89,6 +115,7 @@ class GatewayWebUiTest(unittest.TestCase):
             store = GatewayConfigStore(str(path))
 
             self.assertFalse(store.snapshot()["enabled"])
+            self.assertEqual(store.snapshot()["gateway_id"], "")
 
             saved = store.save({"gateway_id": "nh-gateway-test", "enabled": True})
             self.assertTrue(saved["enabled"])
@@ -125,6 +152,36 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(seen[-1]["gateway_id"], "nh-gateway-test")
             self.assertTrue(seen[-1]["enabled"])
+
+    def test_gateway_settings_enabled_save_does_not_require_token_flow(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            upstream = FakeUpstream()
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), upstream, None)
+            client = server.app.test_client()
+
+            response = client.post(
+                "/api/settings",
+                json={"gateway_id": "nh-gateway-test", "enabled": True, "manual_url": "ws://example/ws", "target_mode": "manual"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(upstream.updated[-1][1], "")
+            self.assertNotIn("auth_token", response.get_json()["config"])
+
+    def test_gateway_web_ui_moves_update_last_and_removes_token_controls(self):
+        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+
+        operations_index = web_source.index('data-i18n="operations"')
+        claims_index = web_source.index('data-i18n="claims"')
+        update_index = web_source.rindex('data-i18n="update"')
+
+        self.assertLess(operations_index, claims_index)
+        self.assertGreater(update_index, claims_index)
+        self.assertNotIn('id="gateway-token-input"', web_source)
+        self.assertNotIn('id="clear-gateway-token"', web_source)
+        self.assertNotIn("auth_token_configured", web_source)
+        self.assertNotIn("clear_auth_token", web_source)
 
 
 if __name__ == "__main__":

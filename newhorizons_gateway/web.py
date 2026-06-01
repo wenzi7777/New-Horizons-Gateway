@@ -27,7 +27,7 @@ PAGE = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New Horizons Gateway</title>
   <style>
-    :root { color-scheme: light; --bg:#f7f7f3; --panel:#fffffb; --ink:#151816; --muted:#697068; --line:#d9ddd4; --green:#3f7b61; --danger:#b6554c; --warn:#b5842a; }
+    :root { color-scheme: light; --bg:#f7f7f3; --panel:#fffffb; --ink:#151816; --muted:#697068; --line:#d9ddd4; --green:#3f7b61; --danger:#b6554c; --warn:#b5842a; --blue:#3f648f; }
     * { box-sizing:border-box; }
     body { margin:0; font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
     main { max-width:1180px; margin:0 auto; padding:28px 22px 44px; }
@@ -47,11 +47,17 @@ PAGE = """<!doctype html>
     .field { display:grid; gap:6px; flex:1; min-width:180px; }
     .field.narrow { flex:0 0 160px; min-width:140px; }
     .switch-row { display:flex; gap:12px; align-items:center; min-height:42px; }
+    .stack { display:grid; gap:14px; }
+    .summary-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+    .summary-card { border:1px solid var(--line); border-radius:7px; padding:12px; background:#fcfcf8; }
+    .summary-card strong { font-size:15px; }
+    .button-row { display:flex; gap:10px; flex-wrap:wrap; }
     label { color:var(--muted); font-size:13px; }
     input, select { width:100%; min-height:42px; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; }
     input[type="checkbox"] { width:22px; min-height:22px; accent-color:var(--green); }
     button { min-height:42px; padding:8px 14px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; cursor:pointer; }
     button.primary { background:var(--green); color:white; border-color:var(--green); }
+    button.secondary { color:var(--blue); border-color:#b8c7d9; background:#f7faff; }
     button.danger { color:var(--danger); border-color:#d9aaa4; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     table { width:100%; border-collapse:collapse; }
@@ -62,7 +68,7 @@ PAGE = """<!doctype html>
     .notice { margin:10px 0 0; color:var(--muted); }
     .notice.error { color:var(--danger); }
     .notice.success { color:var(--green); }
-    @media (max-width: 860px) { .span-4,.span-6,.span-8 { grid-column:span 12; } main { padding:18px 14px; } .header-row,.section-head { display:grid; } }
+    @media (max-width: 860px) { .span-4,.span-6,.span-8 { grid-column:span 12; } main { padding:18px 14px; } .header-row,.section-head { display:grid; } .summary-grid { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -95,7 +101,7 @@ PAGE = """<!doctype html>
       <section class="panel span-4"><span class="stat" data-i18n="version">Version</span><strong id="gateway-version">-</strong><p class="muted mono" id="update-mini">-</p></section>
       <section class="panel span-4"><span class="stat" data-i18n="upstream">Upstream</span><span id="upstream-badge" class="badge">-</span><p class="muted mono" id="upstream-url">-</p></section>
 
-      <section class="panel span-12">
+      <section class="panel span-12" id="nearby-section">
         <h2 data-i18n="gatewaySettings">Gateway Settings</h2>
         <div class="toolbar">
           <div class="field"><label data-i18n="gatewayId">Gateway ID</label><input id="gateway-id-input" maxlength="64" placeholder="nh-gateway-xxxxxx"></div>
@@ -111,13 +117,59 @@ PAGE = """<!doctype html>
 
       <section class="panel span-12">
         <h2 data-i18n="targetServer">Target Server</h2>
-        <div class="toolbar">
-          <div class="field"><label data-i18n="mode">Mode</label><select id="target-mode"><option value="production" data-i18n="production">Production</option><option value="local" data-i18n="local">Local</option><option value="manual" data-i18n="manual">Manual</option></select></div>
-          <div class="field"><label data-i18n="manualUrl">Manual WS/WSS URL</label><input id="manual-url" placeholder="ws://127.0.0.1:5051/newhorizons/gateway/ws"></div>
+        <div class="stack">
+          <div class="toolbar">
+            <div class="field"><label data-i18n="mode">Mode</label><select id="target-mode"><option value="production" data-i18n="production">Production</option><option value="local" data-i18n="local">Local</option><option value="manual" data-i18n="manual">Manual</option></select></div>
+            <div class="field"><label data-i18n="manualUrl">Manual WS/WSS URL</label><input id="manual-url" placeholder="ws://127.0.0.1:5051/newhorizons/gateway/ws"></div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-card"><span class="stat" data-i18n="connectionMode">Connection mode</span><strong id="target-mode-summary">-</strong></div>
+            <div class="summary-card"><span class="stat" data-i18n="effectiveServer">Effective server</span><strong class="mono" id="effective-server">-</strong></div>
+            <div class="summary-card"><span class="stat" data-i18n="upstreamStatus">Upstream status</span><strong id="upstream-summary">-</strong></div>
+          </div>
         </div>
         <p class="muted"><span data-i18n="production">Production</span>: <span class="mono">__PRODUCTION__</span><br><span data-i18n="local">Local</span>: <span class="mono">__LOCAL__</span></p>
       </section>
 
+      <section class="panel span-12">
+        <div class="section-head">
+          <div>
+            <h2 data-i18n="operations">Operations</h2>
+            <p class="muted" data-i18n="operationsCopy">Use discovery and claim actions here during local relay work. Update stays separated at the end.</p>
+          </div>
+          <div class="button-row">
+            <button class="secondary" id="refresh-now" data-i18n="refreshNow">Refresh now</button>
+            <button class="primary" id="discover-nearby" data-i18n="discoverDevices">Discover devices</button>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-card"><span class="stat" data-i18n="servingDevices">Serving Devices</span><strong id="serving-count">0</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="nearbyDevices">Nearby Devices / FindMe Discovery</span><strong id="nearby-count">0</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="claims">Claims</span><strong id="claim-count">0</strong></div>
+        </div>
+      </section>
+
+      <section class="panel span-4"><span class="stat" data-i18n="localServices">Local services</span><strong id="ports">-</strong><p class="muted" data-i18n="localServicesCopy">FindMe / UDP control and data</p><p class="muted mono" id="traffic-stats">-</p></section>
+      <section class="panel span-8">
+        <h2 data-i18n="servingDevices">Serving Devices</h2>
+        <table><thead><tr><th data-i18n="device">Device</th><th data-i18n="mode">Mode</th><th>FindMe</th><th>UDP</th><th data-i18n="action">Action</th></tr></thead><tbody id="device-body"></tbody></table>
+      </section>
+      <section class="panel span-12">
+        <div class="section-head">
+          <div>
+            <h2 data-i18n="nearbyDevices">Nearby Devices / FindMe Discovery</h2>
+            <p class="muted" data-i18n="nearbyCopy">Recent FindMe broadcasts seen by this gateway. Use claim only for devices not currently served here.</p>
+          </div>
+          <button id="nearby-toggle" data-i18n="hideNearby">Hide nearby</button>
+        </div>
+        <div id="nearby-panel" hidden>
+          <table><thead><tr><th data-i18n="device">Device</th><th data-i18n="mode">Mode</th><th data-i18n="address">Address</th><th data-i18n="state">State</th><th data-i18n="lastSeen">Last seen</th><th data-i18n="action">Action</th></tr></thead><tbody id="nearby-body"></tbody></table>
+        </div>
+      </section>
+      <section class="panel span-12">
+        <h2 data-i18n="claims">Claims</h2>
+        <table><thead><tr><th data-i18n="time">Time</th><th data-i18n="device">Device</th><th>Claim</th><th data-i18n="status">Status</th><th data-i18n="error">Error</th></tr></thead><tbody id="claim-body"></tbody></table>
+      </section>
       <section class="panel span-12">
         <div class="section-head">
           <div>
@@ -133,74 +185,57 @@ PAGE = """<!doctype html>
         </div>
         <p class="notice" id="update-message"></p>
       </section>
-
-      <section class="panel span-4"><span class="stat" data-i18n="localServices">Local services</span><strong id="ports">-</strong><p class="muted" data-i18n="localServicesCopy">FindMe / UDP control and data</p><p class="muted mono" id="traffic-stats">-</p></section>
-      <section class="panel span-8">
-        <h2 data-i18n="servingDevices">Serving Devices</h2>
-        <table><thead><tr><th data-i18n="device">Device</th><th data-i18n="mode">Mode</th><th>FindMe</th><th>UDP</th><th data-i18n="action">Action</th></tr></thead><tbody id="device-body"></tbody></table>
-      </section>
-      <section class="panel span-12">
-        <div class="section-head">
-          <div>
-            <h2 data-i18n="nearbyDevices">Nearby Devices / FindMe Discovery</h2>
-            <p class="muted" data-i18n="nearbyCopy">Recent FindMe broadcasts seen by this gateway. Use claim only for devices not currently served here.</p>
-          </div>
-          <button id="toggle-nearby" data-i18n="discoverDevices">Discover devices</button>
-        </div>
-        <div id="nearby-panel" hidden>
-          <table><thead><tr><th data-i18n="device">Device</th><th data-i18n="mode">Mode</th><th data-i18n="address">Address</th><th data-i18n="state">State</th><th data-i18n="lastSeen">Last seen</th><th data-i18n="action">Action</th></tr></thead><tbody id="nearby-body"></tbody></table>
-        </div>
-      </section>
-      <section class="panel span-12">
-        <h2 data-i18n="claims">Claims</h2>
-        <table><thead><tr><th data-i18n="time">Time</th><th data-i18n="device">Device</th><th>Claim</th><th data-i18n="status">Status</th><th data-i18n="error">Error</th></tr></thead><tbody id="claim-body"></tbody></table>
-      </section>
     </div>
   </main>
   <script>
     const I18N = {
       en: {
         action: "Action", address: "Address", allow: "Allow", applyUpdate: "Apply update", autoSet: "Auto set",
-        checkUpdate: "Check for update", claims: "Claims", continue: "Continue", denied: "Denied", device: "Device",
+        checkUpdate: "Check for update", claims: "Claims", connectionMode: "Connection mode", continue: "Continue", denied: "Denied", device: "Device",
         discoverDevices: "Discover devices", downloadUpdate: "Download update", enabled: "Enabled",
-        enabledCopy: "Start upstream, UDP and FindMe", error: "Error", gateway: "Gateway", gatewayId: "Gateway ID",
+        effectiveServer: "Effective server", enabledCopy: "Start upstream, UDP and FindMe", error: "Error", gateway: "Gateway", gatewayId: "Gateway ID",
         gatewaySettings: "Gateway Settings", language: "Language", lastSeen: "Last seen", localServices: "Local services",
         localServicesCopy: "FindMe / UDP control and data", manualUrl: "Manual WS/WSS URL", mode: "Mode",
         nearbyCopy: "Recent FindMe broadcasts seen by this gateway. Use claim only for devices not currently served here.",
         nearbyDevices: "Nearby Devices / FindMe Discovery", noActiveClaims: "No active claims.", noDevices: "No devices served yet.",
-        local: "Local", manual: "Manual", noNearby: "No nearby FindMe requests yet.", offline: "offline", online: "online",
-        packets: "packets", production: "Production", reject: "Reject", refresh: "Refresh", restartGateway: "Restart Gateway",
+        hideNearby: "Hide nearby", local: "Local", manual: "Manual", noNearby: "No nearby FindMe requests yet.", offline: "offline", online: "online", operations: "Operations",
+        operationsCopy: "Use discovery and claim actions here during local relay work. Update stays separated at the end.", packets: "packets", production: "Production", reject: "Reject", refresh: "Refresh", refreshNow: "Refresh now", restartGateway: "Restart Gateway",
         dropped: "dropped", queueDropped: "queue dropped", save: "Save", saved: "Saved", serveThisDevice: "Serve this device",
         serving: "Serving", servingDevices: "Serving Devices", setupCopy: "Create a unique Gateway ID before enabling upstream, UDP and FindMe services.",
         setupTitle: "Set up Gateway ID", firstRun: "First setup", state: "State", status: "Status", targetServer: "Target Server",
-        time: "Time", upstream: "Upstream", upstreamSent: "Upstream sent", udpIn: "UDP in", update: "Update", version: "Version",
+        time: "Time", upstream: "Upstream", upstreamSent: "Upstream sent", upstreamStatus: "Upstream status", udpIn: "UDP in", update: "Update", version: "Version",
       },
       ja: {
         action: "操作", address: "アドレス", allow: "許可", applyUpdate: "更新を適用", autoSet: "自動設定",
-        checkUpdate: "更新を確認", claims: "要求", continue: "続行", denied: "拒否済み", device: "デバイス",
+        checkUpdate: "更新を確認", claims: "要求", connectionMode: "接続モード", continue: "続行", denied: "拒否済み", device: "デバイス",
         discoverDevices: "デバイスを検出", downloadUpdate: "更新をダウンロード", enabled: "有効",
-        enabledCopy: "上流接続、UDP、FindMeを開始", error: "エラー", gateway: "ゲートウェイ", gatewayId: "Gateway ID",
+        effectiveServer: "実際の接続先", enabledCopy: "上流接続、UDP、FindMeを開始", error: "エラー", gateway: "ゲートウェイ", gatewayId: "Gateway ID",
         gatewaySettings: "ゲートウェイ設定", language: "言語", lastSeen: "最終確認", localServices: "ローカルサービス",
         localServicesCopy: "FindMe / UDP制御とデータ", manualUrl: "手動 WS/WSS URL", mode: "モード",
         nearbyCopy: "このゲートウェイが受信した最近の FindMe ブロードキャストです。ここで未提供のデバイスだけ要求できます。",
         nearbyDevices: "近くのデバイス / FindMe 検出", noActiveClaims: "有効な要求はありません。", noDevices: "提供中のデバイスはありません。",
-        local: "ローカル", manual: "手動", noNearby: "近くの FindMe 要求はありません。", offline: "オフライン", online: "オンライン",
-        packets: "パケット", production: "本番", reject: "拒否", refresh: "更新", restartGateway: "Gatewayを再起動",
+        hideNearby: "非表示", local: "ローカル", manual: "手動", noNearby: "近くの FindMe 要求はありません。", offline: "オフライン", online: "オンライン", operations: "操作",
+        operationsCopy: "ローカル中継で使う操作をここにまとめ、更新はページ末尾に分離します。", packets: "パケット", production: "本番", reject: "拒否", refresh: "更新", refreshNow: "今すぐ更新", restartGateway: "Gatewayを再起動",
         dropped: "破棄", queueDropped: "キュー破棄", save: "保存", saved: "保存しました", serveThisDevice: "このデバイスを提供",
         serving: "提供中", servingDevices: "提供中のデバイス", setupCopy: "上流接続、UDP、FindMe サービスを有効にする前に、一意な Gateway ID を設定してください。",
         setupTitle: "Gateway ID を設定", firstRun: "初回設定", state: "状態", status: "状態", targetServer: "接続先サーバー",
-        time: "時刻", upstream: "上流接続", upstreamSent: "上流送信", udpIn: "UDP入力", update: "更新", version: "バージョン",
+        time: "時刻", upstream: "上流接続", upstreamSent: "上流送信", upstreamStatus: "上流状態", udpIn: "UDP入力", update: "更新", version: "バージョン",
       },
     };
     let language = localStorage.getItem("newhorizons-gateway-language") || "en";
     let showNearby = false;
     let targetSettingsDirty = false;
+    let setupGatewayIdSuggested = false;
     function tr(key) { return (I18N[language] && I18N[language][key]) || I18N.en[key] || key; }
+    function updateNearbyToggleLabel() {
+      const node = document.getElementById("nearby-toggle");
+      if (node) node.textContent = showNearby ? tr("hideNearby") : tr("discoverDevices");
+    }
     function applyI18n() {
       document.documentElement.lang = language;
       document.getElementById("language-select").value = language;
       document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = tr(node.getAttribute("data-i18n")); });
-      document.getElementById("toggle-nearby").textContent = showNearby ? tr("refresh") : tr("discoverDevices");
+      updateNearbyToggleLabel();
     }
     function esc(value) {
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -240,9 +275,13 @@ PAGE = """<!doctype html>
       const hasGatewayId = !!String(data.config.gateway_id || "").trim();
       document.getElementById("setup-wizard").hidden = hasGatewayId;
       document.getElementById("dashboard-grid").hidden = !hasGatewayId;
+      if (hasGatewayId) setupGatewayIdSuggested = false;
       text("gateway-name", data.config.gateway_name);
       text("gateway-id", data.config.gateway_id);
       text("upstream-url", data.upstream.server_url);
+      text("target-mode-summary", tr(data.config.target_mode || "production"));
+      text("effective-server", data.config.server_url);
+      text("upstream-summary", data.config.enabled ? (data.upstream.connected ? tr("online") : tr("offline")) : "disabled");
       text("ports", `FindMe ${data.config.listen_discovery_port} / UDP ${data.config.listen_udp_port}`);
       text("traffic-stats", `${tr("udpIn")} ${Number(data.upstream.udp_in_fps || 0)}/s / ${tr("upstreamSent")} ${Number(data.upstream.upstream_sent_fps || 0)}/s / ${tr("queueDropped")} ${Number(data.upstream.data_queue_dropped || 0)}`);
       const badge = document.getElementById("upstream-badge");
@@ -250,10 +289,24 @@ PAGE = """<!doctype html>
       badge.className = `badge ${!data.config.enabled ? "warn" : data.upstream.connected ? "ok" : "err"}`;
       syncTargetSettings(data.config || {});
       if (!targetSettingsDirty) document.getElementById("setup-gateway-id-input").value = data.config.gateway_id || "";
+      if (!hasGatewayId && !setupGatewayIdSuggested) {
+        setupGatewayIdSuggested = true;
+        try {
+          const payload = await api("/api/gateway-id/suggest", { method:"POST" });
+          if (!String(document.getElementById("setup-gateway-id-input").value || "").trim()) {
+            document.getElementById("setup-gateway-id-input").value = payload.gateway_id || "";
+          }
+        } catch (error) {
+          notice("setup-message", error.message || String(error), "error");
+        }
+      }
       renderUpdate(data.update_state || {});
       const body = document.getElementById("device-body");
       body.innerHTML = "";
       const servingDevices = (data.state.devices || []).filter((item) => item.connected);
+      text("serving-count", String(servingDevices.length));
+      text("nearby-count", String((data.state.nearby_devices || []).length));
+      text("claim-count", String((data.state.claims || []).length));
       for (const item of servingDevices) {
         const row = document.createElement("tr");
         const action = item.denied
@@ -264,6 +317,7 @@ PAGE = """<!doctype html>
       }
       if (!servingDevices.length) body.innerHTML = `<tr><td colspan="5" class="muted">${tr("noDevices")}</td></tr>`;
       document.getElementById("nearby-panel").hidden = !showNearby;
+      updateNearbyToggleLabel();
       const nbody = document.getElementById("nearby-body");
       nbody.innerHTML = "";
       for (const item of data.state.nearby_devices || []) {
@@ -327,6 +381,7 @@ PAGE = """<!doctype html>
       try {
         const payload = await api("/api/gateway-id/suggest", { method:"POST" });
         document.getElementById("setup-gateway-id-input").value = payload.gateway_id || "";
+        setupGatewayIdSuggested = true;
       } catch (error) {
         notice("setup-message", error.message || String(error), "error");
       }
@@ -364,8 +419,15 @@ PAGE = """<!doctype html>
     document.getElementById("download-update").addEventListener("click", () => updateAction("/api/update/download"));
     document.getElementById("apply-update").addEventListener("click", () => updateAction("/api/update/apply"));
     document.getElementById("restart-gateway").addEventListener("click", () => updateAction("/api/update/restart"));
-    document.getElementById("toggle-nearby").addEventListener("click", () => {
+    document.getElementById("refresh-now").addEventListener("click", () => refresh());
+    document.getElementById("discover-nearby").addEventListener("click", async () => {
       showNearby = true;
+      await refresh();
+      const panel = document.getElementById("nearby-section");
+      if (panel) panel.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    document.getElementById("nearby-toggle").addEventListener("click", () => {
+      showNearby = !showNearby;
       refresh();
     });
     document.getElementById("language-select").addEventListener("change", (event) => {
@@ -419,7 +481,7 @@ class GatewayWebServer:
         def status() -> Any:
             config = self.config_store.snapshot()
             return jsonify({
-                "config": {key: value for key, value in config.items() if key != "auth_token"},
+                "config": self._public_config(config),
                 "version": __version__,
                 "upstream": self.upstream.status(),
                 "udp_control": self.udp_control.snapshot() if self.udp_control is not None else {},
@@ -438,9 +500,7 @@ class GatewayWebServer:
                     "enabled": bool(body.get("enabled", False)),
                 }
                 if patch["enabled"]:
-                    gateway_id = validate_gateway_id(patch["gateway_id"])
-                    if str(self.config_store.snapshot().get("auth_token") or ""):
-                        self._confirm_gateway_id_available(gateway_id)
+                    validate_gateway_id(patch["gateway_id"])
                 config = self.config_store.save(patch)
             except ValueError as exc:
                 return jsonify({"ok": False, "error": str(exc)}), 400
@@ -448,8 +508,8 @@ class GatewayWebServer:
                 self.on_config_saved(config)
             else:
                 self.upstream.gateway_id = str(config.get("gateway_id") or "")
-                self.upstream.update_server(str(config["server_url"]), str(config.get("auth_token") or ""))
-            return jsonify({"ok": True, "config": {key: value for key, value in config.items() if key != "auth_token"}})
+                self.upstream.update_server(str(config["server_url"]), "")
+            return jsonify({"ok": True, "config": self._public_config(config)})
 
         @app.post("/api/gateway-id/suggest")
         def suggest_gateway_id() -> Any:
@@ -500,10 +560,11 @@ class GatewayWebServer:
 
         return app
 
+    @staticmethod
+    def _public_config(config: dict[str, Any]) -> dict[str, Any]:
+        return dict(config)
+
     def _request_gateway_id_suggestion(self) -> str:
-        if str(self.config_store.snapshot().get("auth_token") or ""):
-            payload = self._server_api_post("/api/gateways/suggest-id", {})
-            return validate_gateway_id(payload.get("gateway_id"))
         return validate_gateway_id(f"nh-gateway-{secrets.token_hex(3)}")
 
     def _confirm_gateway_id_available(self, gateway_id: str) -> None:
@@ -512,7 +573,11 @@ class GatewayWebServer:
         except urllib.error.HTTPError as exc:
             if exc.code == 409:
                 raise ValueError("gateway_id_in_use") from exc
-            raise
+            if exc.code in (401, 403):
+                raise ValueError("gateway_token_unauthorized") from exc
+            return
+        except urllib.error.URLError:
+            return
         if payload.get("available") is False:
             raise ValueError("gateway_id_in_use")
 
@@ -522,9 +587,6 @@ class GatewayWebServer:
         url = f"{base_url}{api_path}"
         data = json.dumps(body, separators=(",", ":")).encode("utf-8")
         request_obj = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
-        token = str(config.get("auth_token") or "")
-        if token:
-            request_obj.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(request_obj, timeout=8) as response:
             payload = json.loads(response.read().decode("utf-8"))
         if not isinstance(payload, dict):

@@ -56,7 +56,7 @@ without manually restarting the process.
 Start the Gateway separately:
 
 ```bash
-cd /Users/nickxu/Documents/vd-ctl-r-os-lts/apps/newhorizons-gateway
+cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
 ./scripts/start_gateway.sh --build
 ```
 
@@ -67,7 +67,7 @@ Docker NAT.
 Start the main WebUI/backend separately:
 
 ```bash
-cd /Users/nickxu/Documents/vd-ctl-r-os-lts/apps/newhorizons
+cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Desktop
 ./scripts/start_local.sh --build
 ```
 
@@ -131,7 +131,6 @@ For lab deployment:
 
 ```bash
 export NEWHORIZONS_GATEWAY_SERVER_URL=wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws
-export NEWHORIZONS_GATEWAY_TOKEN=<token>
 ./scripts/start_gateway.sh --build
 ```
 
@@ -140,7 +139,7 @@ export NEWHORIZONS_GATEWAY_TOKEN=<token>
 For host mode:
 
 ```bash
-cd /Users/nickxu/Documents/vd-ctl-r-os-lts/apps/newhorizons-gateway
+cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
 ./scripts/stop_gateway_host.sh
 ```
 
