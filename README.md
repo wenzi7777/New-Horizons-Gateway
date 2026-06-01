@@ -64,6 +64,16 @@ On macOS this starts the Gateway directly on the host with the `ctl-board`
 conda Python. This keeps UDP control/data on the real LAN address instead of
 Docker NAT.
 
+On Windows, use PowerShell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\start_gateway_windows.ps1
+```
+
+If your Python is not on `py`, set `NEWHORIZONS_GATEWAY_PYTHON` to the
+executable you want the script to use.
+
 Start the main WebUI/backend separately:
 
 ```bash

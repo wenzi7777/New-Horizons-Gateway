@@ -51,6 +51,16 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('"target-mode").addEventListener("change"', web_source)
         self.assertIn("targetSettingsDirty = false;", web_source)
 
+    def test_target_server_preview_updates_from_selected_mode(self):
+        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+
+        self.assertIn("const PRODUCTION_URL = \"__PRODUCTION_URL__\";", web_source)
+        self.assertIn("const LOCAL_URL = \"__LOCAL_URL__\";", web_source)
+        self.assertIn("function resolveTargetServerUrl()", web_source)
+        self.assertIn("function updateTargetServerSummary()", web_source)
+        self.assertIn('text("effective-server", resolveTargetServerUrl());', web_source)
+        self.assertIn("updateTargetServerSummary();", web_source)
+
     def test_compose_does_not_force_production_mode_over_saved_config(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
@@ -62,6 +72,16 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('HOST_GATEWAY=1', script)
         self.assertIn('exec "${SCRIPT_DIR}/start_gateway_host.sh"', script)
         self.assertIn("--docker", script)
+
+    def test_start_gateway_windows_script_uses_power_shell_background_process(self):
+        script = (ROOT / "scripts" / "start_gateway_windows.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('param(', script)
+        self.assertIn('$Process = Start-Process', script)
+        self.assertIn('NEWHORIZONS_GATEWAY_SERVER_URL', script)
+        self.assertIn('NEWHORIZONS_GATEWAY_RESTART_COMMAND', script)
+        self.assertIn('powershell -ExecutionPolicy Bypass -File', script)
+        self.assertIn('Gateway WebUI: http://127.0.0.1:5052', script)
 
     def test_host_gateway_script_uses_screen_for_persistent_background_run(self):
         script = (ROOT / "scripts" / "start_gateway_host.sh").read_text(encoding="utf-8")

@@ -128,7 +128,7 @@ PAGE = """<!doctype html>
             <div class="summary-card"><span class="stat" data-i18n="upstreamStatus">Upstream status</span><strong id="upstream-summary">-</strong></div>
           </div>
         </div>
-        <p class="muted"><span data-i18n="production">Production</span>: <span class="mono">__PRODUCTION__</span><br><span data-i18n="local">Local</span>: <span class="mono">__LOCAL__</span></p>
+        <p class="muted"><span data-i18n="production">Production</span>: <span class="mono">__PRODUCTION_URL__</span><br><span data-i18n="local">Local</span>: <span class="mono">__LOCAL_URL__</span></p>
       </section>
 
       <section class="panel span-12">
@@ -223,6 +223,8 @@ PAGE = """<!doctype html>
       },
     };
     let language = localStorage.getItem("newhorizons-gateway-language") || "en";
+    const PRODUCTION_URL = "__PRODUCTION_URL__";
+    const LOCAL_URL = "__LOCAL_URL__";
     let showNearby = false;
     let targetSettingsDirty = false;
     let setupGatewayIdSuggested = false;
@@ -252,6 +254,17 @@ PAGE = """<!doctype html>
       node.textContent = message || "";
       node.className = `notice ${cls}`.trim();
     }
+    function resolveTargetServerUrl() {
+      const mode = String(document.getElementById("target-mode").value || "production");
+      if (mode === "local") return LOCAL_URL;
+      if (mode === "manual") return String(document.getElementById("manual-url").value || "").trim() || LOCAL_URL;
+      return PRODUCTION_URL;
+    }
+    function updateTargetServerSummary() {
+      const mode = String(document.getElementById("target-mode").value || "production");
+      text("target-mode-summary", tr(mode));
+      text("effective-server", resolveTargetServerUrl());
+    }
     function syncTargetSettings(config) {
       if (targetSettingsDirty) return;
       document.getElementById("target-mode").value = config.target_mode || "production";
@@ -279,8 +292,6 @@ PAGE = """<!doctype html>
       text("gateway-name", data.config.gateway_name);
       text("gateway-id", data.config.gateway_id);
       text("upstream-url", data.upstream.server_url);
-      text("target-mode-summary", tr(data.config.target_mode || "production"));
-      text("effective-server", data.config.server_url);
       text("upstream-summary", data.config.enabled ? (data.upstream.connected ? tr("online") : tr("offline")) : "disabled");
       text("ports", `FindMe ${data.config.listen_discovery_port} / UDP ${data.config.listen_udp_port}`);
       text("traffic-stats", `${tr("udpIn")} ${Number(data.upstream.udp_in_fps || 0)}/s / ${tr("upstreamSent")} ${Number(data.upstream.upstream_sent_fps || 0)}/s / ${tr("queueDropped")} ${Number(data.upstream.data_queue_dropped || 0)}`);
@@ -288,6 +299,7 @@ PAGE = """<!doctype html>
       badge.textContent = data.config.enabled ? (data.upstream.connected ? tr("online") : tr("offline")) : "disabled";
       badge.className = `badge ${!data.config.enabled ? "warn" : data.upstream.connected ? "ok" : "err"}`;
       syncTargetSettings(data.config || {});
+      updateTargetServerSummary();
       if (!targetSettingsDirty) document.getElementById("setup-gateway-id-input").value = data.config.gateway_id || "";
       if (!hasGatewayId && !setupGatewayIdSuggested) {
         setupGatewayIdSuggested = true;
@@ -401,8 +413,8 @@ PAGE = """<!doctype html>
         notice("setup-message", error.message || String(error), "error");
       }
     });
-    document.getElementById("target-mode").addEventListener("change", () => { targetSettingsDirty = true; });
-    document.getElementById("manual-url").addEventListener("input", () => { targetSettingsDirty = true; });
+    document.getElementById("target-mode").addEventListener("change", () => { targetSettingsDirty = true; updateTargetServerSummary(); });
+    document.getElementById("manual-url").addEventListener("input", () => { targetSettingsDirty = true; updateTargetServerSummary(); });
     document.getElementById("gateway-id-input").addEventListener("input", () => { targetSettingsDirty = true; });
     document.getElementById("gateway-enabled").addEventListener("change", () => { targetSettingsDirty = true; });
     async function updateAction(path) {
@@ -440,7 +452,7 @@ PAGE = """<!doctype html>
     setInterval(refresh, 2000);
   </script>
 </body>
-</html>""".replace("__PRODUCTION__", PRODUCTION_URL).replace("__LOCAL__", LOCAL_URL)
+</html>""".replace("__PRODUCTION_URL__", PRODUCTION_URL).replace("__LOCAL_URL__", LOCAL_URL)
 
 
 class GatewayWebServer:
