@@ -103,6 +103,15 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("TCP control", web_source)
         self.assertNotIn("TCP</th>", web_source)
 
+    def test_gateway_command_path_uses_udp_sessions_for_commands(self):
+        main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("if udp_commands.send_command(normalized_uid, payload):", main_source)
+        self.assertIn("udp_commands.set_session(device_uid, addr)", main_source)
+        self.assertIn("arduino_hosts", main_source)
+        self.assertNotIn("arduino_sessions", main_source)
+        self.assertNotIn("send_control_command(arduino_addr[0], payload", main_source)
+
     def test_gateway_web_ui_removes_os_eyebrow_and_keeps_update_controls(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
 

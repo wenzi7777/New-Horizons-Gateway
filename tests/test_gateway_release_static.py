@@ -9,24 +9,24 @@ MIRROR_ROOT = ROOT if ROOT.name == "New-Horizons-Gateway" else ROOT.parents[1] /
 
 
 class GatewayReleaseStaticTest(unittest.TestCase):
-    def test_gateway_version_and_release_metadata_are_v0_1_3(self):
+    def test_gateway_version_and_release_metadata_are_v0_1_4(self):
         source_init = (ROOT / "newhorizons_gateway" / "__init__.py").read_text(encoding="utf-8")
         mirror_init = (MIRROR_ROOT / "newhorizons_gateway" / "__init__.py").read_text(encoding="utf-8")
         manifest = json.loads((ROOT / "releases" / "gateway-latest.json").read_text(encoding="utf-8"))
         mirror_manifest = json.loads((MIRROR_ROOT / "releases" / "gateway-latest.json").read_text(encoding="utf-8"))
-        release_note = ROOT / "releases" / "notes" / "v0.1.3.md"
-        mirror_release_note = MIRROR_ROOT / "releases" / "notes" / "v0.1.3.md"
-        artifact = ROOT / "releases" / "artifacts" / "newhorizons-gateway-v0.1.3.zip"
-        mirror_artifact = MIRROR_ROOT / "releases" / "artifacts" / "newhorizons-gateway-v0.1.3.zip"
+        release_note = ROOT / "releases" / "notes" / "v0.1.4.md"
+        mirror_release_note = MIRROR_ROOT / "releases" / "notes" / "v0.1.4.md"
+        artifact = ROOT / "releases" / "artifacts" / "newhorizons-gateway-v0.1.4.zip"
+        mirror_artifact = MIRROR_ROOT / "releases" / "artifacts" / "newhorizons-gateway-v0.1.4.zip"
 
-        self.assertIn('__version__ = "v0.1.3"', source_init)
-        self.assertIn('__version__ = "v0.1.3"', mirror_init)
-        self.assertEqual(manifest["version"], "v0.1.3")
-        self.assertEqual(mirror_manifest["version"], "v0.1.3")
-        self.assertIn("newhorizons-gateway-v0.1.3.zip", manifest["zip_url"])
-        self.assertIn("v0.1.3.md", manifest["notes_url"])
-        self.assertIn("newhorizons-gateway-v0.1.3.zip", mirror_manifest["zip_url"])
-        self.assertIn("v0.1.3.md", mirror_manifest["notes_url"])
+        self.assertIn('__version__ = "v0.1.4"', source_init)
+        self.assertIn('__version__ = "v0.1.4"', mirror_init)
+        self.assertEqual(manifest["version"], "v0.1.4")
+        self.assertEqual(mirror_manifest["version"], "v0.1.4")
+        self.assertIn("newhorizons-gateway-v0.1.4.zip", manifest["zip_url"])
+        self.assertIn("v0.1.4.md", manifest["notes_url"])
+        self.assertIn("newhorizons-gateway-v0.1.4.zip", mirror_manifest["zip_url"])
+        self.assertIn("v0.1.4.md", mirror_manifest["notes_url"])
         self.assertTrue(release_note.exists())
         self.assertTrue(mirror_release_note.exists())
         self.assertTrue(artifact.exists())
