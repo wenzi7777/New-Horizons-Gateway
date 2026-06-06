@@ -90,7 +90,7 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("screen -dmS", script)
         self.assertIn("screen:${SESSION_NAME}", script)
 
-    def test_gateway_runtime_is_udp_only_by_default(self):
+    def test_gateway_runtime_keeps_tcp_control_fallback_for_current_firmware(self):
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
         local_device_source = (ROOT / "newhorizons_gateway" / "local_device.py").read_text(encoding="utf-8")
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
@@ -99,18 +99,21 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("LocalTCPControlServer", local_device_source)
         self.assertNotIn("socketserver", local_device_source)
         self.assertNotIn("json.dumps", local_device_source)
-        self.assertNotIn("tcp_server.send_command", main_source)
+        self.assertIn("send_control_command", main_source)
+        self.assertIn("arduino_sessions", main_source)
+        self.assertIn("CONTROL_PORT", main_source)
         self.assertNotIn("TCP control", web_source)
-        self.assertNotIn("TCP</th>", web_source)
 
-    def test_gateway_command_path_uses_udp_sessions_for_commands(self):
+    def test_gateway_command_path_prefers_tcp_control_session_and_keeps_udp_for_json_frames(self):
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
 
+        self.assertIn("arduino_addr = arduino_sessions.get(normalized_uid)", main_source)
+        self.assertIn("response = send_control_command(arduino_addr[0], payload, port=arduino_addr[1])", main_source)
+        self.assertIn('transport_path": "arduino_tcp"', main_source)
         self.assertIn("if udp_commands.send_command(normalized_uid, payload):", main_source)
         self.assertIn("udp_commands.set_session(device_uid, addr)", main_source)
         self.assertIn("arduino_hosts", main_source)
-        self.assertNotIn("arduino_sessions", main_source)
-        self.assertNotIn("send_control_command(arduino_addr[0], payload", main_source)
+        self.assertIn("arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)", main_source)
 
     def test_gateway_web_ui_removes_os_eyebrow_and_keeps_update_controls(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
