@@ -10,6 +10,7 @@ from .arduino_protocol import is_arduino_heartbeat_packet, is_arduino_stream_pac
 from .config_store import GatewayConfigStore
 from .discovery import DiscoveryResponder
 from .local_device import LocalUDPIngestServer, packet_device_uid as stream_packet_device_uid
+from .result_chunks import RESULT_CHUNK_TYPE, ResultChunkReassembler
 from .state import GatewayState
 from .udp_control import UDPCommandDispatcher, normalize_device_uid
 from .update_manager import GatewayUpdateManager
@@ -25,6 +26,7 @@ def main() -> None:
     config = config_store.snapshot()
     state = GatewayState()
     arduino_hosts: dict[str, str] = {}
+    result_chunks = ResultChunkReassembler()
     running = True
 
     def stop(_signum: int, _frame: object) -> None:
@@ -110,6 +112,12 @@ def main() -> None:
             return
         if not isinstance(frame, dict):
             return
+        if str(frame.get("type") or "") == RESULT_CHUNK_TYPE:
+            # Oversized results are split into UDP chunks; reassemble before
+            # processing. Returns None until every chunk for the request arrives.
+            frame = result_chunks.add(frame)
+            if frame is None:
+                return
         frame_payload = frame.get("payload") if isinstance(frame.get("payload"), dict) else {}
         device_uid = normalize_device_uid(frame.get("device_uid")) or normalize_device_uid(frame_payload.get("device_uid")) or normalize_device_uid(frame_payload.get("device_id"))
         if not device_uid or config_store.is_denied(device_uid):
@@ -265,6 +273,7 @@ def main() -> None:
                     "state": state.snapshot(current_config.get("denied_devices", [])),
                 })
             udp_commands.service()
+            result_chunks.purge()
     finally:
         if discovery is not None:
             discovery.stop()
