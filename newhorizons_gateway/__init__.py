@@ -1,3 +1,3 @@
 """New Horizons local gateway."""
 
-__version__ = "v0.1.7"
+__version__ = "v0.1.8"

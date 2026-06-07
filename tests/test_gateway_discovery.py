@@ -71,6 +71,81 @@ class GatewayDiscoveryTest(unittest.TestCase):
         self.assertFalse(reply["accept"])
         self.assertEqual(reply["reason"], "device_rejected")
 
+    def test_discovery_declines_when_device_has_preferred_gateway_id_for_another_gateway(self):
+        responder = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-a",
+            udp_port=13250,
+            priority=100,
+        )
+        responder.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            sock.sendto(
+                findme_discover(device_uid="3CDC7545CCD0", mode="normal", preferred_gateway_id="gw-b"),
+                ("127.0.0.1", responder.bound_port),
+            )
+            data, _addr = sock.recvfrom(1024)
+        finally:
+            responder.stop()
+            sock.close()
+
+        reply = json.loads(data.decode())
+        self.assertEqual(reply["type"], "findme_offer")
+        self.assertFalse(reply["accept"])
+        self.assertEqual(reply["reason"], "device_switching_gateway")
+        self.assertEqual(reply["gateway_id"], "gw-a")
+
+    def test_discovery_responds_normally_when_preferred_gateway_id_matches_self(self):
+        responder = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-a",
+            udp_port=13250,
+            priority=100,
+        )
+        responder.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            sock.sendto(
+                findme_discover(device_uid="3CDC7545CCD0", mode="normal", preferred_gateway_id="gw-a"),
+                ("127.0.0.1", responder.bound_port),
+            )
+            data, _addr = sock.recvfrom(1024)
+        finally:
+            responder.stop()
+            sock.close()
+
+        reply = json.loads(data.decode())
+        self.assertTrue(reply["accept"])
+
+    def test_discovery_responds_normally_when_preferred_gateway_id_is_empty(self):
+        responder = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-a",
+            udp_port=13250,
+            priority=100,
+        )
+        responder.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            sock.sendto(
+                findme_discover(device_uid="3CDC7545CCD0", mode="normal"),
+                ("127.0.0.1", responder.bound_port),
+            )
+            data, _addr = sock.recvfrom(1024)
+        finally:
+            responder.stop()
+            sock.close()
+
+        reply = json.loads(data.decode())
+        self.assertTrue(reply["accept"])
+
     def test_discovery_responder_marks_matching_claim_offer(self):
         responder = DiscoveryResponder(
             "127.0.0.1",

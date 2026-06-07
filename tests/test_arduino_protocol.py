@@ -1,7 +1,5 @@
-import socket
 import struct
 import sys
-import threading
 import unittest
 from pathlib import Path
 
@@ -11,14 +9,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from newhorizons_gateway.arduino_protocol import (  # noqa: E402
-    CONTROL_PORT,
     PACKET_FLAG_HEARTBEAT,
     decode_json_line,
     encode_command_line,
     is_arduino_heartbeat_packet,
     is_arduino_stream_packet,
     packet_device_uid,
-    send_control_command,
 )
 
 
@@ -63,36 +59,6 @@ class ArduinoProtocolTest(unittest.TestCase):
         matrix_packet[4:10] = bytes.fromhex("3CDC7545CCD0")
         struct.pack_into("<IIH", matrix_packet, 10, 10, 5010, 4)
         self.assertFalse(is_arduino_heartbeat_packet(matrix_packet))
-
-    def test_send_control_command_uses_arduino_tcp_json_line(self):
-        received = []
-        ready = threading.Event()
-
-        def server():
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.bind(("127.0.0.1", 0))
-            sock.listen(1)
-            received.append(sock.getsockname()[1])
-            ready.set()
-            conn, _addr = sock.accept()
-            with conn:
-                request = conn.recv(4096)
-                received.append(request)
-                conn.sendall(b'{"ok":true,"cmd":"status","message":"status","data":{"mode":"normal"},"error":""}\\n')
-            sock.close()
-
-        thread = threading.Thread(target=server, daemon=True)
-        thread.start()
-        self.assertTrue(ready.wait(1))
-        port = int(received[0])
-
-        response = send_control_command("127.0.0.1", {"command": "status", "request_id": "req-1"}, port=port, timeout=1.0)
-
-        thread.join(timeout=1.0)
-        self.assertEqual(response["cmd"], "status")
-        self.assertIn(b'"protocol":"NHO/Arduino/1"', received[1])
-        self.assertIn(b'"command":"status"', received[1])
-        self.assertEqual(CONTROL_PORT, 22345)
 
 
 if __name__ == "__main__":

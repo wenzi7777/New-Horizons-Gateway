@@ -88,6 +88,23 @@ class DiscoveryResponder:
             if obj is None:
                 continue
             device_uid = str(obj.get("device_uid") or "").strip().upper()
+            preferred_gw = str(obj.get("preferred_gateway_id") or "")
+            if preferred_gw and preferred_gw != self.gateway_id:
+                decline_reason = "device_switching_gateway"
+                if self.on_request is not None:
+                    self.on_request(obj, addr, False, decline_reason)
+                try:
+                    decline = {
+                        "type": FINDME_OFFER_TYPE,
+                        "device_uid": device_uid,
+                        "gateway_id": self.gateway_id,
+                        "accept": False,
+                        "reason": decline_reason,
+                    }
+                    sock.sendto(json.dumps(decline, separators=(",", ":")).encode("utf-8"), addr)
+                except OSError as exc:
+                    self.last_error = str(exc)
+                continue
             denied = bool(device_uid and self.is_denied(device_uid))
             reason = "device_rejected" if denied else ""
             claim = self.active_claim(device_uid) if device_uid and not denied else None

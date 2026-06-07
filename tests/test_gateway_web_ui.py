@@ -101,8 +101,8 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("socketserver", local_device_source)
         self.assertNotIn("json.dumps", local_device_source)
         self.assertNotIn("send_control_command", main_source)
-        self.assertIn("arduino_sessions", main_source)
-        self.assertIn("CONTROL_PORT", main_source)
+        self.assertNotIn("arduino_sessions", main_source)
+        self.assertNotIn("CONTROL_PORT", main_source)
         self.assertIn("udp_commands.set_session", main_source)
         self.assertNotIn("udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))", main_source)
         self.assertNotIn("TCP control", web_source)
@@ -121,7 +121,7 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("if udp_commands.send_command(normalized_uid, payload):", main_source)
         self.assertIn("udp_commands.set_session(device_uid, addr)", main_source)
         self.assertIn("arduino_hosts", main_source)
-        self.assertIn("arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)", main_source)
+        self.assertNotIn("arduino_sessions", main_source)
 
     def test_gateway_web_ui_removes_os_eyebrow_and_keeps_update_controls(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
@@ -168,7 +168,7 @@ class GatewayWebUiTest(unittest.TestCase):
     def test_gateway_settings_require_valid_id_before_enable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
-            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream(), None)
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream())
             client = server.app.test_client()
 
             missing = client.post("/api/settings", json={"enabled": True, "gateway_id": ""})
@@ -184,7 +184,7 @@ class GatewayWebUiTest(unittest.TestCase):
         seen = []
         with tempfile.TemporaryDirectory() as tmpdir:
             store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
-            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream(), None, on_config_saved=seen.append)
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream(), on_config_saved=seen.append)
             client = server.app.test_client()
 
             response = client.post("/api/settings", json={"enabled": True, "gateway_id": "nh-gateway-test"})
@@ -197,7 +197,7 @@ class GatewayWebUiTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
             upstream = FakeUpstream()
-            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), upstream, None)
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), upstream)
             client = server.app.test_client()
 
             response = client.post(

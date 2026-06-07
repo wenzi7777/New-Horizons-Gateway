@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import socket
 import struct
 from typing import Any
 
@@ -68,24 +67,3 @@ def packet_device_uid(payload: bytes | bytearray) -> str:
     if not is_arduino_stream_packet(packet):
         return ""
     return packet[4:10].hex().upper()
-
-
-def send_control_command(host: str, payload: dict[str, Any], *, port: int = CONTROL_PORT, timeout: float = 2.0) -> dict[str, Any]:
-    request = encode_command_line(payload)
-    response = bytearray()
-    with socket.create_connection((host, int(port)), timeout=timeout) as sock:
-        sock.settimeout(timeout)
-        sock.sendall(request)
-        while True:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response.extend(chunk)
-            if b"\n" in chunk:
-                break
-    if not response:
-        raise RuntimeError("arduino_control_empty_response")
-    line = bytes(response).splitlines()[0].strip()
-    if line.endswith(b"\\n"):
-        line = line[:-2]
-    return decode_json_line(line, require_protocol=False)

@@ -6,7 +6,7 @@ import signal
 import time
 from typing import Any
 
-from .arduino_protocol import CONTROL_PORT, is_arduino_heartbeat_packet, is_arduino_stream_packet
+from .arduino_protocol import is_arduino_heartbeat_packet, is_arduino_stream_packet
 from .config_store import GatewayConfigStore
 from .discovery import DiscoveryResponder
 from .local_device import LocalUDPIngestServer, packet_device_uid as stream_packet_device_uid
@@ -25,7 +25,6 @@ def main() -> None:
     config = config_store.snapshot()
     state = GatewayState()
     arduino_hosts: dict[str, str] = {}
-    arduino_sessions: dict[str, tuple[str, int]] = {}
     running = True
 
     def stop(_signum: int, _frame: object) -> None:
@@ -143,13 +142,9 @@ def main() -> None:
         is_heartbeat = is_arduino_heartbeat_packet(payload)
         device_uid = stream_packet_device_uid(payload)
         denied = bool(device_uid and config_store.is_denied(device_uid))
-        existing_arduino_host = arduino_hosts.get(device_uid or "")
-        existing_arduino_session = arduino_sessions.get(device_uid or "")
-        same_arduino_peer = bool(existing_arduino_session and existing_arduino_session[0] == addr[0])
+        same_arduino_peer = bool(arduino_hosts.get(device_uid or "") == addr[0])
         if is_heartbeat and device_uid and not denied:
             arduino_hosts[device_uid] = addr[0]
-            arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)
-            # Device's UDP command socket is the same socket it sends from (kUdpStreamPort=13250).
             udp_commands.set_session(device_uid, addr)
             state.record_heartbeat(
                 device_uid,
@@ -160,11 +155,10 @@ def main() -> None:
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_heartbeat",
                 },
-                (addr[0], CONTROL_PORT),
+                addr,
             )
         elif is_arduino and device_uid and not denied and (state.findme_allows_stream(device_uid, addr) or same_arduino_peer):
             arduino_hosts[device_uid] = addr[0]
-            arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)
             udp_commands.set_session(device_uid, addr)
             state.record_control(
                 device_uid,
@@ -176,7 +170,7 @@ def main() -> None:
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_udp",
                 },
-                (addr[0], CONTROL_PORT),
+                addr,
                 connected=True,
             )
         serving = bool(device_uid and (is_arduino or state.is_serving(device_uid)))
@@ -231,7 +225,6 @@ def main() -> None:
         config_store,
         state,
         upstream,
-        None,
         udp_commands,
         on_config_saved=apply_runtime_config,
         update_manager=update_manager,

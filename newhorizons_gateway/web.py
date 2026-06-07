@@ -463,7 +463,6 @@ class GatewayWebServer:
         config_store: GatewayConfigStore,
         state: GatewayState,
         upstream: Any,
-        tcp_server: Any | None,
         udp_control: Any | None = None,
         *,
         on_config_saved: ConfigCallback | None = None,
@@ -474,7 +473,6 @@ class GatewayWebServer:
         self.config_store = config_store
         self.state = state
         self.upstream = upstream
-        self.tcp_server = tcp_server
         self.udp_control = udp_control
         self.on_config_saved = on_config_saved
         self.update_manager = update_manager or GatewayUpdateManager()
@@ -549,8 +547,6 @@ class GatewayWebServer:
         @app.post("/api/devices/<device_uid>/reject")
         def reject(device_uid: str) -> Any:
             config = self.config_store.deny(device_uid)
-            if self.tcp_server is not None:
-                self.tcp_server.close_device(device_uid)
             return jsonify({"ok": True, "denied_devices": config.get("denied_devices", [])})
 
         @app.post("/api/devices/<device_uid>/allow")
