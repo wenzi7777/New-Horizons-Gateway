@@ -38,7 +38,7 @@ class GatewayWebUiTest(unittest.TestCase):
 
     def test_gateway_startup_has_no_token_env_override(self):
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-        host_script = (ROOT / "scripts" / "start_gateway_host.sh").read_text(encoding="utf-8")
+        host_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
 
         self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", compose)
         self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", host_script)
@@ -67,30 +67,31 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("NEWHORIZONS_GATEWAY_TARGET_MODE: ${NEWHORIZONS_GATEWAY_TARGET_MODE:-}", compose)
 
     def test_start_gateway_defaults_to_host_gateway_on_macos(self):
-        script = (ROOT / "scripts" / "start_gateway.sh").read_text(encoding="utf-8")
+        # start.sh IS the host-mode script for macOS/Linux — no wrapper needed.
+        script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
 
-        self.assertIn('HOST_GATEWAY=1', script)
-        self.assertIn('exec "${SCRIPT_DIR}/start_gateway_host.sh"', script)
-        self.assertIn("--docker", script)
+        self.assertIn("Running on the host preserves the real device UDP source IP", script)
+        self.assertIn("http://127.0.0.1:5052", script)
 
     def test_start_gateway_windows_script_uses_power_shell_background_process(self):
-        script = (ROOT / "scripts" / "start_gateway_windows.ps1").read_text(encoding="utf-8")
+        script = (ROOT / "scripts" / "start.ps1").read_text(encoding="utf-8")
 
         self.assertIn('param(', script)
         self.assertIn('$Process = Start-Process', script)
-        self.assertIn('NEWHORIZONS_GATEWAY_SERVER_URL', script)
-        self.assertIn('NEWHORIZONS_GATEWAY_RESTART_COMMAND', script)
-        self.assertIn('powershell -ExecutionPolicy Bypass -File', script)
-        self.assertIn('Gateway WebUI: http://127.0.0.1:5052', script)
+        self.assertIn('http://127.0.0.1:5052', script)
 
-    def test_host_gateway_script_uses_screen_for_persistent_background_run(self):
-        script = (ROOT / "scripts" / "start_gateway_host.sh").read_text(encoding="utf-8")
+    def test_host_gateway_script_runs_in_background_with_pid_tracking(self):
+        # start.sh uses nohup + disown for a persistent background process on macOS/Linux.
+        script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
 
-        self.assertIn("SESSION_NAME=", script)
-        self.assertIn("screen -dmS", script)
-        self.assertIn("screen:${SESSION_NAME}", script)
+        self.assertIn("PID_FILE", script)
+        self.assertIn("nohup", script)
+        self.assertIn("disown", script)
 
-    def test_gateway_runtime_keeps_tcp_control_fallback_for_current_firmware(self):
+    def test_gateway_runtime_uses_udp_control_port_for_binary_packets(self):
+        # Gateway sends commands to devices via UDP only (no direct TCP from gateway).
+        # Binary heartbeat/stream packets arrive from the device's stream port (13250)
+        # but commands must be sent to the device's control port (22345 = CONTROL_PORT).
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
         local_device_source = (ROOT / "newhorizons_gateway" / "local_device.py").read_text(encoding="utf-8")
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
@@ -99,19 +100,26 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("LocalTCPControlServer", local_device_source)
         self.assertNotIn("socketserver", local_device_source)
         self.assertNotIn("json.dumps", local_device_source)
-        self.assertIn("send_control_command", main_source)
+        self.assertNotIn("send_control_command", main_source)
         self.assertIn("arduino_sessions", main_source)
         self.assertIn("CONTROL_PORT", main_source)
+        self.assertIn("udp_commands.set_session", main_source)
         self.assertNotIn("TCP control", web_source)
 
-    def test_gateway_command_path_prefers_tcp_control_session_and_keeps_udp_for_json_frames(self):
+    def test_gateway_command_path_uses_udp_for_all_commands(self):
+        # Commands from the upstream server are dispatched to the device via UDP.
+        # Binary packets (heartbeat/stream) register the session with CONTROL_PORT so
+        # the first command after device boot reaches the right port (22345, not 13250).
+        # JSON control frames from the device use the source addr directly (already
+        # comes from port 22345).
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
 
-        self.assertIn("arduino_addr = arduino_sessions.get(normalized_uid)", main_source)
-        self.assertIn("response = send_control_command(arduino_addr[0], payload, port=arduino_addr[1])", main_source)
-        self.assertIn('transport_path": "arduino_tcp"', main_source)
+        self.assertNotIn("send_control_command", main_source)
+        self.assertNotIn("arduino_addr = arduino_sessions.get(normalized_uid)", main_source)
+        self.assertNotIn('transport_path": "arduino_tcp"', main_source)
         self.assertIn("if udp_commands.send_command(normalized_uid, payload):", main_source)
         self.assertIn("udp_commands.set_session(device_uid, addr)", main_source)
+        self.assertIn("udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))", main_source)
         self.assertIn("arduino_hosts", main_source)
         self.assertIn("arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)", main_source)
 

@@ -149,7 +149,9 @@ def main() -> None:
         if is_heartbeat and device_uid and not denied:
             arduino_hosts[device_uid] = addr[0]
             arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)
-            udp_commands.set_session(device_uid, addr)
+            # Binary packets arrive from the device's stream port (kUdpStreamPort=13250),
+            # but commands must be delivered to the device's control port (CONTROL_PORT=22345).
+            udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))
             state.record_heartbeat(
                 device_uid,
                 {
@@ -164,7 +166,7 @@ def main() -> None:
         elif is_arduino and device_uid and not denied and (state.findme_allows_stream(device_uid, addr) or same_arduino_peer):
             arduino_hosts[device_uid] = addr[0]
             arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)
-            udp_commands.set_session(device_uid, addr)
+            udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))
             state.record_control(
                 device_uid,
                 "status",
