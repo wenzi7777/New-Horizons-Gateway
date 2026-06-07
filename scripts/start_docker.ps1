@@ -1,10 +1,11 @@
-# Start the Gateway in Docker (Windows).
+# Start the Gateway in Docker (Windows). Always rebuilds the image so
+# code changes are picked up automatically.
 #
 # Docker bridge networking does not preserve the device UDP source IP.
 # Use scripts\start.ps1 for local development.
 #
-# Usage: .\start_docker.ps1 [-Build]
-param([switch]$Build)
+# Usage: .\start_docker.ps1
+param()
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -15,9 +16,8 @@ Set-Location $AppDir
 $ComposeArgs = @(
     "-f", "docker-compose.yml",
     "-f", "docker-compose.container-discovery.yml",
-    "up", "-d"
+    "up", "-d", "--build"
 )
-if ($Build) { $ComposeArgs += "--build" }
 
 docker compose @ComposeArgs
 
