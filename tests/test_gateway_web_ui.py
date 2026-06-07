@@ -88,10 +88,10 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("nohup", script)
         self.assertIn("disown", script)
 
-    def test_gateway_runtime_uses_udp_control_port_for_binary_packets(self):
+    def test_gateway_runtime_uses_udp_for_all_commands(self):
         # Gateway sends commands to devices via UDP only (no direct TCP from gateway).
-        # Binary heartbeat/stream packets arrive from the device's stream port (13250)
-        # but commands must be sent to the device's control port (22345 = CONTROL_PORT).
+        # The device's UDP command socket is the same socket used for sending stream
+        # data (kUdpStreamPort=13250), so sessions must target addr not CONTROL_PORT.
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
         local_device_source = (ROOT / "newhorizons_gateway" / "local_device.py").read_text(encoding="utf-8")
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
@@ -104,22 +104,22 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("arduino_sessions", main_source)
         self.assertIn("CONTROL_PORT", main_source)
         self.assertIn("udp_commands.set_session", main_source)
+        self.assertNotIn("udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))", main_source)
         self.assertNotIn("TCP control", web_source)
 
     def test_gateway_command_path_uses_udp_for_all_commands(self):
         # Commands from the upstream server are dispatched to the device via UDP.
-        # Binary packets (heartbeat/stream) register the session with CONTROL_PORT so
-        # the first command after device boot reaches the right port (22345, not 13250).
-        # JSON control frames from the device use the source addr directly (already
-        # comes from port 22345).
+        # Both binary packets (heartbeat/stream) and JSON control frames register the
+        # session to addr directly: the device's UDP socket is bound to kUdpStreamPort
+        # (13250) and receives commands on that same socket (ControlServer::serviceUdpCommand).
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
 
         self.assertNotIn("send_control_command", main_source)
         self.assertNotIn("arduino_addr = arduino_sessions.get(normalized_uid)", main_source)
         self.assertNotIn('transport_path": "arduino_tcp"', main_source)
+        self.assertNotIn("udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))", main_source)
         self.assertIn("if udp_commands.send_command(normalized_uid, payload):", main_source)
         self.assertIn("udp_commands.set_session(device_uid, addr)", main_source)
-        self.assertIn("udp_commands.set_session(device_uid, (addr[0], CONTROL_PORT))", main_source)
         self.assertIn("arduino_hosts", main_source)
         self.assertIn("arduino_sessions[device_uid] = (addr[0], CONTROL_PORT)", main_source)
 
