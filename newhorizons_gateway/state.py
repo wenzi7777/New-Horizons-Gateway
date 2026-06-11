@@ -68,7 +68,22 @@ class GatewayState:
             device = self.devices.setdefault(uid, {"device_uid": uid, "udp_packets": 0, "udp_bytes": 0})
             nested = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
             data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-            mode = payload.get("mode") or nested.get("mode") or data.get("mode") or device.get("mode", "")
+            mode = payload.get("mode") or nested.get("mode") or data.get("mode")
+            if not mode and msg_type == "result":
+                # Mirror backend's _maintenance_mode_from_result: the firmware does not
+                # include a mode field in enter/exit_maintenance acks, so derive the
+                # resulting mode from the command/message to keep the gateway's cached
+                # state in sync immediately (before the next FindMe broadcast).
+                ok = payload.get("ok") is not False and str(payload.get("status") or "") != "error"
+                if ok:
+                    cmd = str(payload.get("command") or payload.get("cmd") or "")
+                    msg = str(payload.get("message") or "")
+                    if cmd == "enter_maintenance" or msg == "maintenance_entered":
+                        mode = "maintenance"
+                    elif cmd == "exit_maintenance" or msg == "maintenance_exited":
+                        mode = "normal"
+            if not mode:
+                mode = device.get("mode", "")
             firmware_version = (
                 payload.get("firmware_version")
                 or nested.get("firmware_version")

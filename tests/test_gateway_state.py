@@ -197,5 +197,53 @@ class GatewayStateTest(unittest.TestCase):
         self.assertFalse(state.findme_allows_stream("3CDC7545CCD0", ("192.168.1.152", 13250)))
 
 
+    def test_enter_maintenance_result_sets_gateway_mode_to_maintenance(self):
+        state = GatewayState()
+        state.record_heartbeat(
+            "3CDC7545CCD0",
+            {"device_uid": "3CDC7545CCD0", "device_name": "New Horizons OS-3CDC7545CCD0", "protocol": "NHO/Arduino/1", "transport_path": "arduino_heartbeat"},
+            ("192.168.1.152", 22345),
+        )
+        self.assertEqual(state.snapshot([])["devices"][0]["mode"], "normal")
+        state.record_control(
+            "3CDC7545CCD0",
+            "result",
+            {"command": "enter_maintenance", "ok": True, "message": "maintenance_entered", "device_uid": "3CDC7545CCD0"},
+            ("192.168.1.152", 13250),
+        )
+        self.assertEqual(state.snapshot([])["devices"][0]["mode"], "maintenance")
+
+    def test_exit_maintenance_result_sets_gateway_mode_to_normal(self):
+        state = GatewayState()
+        state.record_findme_request(
+            {"device_uid": "3CDC7545CCD0", "device_name": "New Horizons OS-3CDC7545CCD0", "mode": "maintenance"},
+            ("192.168.1.152", 22346),
+            accepted=True,
+        )
+        self.assertEqual(state.snapshot([])["devices"][0]["mode"], "maintenance")
+        state.record_control(
+            "3CDC7545CCD0",
+            "result",
+            {"command": "exit_maintenance", "ok": True, "message": "maintenance_exited", "device_uid": "3CDC7545CCD0"},
+            ("192.168.1.152", 13250),
+        )
+        self.assertEqual(state.snapshot([])["devices"][0]["mode"], "normal")
+
+    def test_failed_enter_maintenance_result_does_not_change_mode(self):
+        state = GatewayState()
+        state.record_heartbeat(
+            "3CDC7545CCD0",
+            {"device_uid": "3CDC7545CCD0", "protocol": "NHO/Arduino/1", "transport_path": "arduino_heartbeat"},
+            ("192.168.1.152", 22345),
+        )
+        state.record_control(
+            "3CDC7545CCD0",
+            "result",
+            {"command": "enter_maintenance", "ok": False, "status": "error", "device_uid": "3CDC7545CCD0"},
+            ("192.168.1.152", 13250),
+        )
+        self.assertEqual(state.snapshot([])["devices"][0]["mode"], "normal")
+
+
 if __name__ == "__main__":
     unittest.main()
