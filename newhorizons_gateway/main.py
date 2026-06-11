@@ -159,7 +159,6 @@ def main() -> None:
                 {
                     "device_uid": device_uid,
                     "device_name": "New Horizons OS-{}".format(device_uid),
-                    "mode": "normal",
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_heartbeat",
                 },
@@ -174,7 +173,6 @@ def main() -> None:
                 {
                     "device_uid": device_uid,
                     "device_name": "New Horizons OS-{}".format(device_uid),
-                    "mode": "normal",
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_udp",
                 },

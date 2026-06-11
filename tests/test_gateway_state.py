@@ -133,6 +133,36 @@ class GatewayStateTest(unittest.TestCase):
         self.assertEqual(device["peer"], "192.168.1.152:22345")
         self.assertIn("last_heartbeat_at", device)
 
+    def test_heartbeat_does_not_downgrade_findme_reported_mode(self):
+        # FindMe discovery carries the device's authoritative mode (the firmware
+        # updates it every loop). A binary heartbeat is only a liveness signal and
+        # does not know the real mode, so it must never reset a known maintenance
+        # mode back to normal (which caused the WebUI maintenance flicker).
+        state = GatewayState()
+        state.record_findme_request(
+            {
+                "device_uid": "3CDC7545CCD0",
+                "device_name": "New Horizons OS-3CDC7545CCD0",
+                "mode": "maintenance",
+            },
+            ("192.168.1.152", 22346),
+            accepted=True,
+        )
+
+        state.record_heartbeat(
+            "3CDC7545CCD0",
+            {
+                "device_uid": "3CDC7545CCD0",
+                "mode": "normal",
+                "protocol": "NHO/Arduino/1",
+                "transport_path": "arduino_heartbeat",
+            },
+            ("192.168.1.152", 22345),
+        )
+
+        device = state.snapshot([])["devices"][0]
+        self.assertEqual(device["mode"], "maintenance")
+
     def test_arduino_stream_requires_recent_accepted_findme(self):
         now = 1000.0
         state = GatewayState(now=lambda: now, findme_attach_window_sec=5.0)
