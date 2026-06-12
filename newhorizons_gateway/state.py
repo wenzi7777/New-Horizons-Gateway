@@ -242,6 +242,24 @@ class GatewayState:
                 return dict(claim)
         return None
 
+    def last_findme_addr(self, device_uid: str) -> str | None:
+        uid = str(device_uid).strip().upper()
+        with self._lock:
+            addr = self.devices.get(uid, {}).get("last_findme_addr")
+            return str(addr) if addr else None
+
+    def pending_claims(self) -> list[dict[str, Any]]:
+        now_ms = int(time.time() * 1000)
+        with self._lock:
+            result = []
+            for claim in self.claims.values():
+                if int(claim.get("expires_at_ms") or 0) <= now_ms:
+                    continue
+                if claim.get("state") in ("attached", "failed", "timeout"):
+                    continue
+                result.append(dict(claim))
+            return result
+
     def snapshot(self, denied_devices: list[str]) -> dict[str, Any]:
         denied = {str(uid).strip().upper() for uid in denied_devices}
         with self._lock:

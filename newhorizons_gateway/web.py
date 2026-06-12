@@ -18,6 +18,9 @@ from .update_manager import GatewayUpdateManager
 
 
 ConfigCallback = Callable[[dict[str, Any]], None]
+SendDeviceUdpCallback = Callable[[str, int, dict[str, Any]], None]
+
+_DEVICE_CONTROL_PORT = 13250
 
 
 PAGE = """<!doctype html>
@@ -845,6 +848,7 @@ class GatewayWebServer:
         *,
         on_config_saved: ConfigCallback | None = None,
         update_manager: GatewayUpdateManager | None = None,
+        send_device_udp: SendDeviceUdpCallback | None = None,
     ) -> None:
         self.host = host
         self.port = int(port)
@@ -854,6 +858,7 @@ class GatewayWebServer:
         self.udp_control = udp_control
         self.on_config_saved = on_config_saved
         self.update_manager = update_manager or GatewayUpdateManager()
+        self._send_device_udp = send_device_udp
         self.app = self._make_app()
         self._server: Any = None
         self._thread: threading.Thread | None = None
@@ -942,6 +947,15 @@ class GatewayWebServer:
             self.state.update_claim(claim["claim_id"], state="sent")
             self.upstream.send_claim_request(claim["device_uid"], claim["claim_id"], int(claim["ttl_ms"]))
             updated = self.state.update_claim(claim["claim_id"], state="requested")
+            device_ip = self.state.last_findme_addr(device_uid)
+            if device_ip and self._send_device_udp is not None:
+                gw_id = str(self.config_store.snapshot().get("gateway_id") or "")
+                self._send_device_udp(device_ip, _DEVICE_CONTROL_PORT, {
+                    "command": "findme_switch_gateway",
+                    "preferred_gateway_id": gw_id,
+                    "claim_id": claim["claim_id"],
+                    "ttl_ms": int(claim["ttl_ms"]),
+                })
             return jsonify({"ok": True, "claim": updated or claim})
 
         return app
