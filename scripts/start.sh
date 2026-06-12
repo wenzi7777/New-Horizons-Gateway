@@ -25,6 +25,44 @@ if [[ -f "${PID_FILE}" ]]; then
   rm -f "${PID_FILE}"
 fi
 
+check_port_free() {
+  local protocol="$1"
+  local port="$2"
+  local owner=""
+  if command -v lsof >/dev/null 2>&1; then
+    if [[ "${protocol}" == "UDP" ]]; then
+      owner="$(lsof -nP -iUDP:"${port}" 2>/dev/null || true)"
+    else
+      owner="$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null || true)"
+    fi
+  elif command -v ss >/dev/null 2>&1; then
+    if [[ "${protocol}" == "UDP" ]]; then
+      owner="$(ss -H -lunp "sport = :${port}" 2>/dev/null || true)"
+    else
+      owner="$(ss -H -ltnp "sport = :${port}" 2>/dev/null || true)"
+    fi
+  else
+    echo "ERROR: Cannot verify ${protocol}/${port}; install lsof or iproute2 (ss)." >&2
+    exit 1
+  fi
+  if [[ -z "${owner}" ]]; then
+    return
+  fi
+  if grep -qi "docker" <<<"${owner}"; then
+    echo "ERROR: Legacy Docker Gateway is still using ${protocol}/${port}." >&2
+    echo "Stop and remove the old container before starting the host-only Gateway:" >&2
+    echo "  docker rm -f newhorizons-gateway" >&2
+  else
+    echo "ERROR: ${protocol}/${port} is already in use:" >&2
+    echo "${owner}" >&2
+  fi
+  exit 1
+}
+
+check_port_free UDP 22346
+check_port_free UDP 13250
+check_port_free TCP 5052
+
 # Create virtualenv on first run
 if [[ ! -x "${VENV}/bin/python" ]]; then
   echo "Creating .venv ..."

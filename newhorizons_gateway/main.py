@@ -18,9 +18,6 @@ from .upstream_wss import UpstreamWSSClient
 from .web import GatewayWebServer
 
 
-_DEVICE_CONTROL_PORT = 13250
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="New Horizons local UDP/JSON to WSS gateway")
     parser.add_argument("--config", help="Path to host gateway config", default=None)
@@ -75,6 +72,13 @@ def main() -> None:
         )
 
     def on_udp_delivery_timeout(device_uid: str, payload: dict[str, Any]) -> None:
+        if str(payload.get("command") or "") == "findme_switch_gateway":
+            claim_id = str(payload.get("claim_id") or "")
+            if claim_id:
+                state.fail_claim_delivery(
+                    claim_id,
+                    "switch_command_delivery_timeout",
+                )
         upstream.send_device_message(
             "result",
             {
@@ -98,12 +102,6 @@ def main() -> None:
 
     def send_udp_datagram(payload: bytes, addr: tuple[str, int]) -> None:
         udp_server.send_datagram(payload, addr)
-
-    def _send_direct_device_udp(host: str, port: int, payload: dict[str, Any]) -> None:
-        try:
-            send_udp_datagram(json.dumps(payload, separators=(",", ":")).encode(), (host, port))
-        except Exception:
-            pass
 
     upstream = UpstreamWSSClient(
         server_url=str(config["server_url"]),
@@ -243,7 +241,6 @@ def main() -> None:
         udp_commands,
         on_config_saved=apply_runtime_config,
         update_manager=update_manager,
-        send_device_udp=_send_direct_device_udp,
     )
 
     web_server.start()
@@ -260,7 +257,6 @@ def main() -> None:
         )
     )
     last_gateway_status = 0.0
-    _switch_cmd_last_sent: dict[str, float] = {}
     try:
         while running:
             time.sleep(0.5)
@@ -283,23 +279,6 @@ def main() -> None:
                 })
             udp_commands.service()
             result_chunks.purge()
-            now_mono = time.monotonic()
-            pending = state.pending_claims()
-            for claim in pending:
-                cid = claim["claim_id"]
-                if now_mono - _switch_cmd_last_sent.get(cid, 0.0) >= 3.0:
-                    device_ip = state.last_findme_addr(claim["device_uid"])
-                    if device_ip:
-                        gw_id = str(config_store.snapshot().get("gateway_id") or "")
-                        _send_direct_device_udp(device_ip, _DEVICE_CONTROL_PORT, {
-                            "command": "findme_switch_gateway",
-                            "preferred_gateway_id": gw_id,
-                            "claim_id": cid,
-                            "ttl_ms": int(claim.get("ttl_ms", 30000)),
-                        })
-                        _switch_cmd_last_sent[cid] = now_mono
-            active_cids = {c["claim_id"] for c in pending}
-            _switch_cmd_last_sent = {k: v for k, v in _switch_cmd_last_sent.items() if k in active_cids}
     finally:
         if discovery is not None:
             discovery.stop()

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from newhorizons_gateway.config_store import GatewayConfigStore
 from newhorizons_gateway.state import GatewayState
+from newhorizons_gateway.update_manager import ALLOWED_UPDATE_ENTRIES
 from newhorizons_gateway.web import GatewayWebServer
 
 
@@ -29,6 +30,18 @@ class FakeUpstream:
         return None
 
 
+class FakeUDPControl:
+    def __init__(self):
+        self.direct = []
+
+    def snapshot(self):
+        return {}
+
+    def send_command_to(self, device_uid, addr, payload):
+        self.direct.append((device_uid, addr, payload))
+        return True
+
+
 class GatewayWebUiTest(unittest.TestCase):
     def test_gateway_config_no_longer_persists_token(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -37,10 +50,8 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertNotIn("auth_token", store.snapshot())
 
     def test_gateway_startup_has_no_token_env_override(self):
-        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         host_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
 
-        self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", compose)
         self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", host_script)
 
     def test_target_server_form_is_not_overwritten_while_dirty(self):
@@ -61,10 +72,28 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('text("effective-server", resolveTargetServerUrl());', web_source)
         self.assertIn("updateTargetServerSummary();", web_source)
 
-    def test_compose_does_not_force_production_mode_over_saved_config(self):
-        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    def test_local_target_uses_host_backend_address(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
 
-        self.assertIn("NEWHORIZONS_GATEWAY_TARGET_MODE: ${NEWHORIZONS_GATEWAY_TARGET_MODE:-}", compose)
+            saved = store.save({"target_mode": "local"})
+
+        self.assertEqual(saved["server_url"], "ws://127.0.0.1:5051/newhorizons/gateway/ws")
+
+    def test_gateway_distribution_is_host_only(self):
+        removed = [
+            "Dockerfile",
+            "docker-compose.yml",
+            "docker-compose.container-discovery.yml",
+            "scripts/discovery_proxy.py",
+            "scripts/start_docker.sh",
+            "scripts/start_docker.ps1",
+            "scripts/stop_docker.sh",
+            "scripts/stop_docker.ps1",
+        ]
+
+        self.assertEqual([path for path in removed if (ROOT / path).exists()], [])
+        self.assertFalse(any("docker" in entry.lower() for entry in ALLOWED_UPDATE_ENTRIES))
 
     def test_start_gateway_defaults_to_host_gateway_on_macos(self):
         # start.sh IS the host-mode script for macOS/Linux — no wrapper needed.
@@ -87,6 +116,47 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("PID_FILE", script)
         self.assertIn("nohup", script)
         self.assertIn("disown", script)
+
+    def test_host_start_scripts_detect_legacy_docker_port_conflicts(self):
+        shell_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
+        powershell_script = (ROOT / "scripts" / "start.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("Legacy Docker Gateway", shell_script)
+        self.assertIn("22346", shell_script)
+        self.assertIn("13250", shell_script)
+        self.assertIn("5052", shell_script)
+        self.assertIn("command -v ss", shell_script)
+        self.assertIn("Legacy Docker Gateway", powershell_script)
+        self.assertIn("Get-NetUDPEndpoint", powershell_script)
+        self.assertIn("Get-NetTCPConnection", powershell_script)
+
+    def test_serve_device_queues_direct_standard_udp_command(self):
+        upstream = FakeUpstream()
+        upstream.is_connected = lambda: True
+        state = GatewayState()
+        state.record_findme_request(
+            {"device_uid": "3CDC7545CCD0", "device_name": "Device", "mode": "normal"},
+            ("192.168.1.152", 22346),
+            accepted=True,
+        )
+        udp_control = FakeUDPControl()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            store.save({"gateway_id": "gw-target", "enabled": True})
+            server = GatewayWebServer("127.0.0.1", 0, store, state, upstream, udp_control)
+            response = server.app.test_client().post("/api/devices/3CDC7545CCD0/serve")
+
+        self.assertEqual(response.status_code, 200)
+        claim = response.get_json()["claim"]
+        self.assertEqual(len(udp_control.direct), 1)
+        uid, addr, payload = udp_control.direct[0]
+        self.assertEqual(uid, "3CDC7545CCD0")
+        self.assertEqual(addr, ("192.168.1.152", 13250))
+        self.assertEqual(payload["command"], "findme_switch_gateway")
+        self.assertEqual(payload["request_id"], f"findme-claim-{claim['claim_id']}")
+        self.assertEqual(payload["preferred_gateway_id"], "gw-target")
+        self.assertEqual(payload["claim_id"], claim["claim_id"])
+        self.assertEqual(payload["expires_at_ms"], claim["expires_at_ms"])
 
     def test_gateway_runtime_uses_udp_for_all_commands(self):
         # Gateway sends commands to devices via UDP only (no direct TCP from gateway).

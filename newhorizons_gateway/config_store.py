@@ -9,7 +9,7 @@ from typing import Any
 
 
 PRODUCTION_URL = "wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws"
-LOCAL_URL = "ws://host.docker.internal:5051/newhorizons/gateway/ws"
+LOCAL_URL = "ws://127.0.0.1:5051/newhorizons/gateway/ws"
 GATEWAY_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 

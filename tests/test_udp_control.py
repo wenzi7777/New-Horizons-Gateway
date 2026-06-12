@@ -23,6 +23,84 @@ class Clock:
 
 
 class UDPCommandDispatcherTest(unittest.TestCase):
+    def test_direct_command_uses_standard_envelope_without_existing_session(self):
+        clock = Clock()
+        sent = []
+        dispatcher = UDPCommandDispatcher(lambda packet, addr: sent.append((packet, addr)), now=clock.now)
+
+        self.assertTrue(
+            dispatcher.send_command_to(
+                "3CDC7545CCD0",
+                ("192.168.50.32", 13250),
+                {
+                    "command": "findme_switch_gateway",
+                    "request_id": "findme-claim-claim-1",
+                    "preferred_gateway_id": "gw-target",
+                    "claim_id": "claim-1",
+                    "ttl_ms": 30000,
+                },
+            )
+        )
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][1], ("192.168.50.32", 13250))
+        frame = json.loads(sent[0][0].decode())
+        self.assertEqual(frame["type"], "command")
+        self.assertEqual(frame["device_uid"], "3CDC7545CCD0")
+        self.assertEqual(frame["request_id"], "findme-claim-claim-1")
+        self.assertEqual(frame["payload"]["command"], "findme_switch_gateway")
+        self.assertEqual(frame["payload"]["claim_id"], "claim-1")
+
+        dispatcher.handle_ack(
+            "3CDC7545CCD0",
+            {
+                "device_uid": "3CDC7545CCD0",
+                "ack": frame["seq"],
+                "request_id": "findme-claim-claim-1",
+            },
+        )
+        clock.advance(dispatcher.RESEND_INTERVAL_SEC * 2)
+        dispatcher.service()
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(dispatcher.snapshot()["commands_acked"], 1)
+
+    def test_direct_claim_retries_until_explicit_expiry(self):
+        clock = Clock()
+        sent = []
+        timed_out = []
+        dispatcher = UDPCommandDispatcher(
+            lambda packet, addr: sent.append((packet, addr)),
+            on_delivery_timeout=lambda uid, payload: timed_out.append((uid, payload)),
+            now=clock.now,
+        )
+        expires_at_ms = int((clock.now() + 30.0) * 1000)
+
+        dispatcher.send_command_to(
+            "3CDC7545CCD0",
+            ("192.168.50.32", 13250),
+            {
+                "command": "findme_switch_gateway",
+                "request_id": "findme-claim-claim-1",
+                "claim_id": "claim-1",
+                "expires_at_ms": expires_at_ms,
+            },
+        )
+
+        for _ in range(dispatcher.MAX_UNACKED_ATTEMPTS + 5):
+            clock.advance(dispatcher.RESEND_INTERVAL_SEC)
+            dispatcher.service()
+
+        self.assertEqual(timed_out, [])
+        self.assertGreater(len(sent), dispatcher.MAX_UNACKED_ATTEMPTS)
+
+        clock.advance(30.0)
+        dispatcher.service()
+
+        self.assertEqual(len(timed_out), 1)
+        self.assertEqual(timed_out[0][1]["claim_id"], "claim-1")
+        self.assertEqual(dispatcher.snapshot()["pending"], 0)
+
     def test_command_is_retried_until_ack(self):
         clock = Clock()
         sent = []

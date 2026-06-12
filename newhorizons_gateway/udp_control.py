@@ -71,36 +71,20 @@ class UDPCommandDispatcher:
             addr = self.sessions.get(uid)
             if addr is None:
                 return False
-            payload = dict(payload or {})
-            request_id = str(payload.get("request_id") or "")
-            self.seq = (int(self.seq) + 1) & 0xFFFF
-            if self.seq == 0:
-                self.seq = 1
-            packet = json.dumps(
-                {
-                    "type": "command",
-                    "device_uid": uid,
-                    "seq": self.seq,
-                    "request_id": request_id,
-                    "payload": payload,
-                },
-                separators=(",", ":"),
-            ).encode("utf-8")
-            key = (uid, request_id or str(self.seq))
-            entry = {
-                "device_uid": uid,
-                "addr": addr,
-                "payload": payload,
-                "request_id": request_id,
-                "seq": self.seq,
-                "packet": packet,
-                "attempts": 0,
-                "acked": False,
-                "created_at": self.now(),
-                "last_sent_at": 0.0,
-            }
-            self.pending[key] = entry
-            self._send_entry(entry, retry=False)
+            self._queue_command_locked(uid, addr, payload)
+        return True
+
+    def send_command_to(self, device_uid: Any, addr: Address, payload: dict[str, Any]) -> bool:
+        uid = normalize_device_uid(device_uid)
+        host = str(addr[0] if addr else "").strip()
+        try:
+            port = int(addr[1])
+        except (IndexError, TypeError, ValueError):
+            port = 0
+        if not uid or not host or port <= 0:
+            return False
+        with self.lock:
+            self._queue_command_locked(uid, (host, port), payload)
         return True
 
     def handle_ack(self, device_uid: Any, frame: dict[str, Any]) -> None:
@@ -135,7 +119,10 @@ class UDPCommandDispatcher:
         with self.lock:
             stale_uids = self._prune_stale_sessions_locked(now)
             for key, entry in list(self.pending.items()):
+                expired = self._expired(entry, now)
                 if entry.get("acked"):
+                    if expired:
+                        self.pending.pop(key, None)
                     continue
                 if str(entry.get("device_uid") or "") in stale_uids:
                     self.pending.pop(key, None)
@@ -143,7 +130,10 @@ class UDPCommandDispatcher:
                     self.last_error = "command_delivery_timeout"
                     timed_out.append(entry)
                     continue
-                if self._expired(entry, now) or int(entry.get("attempts") or 0) >= self.MAX_UNACKED_ATTEMPTS:
+                if expired or (
+                    not self._has_explicit_expiry(entry)
+                    and int(entry.get("attempts") or 0) >= self.MAX_UNACKED_ATTEMPTS
+                ):
                     self.pending.pop(key, None)
                     self.commands_timeout += 1
                     self.last_error = "command_delivery_timeout"
@@ -174,6 +164,38 @@ class UDPCommandDispatcher:
             entry["acked"] = True
             self.commands_acked += 1
             self.last_error = ""
+
+    def _queue_command_locked(self, uid: str, addr: Address, payload: dict[str, Any]) -> None:
+        payload = dict(payload or {})
+        request_id = str(payload.get("request_id") or "")
+        self.seq = (int(self.seq) + 1) & 0xFFFF
+        if self.seq == 0:
+            self.seq = 1
+        packet = json.dumps(
+            {
+                "type": "command",
+                "device_uid": uid,
+                "seq": self.seq,
+                "request_id": request_id,
+                "payload": payload,
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        key = (uid, request_id or str(self.seq))
+        entry = {
+            "device_uid": uid,
+            "addr": addr,
+            "payload": payload,
+            "request_id": request_id,
+            "seq": self.seq,
+            "packet": packet,
+            "attempts": 0,
+            "acked": False,
+            "created_at": self.now(),
+            "last_sent_at": 0.0,
+        }
+        self.pending[key] = entry
+        self._send_entry(entry, retry=False)
 
     def _send_entry(self, entry: dict[str, Any], *, retry: bool) -> None:
         try:
@@ -211,3 +233,11 @@ class UDPCommandDispatcher:
         except Exception:
             expires_at_ms = 0
         return bool(expires_at_ms and int(now * 1000) > expires_at_ms)
+
+    @staticmethod
+    def _has_explicit_expiry(entry: dict[str, Any]) -> bool:
+        payload = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+        try:
+            return int(payload.get("expires_at_ms") or 0) > 0
+        except Exception:
+            return False

@@ -4,6 +4,11 @@ Standalone LAN relay for New Horizons devices. The Gateway runs separately
 from the main New Horizons WebUI/backend, so it can sit on any computer in the
 same LAN as the devices.
 
+The Gateway is host-only. It must run directly on the LAN host so UDP source
+addresses and reply paths remain valid. Docker Desktop rewrites these addresses
+and is not supported for the Gateway. The Desktop WebUI/backend may still run
+in Docker.
+
 ## First Setup
 
 Open the local Gateway UI:
@@ -45,7 +50,7 @@ FindMe + UDP control/data           WebSocket / WSS
 The Gateway owns the upstream server configuration; the device only needs Wi-Fi.
 
 - `Production`: `wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws`
-- `Local`: `ws://host.docker.internal:5051/newhorizons/gateway/ws`
+- `Local`: `ws://127.0.0.1:5051/newhorizons/gateway/ws`
 - `Manual`: custom `ws://` or `wss://` URL
 
 Changes made in the Gateway WebUI are persisted to the Gateway config and apply
@@ -57,22 +62,20 @@ Start the Gateway separately:
 
 ```bash
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
-./scripts/start_gateway.sh --build
+./scripts/start.sh
 ```
 
-On macOS this starts the Gateway directly on the host with the `ctl-board`
-conda Python. This keeps UDP control/data on the real LAN address instead of
-Docker NAT.
+The script creates `.venv` when needed and preserves Gateway configuration in
+`.run/config.json`. Before startup it verifies that UDP `22346`, UDP `13250`,
+and TCP `5052` are free. If a legacy Docker Gateway still owns those ports,
+stop and remove that container first.
 
 On Windows, use PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\start_gateway_windows.ps1
+.\scripts\start.ps1
 ```
-
-If your Python is not on `py`, set `NEWHORIZONS_GATEWAY_PYTHON` to the
-executable you want the script to use.
 
 Start the main WebUI/backend separately:
 
@@ -80,31 +83,6 @@ Start the main WebUI/backend separately:
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Desktop
 ./scripts/start_local.sh --build
 ```
-
-## Docker Start
-
-Docker mode is explicit because Docker Desktop rewrites UDP peer addresses on
-macOS and can break reliable UDP control. Use it only when that tradeoff is
-acceptable:
-
-```bash
-./scripts/start_gateway.sh --docker --build
-```
-
-On Linux Docker, container-side discovery can also be used:
-
-```bash
-./scripts/start_gateway.sh --container-discovery --build
-```
-
-The host start script uses:
-
-```text
-/usr/local/Caskroom/miniconda/base/envs/ctl-board/bin/python
-```
-
-Override the Python path with `NEWHORIZONS_GATEWAY_PYTHON` if the `ctl-board`
-env moves.
 
 ## Update
 
@@ -121,42 +99,27 @@ Host self-update is intentionally gated behind:
 export NEWHORIZONS_GATEWAY_ALLOW_SELF_UPDATE=1
 ```
 
-Docker/container deployments show `manual update required`; update them from the
-host with:
-
-```bash
-docker compose up -d --build
-```
-
 ## Run On Another Computer
 
 Use the Gateway WebUI target settings, or set the backend URL before starting:
 
 ```bash
 export NEWHORIZONS_GATEWAY_SERVER_URL=ws://192.168.1.153:5051/newhorizons/gateway/ws
-./scripts/start_gateway.sh --build
+./scripts/start.sh
 ```
 
 For lab deployment:
 
 ```bash
 export NEWHORIZONS_GATEWAY_SERVER_URL=wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws
-./scripts/start_gateway.sh --build
+./scripts/start.sh
 ```
 
 ## Stop
 
-For host mode:
-
 ```bash
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
-./scripts/stop_gateway_host.sh
-```
-
-For Docker mode:
-
-```bash
-docker compose down
+./scripts/stop.sh
 ```
 
 ## Direct Python Run

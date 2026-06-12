@@ -84,31 +84,34 @@ class GatewayState:
                         mode = "normal"
             if not mode:
                 mode = device.get("mode", "")
+            command = str(payload.get("command") or payload.get("cmd") or "")
+            switch_started = msg_type == "result" and command == "findme_switch_gateway"
             firmware_version = (
                 payload.get("firmware_version")
                 or nested.get("firmware_version")
                 or data.get("firmware_version")
                 or device.get("firmware_version", "")
             )
-            device.update({
-                "connected": connected,
-                "peer": "{}:{}".format(peer[0], peer[1]),
+            update = {
                 "last_seen": now,
                 "last_seen_monotonic": self._now(),
                 "last_control_type": msg_type,
-                "findme_state": "attached" if connected else "disconnected",
                 "device_name": payload.get("device_name") or device.get("device_name", ""),
                 "mode": mode,
                 "firmware_version": firmware_version or device.get("firmware_version", ""),
                 "protocol": payload.get("protocol") or nested.get("protocol") or data.get("protocol") or device.get("protocol", ""),
                 "hardware_model": payload.get("hardware_model") or nested.get("hardware_model") or data.get("hardware_model") or device.get("hardware_model", ""),
                 "transport_path": payload.get("transport_path") or nested.get("transport_path") or data.get("transport_path") or device.get("transport_path", ""),
-            })
-            claim = self.active_claim_for(uid)
-            if claim is not None:
-                claim["state"] = "attached"
-                claim["attached_at"] = now
-                device["claim_id"] = claim.get("claim_id", "")
+            }
+            if not switch_started:
+                update.update({
+                    "connected": connected,
+                    "peer": "{}:{}".format(peer[0], peer[1]),
+                    "findme_state": "attached" if connected else "disconnected",
+                })
+            device.update(update)
+            if connected and not switch_started:
+                self._attach_active_claim_locked(uid, device, now)
 
     def record_heartbeat(self, device_uid: str, payload: dict[str, Any], peer: tuple[str, int]) -> None:
         uid = str(device_uid).strip().upper()
@@ -137,11 +140,7 @@ class GatewayState:
                 "firmware_version": payload.get("firmware_version") or device.get("firmware_version", ""),
                 "transport_path": payload.get("transport_path") or "arduino_heartbeat",
             })
-            claim = self.active_claim_for(uid)
-            if claim is not None:
-                claim["state"] = "attached"
-                claim["attached_at"] = now
-                device["claim_id"] = claim.get("claim_id", "")
+            self._attach_active_claim_locked(uid, device, now)
 
     def record_disconnect(self, device_uid: str) -> None:
         uid = str(device_uid).strip().upper()
@@ -224,21 +223,25 @@ class GatewayState:
             claim["updated_at"] = utc_now()
             return dict(claim)
 
+    def fail_claim_delivery(self, claim_id: str, error: str) -> dict[str, Any] | None:
+        claim_id = str(claim_id or "")
+        with self._lock:
+            claim = self.claims.get(claim_id)
+            if claim is None:
+                return None
+            if claim.get("state") == "attached":
+                return dict(claim)
+            claim["state"] = "failed"
+            claim["last_error"] = str(error or "switch_command_delivery_timeout")
+            claim["updated_at"] = utc_now()
+            return dict(claim)
+
     def active_claim_for(self, device_uid: str) -> dict[str, Any] | None:
         uid = str(device_uid).strip().upper()
         now_ms = int(time.time() * 1000)
         with self._lock:
-            for claim in self.claims.values():
-                if str(claim.get("device_uid") or "").upper() != uid:
-                    continue
-                if int(claim.get("expires_at_ms") or 0) <= now_ms:
-                    if claim.get("state") not in ("attached", "timeout", "failed"):
-                        claim["state"] = "timeout"
-                        claim["last_error"] = "claim_timeout"
-                        claim["updated_at"] = utc_now()
-                    continue
-                if claim.get("state") in ("failed", "timeout"):
-                    continue
+            claim = self._active_claim_locked(uid, now_ms)
+            if claim is not None:
                 return dict(claim)
         return None
 
@@ -339,3 +342,29 @@ class GatewayState:
             device["connected"] = False
             device["disconnected_at"] = utc_now()
             device["findme_state"] = "disconnected"
+
+    def _active_claim_locked(self, uid: str, now_ms: int | None = None) -> dict[str, Any] | None:
+        current_ms = int(time.time() * 1000) if now_ms is None else now_ms
+        for claim in self.claims.values():
+            if str(claim.get("device_uid") or "").upper() != uid:
+                continue
+            if int(claim.get("expires_at_ms") or 0) <= current_ms:
+                if claim.get("state") not in ("attached", "timeout", "failed"):
+                    claim["state"] = "timeout"
+                    claim["last_error"] = "claim_timeout"
+                    claim["updated_at"] = utc_now()
+                continue
+            if claim.get("state") in ("failed", "timeout"):
+                continue
+            return claim
+        return None
+
+    def _attach_active_claim_locked(self, uid: str, device: dict[str, Any], now: str) -> None:
+        claim = self._active_claim_locked(uid)
+        if claim is None:
+            return
+        claim["state"] = "attached"
+        claim["attached_at"] = now
+        claim["updated_at"] = now
+        claim["last_error"] = ""
+        device["claim_id"] = claim.get("claim_id", "")

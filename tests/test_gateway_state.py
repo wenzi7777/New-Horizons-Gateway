@@ -133,6 +133,54 @@ class GatewayStateTest(unittest.TestCase):
         self.assertEqual(device["peer"], "192.168.1.152:22345")
         self.assertIn("last_heartbeat_at", device)
 
+    def test_switch_command_result_does_not_complete_claim_before_heartbeat(self):
+        state = GatewayState()
+        claim = state.create_claim("3CDC7545CCD0")
+
+        state.record_control(
+            "3CDC7545CCD0",
+            "result",
+            {
+                "device_uid": "3CDC7545CCD0",
+                "command": "findme_switch_gateway",
+                "request_id": f"findme-claim-{claim['claim_id']}",
+                "ok": True,
+                "message": "findme_switch_started",
+            },
+            ("192.168.1.152", 13250),
+        )
+
+        pending = state.active_claim_for("3CDC7545CCD0")
+        self.assertIsNotNone(pending)
+        self.assertNotEqual(pending["state"], "attached")
+        device = state.snapshot([])["devices"][0]
+        self.assertFalse(device.get("connected", False))
+        self.assertNotEqual(device.get("findme_state"), "attached")
+
+        state.record_heartbeat(
+            "3CDC7545CCD0",
+            {
+                "device_uid": "3CDC7545CCD0",
+                "protocol": "NHO/Arduino/1",
+                "transport_path": "arduino_heartbeat",
+            },
+            ("192.168.1.152", 13250),
+        )
+
+        attached = next(item for item in state.snapshot([])["claims"] if item["claim_id"] == claim["claim_id"])
+        self.assertEqual(attached["state"], "attached")
+
+    def test_delivery_timeout_does_not_downgrade_attached_claim(self):
+        state = GatewayState()
+        claim = state.create_claim("3CDC7545CCD0")
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 13250))
+
+        updated = state.fail_claim_delivery(claim["claim_id"], "switch_command_delivery_timeout")
+
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["state"], "attached")
+        self.assertEqual(updated["last_error"], "")
+
     def test_heartbeat_does_not_downgrade_findme_reported_mode(self):
         # FindMe discovery carries the device's authoritative mode (the firmware
         # updates it every loop). A binary heartbeat is only a liveness signal and

@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from newhorizons_gateway.discovery import DiscoveryResponder  # noqa: E402
+from newhorizons_gateway.state import GatewayState  # noqa: E402
 
 
 def findme_discover(**payload):
@@ -177,6 +178,63 @@ class GatewayDiscoveryTest(unittest.TestCase):
         self.assertTrue(reply["accept"])
         self.assertEqual(reply["claim_id"], "claim-1")
         self.assertGreater(reply["priority"], 80)
+
+    def test_gateway_handover_rejects_old_gateway_and_attaches_target_after_heartbeat(self):
+        uid = "3CDC7545CCD0"
+        target_state = GatewayState()
+        claim = target_state.create_claim(uid, ttl_ms=30000)
+        gateway_a = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-a",
+            udp_port=13250,
+            priority=100,
+        )
+        gateway_b = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-b",
+            udp_port=13250,
+            priority=100,
+            active_claim=target_state.active_claim_for,
+            on_request=target_state.record_findme_request,
+        )
+        gateway_a.start()
+        gateway_b.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            discover = findme_discover(
+                device_uid=uid,
+                mode="normal",
+                preferred_gateway_id="gw-b",
+                claim_id=claim["claim_id"],
+            )
+            sock.sendto(discover, ("127.0.0.1", gateway_a.bound_port))
+            reply_a = json.loads(sock.recvfrom(1024)[0].decode())
+            sock.sendto(discover, ("127.0.0.1", gateway_b.bound_port))
+            reply_b = json.loads(sock.recvfrom(1024)[0].decode())
+        finally:
+            gateway_a.stop()
+            gateway_b.stop()
+            sock.close()
+
+        self.assertFalse(reply_a["accept"])
+        self.assertEqual(reply_a["reason"], "device_switching_gateway")
+        self.assertTrue(reply_b["accept"])
+        self.assertEqual(reply_b["claim_id"], claim["claim_id"])
+        self.assertGreater(reply_b["priority"], 100)
+        self.assertEqual(target_state.active_claim_for(uid)["state"], "created")
+
+        target_state.record_heartbeat(uid, {}, ("192.0.2.10", 13250))
+
+        attached = target_state.active_claim_for(uid)
+        self.assertIsNotNone(attached)
+        self.assertEqual(attached["state"], "attached")
+        self.assertEqual(
+            target_state.snapshot([])["devices"][0]["claim_id"],
+            claim["claim_id"],
+        )
 
 
 if __name__ == "__main__":

@@ -31,6 +31,37 @@ if (Test-Path $PidFile) {
     Remove-Item $PidFile -Force
 }
 
+function Assert-PortFree {
+    param(
+        [ValidateSet("UDP", "TCP")]
+        [string]$Protocol,
+        [int]$Port
+    )
+
+    if ($Protocol -eq "UDP") {
+        $Endpoints = @(Get-NetUDPEndpoint -LocalPort $Port -ErrorAction SilentlyContinue)
+    } else {
+        $Endpoints = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    }
+    if ($Endpoints.Count -eq 0) {
+        return
+    }
+
+    $Names = @(
+        $Endpoints |
+            ForEach-Object { Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue } |
+            Select-Object -ExpandProperty ProcessName -Unique
+    )
+    if (($Names -join " ") -match "docker") {
+        throw "Legacy Docker Gateway is still using $Protocol/$Port. Stop and remove the old newhorizons-gateway container before starting the host-only Gateway."
+    }
+    throw "$Protocol/$Port is already in use by: $($Names -join ', ')"
+}
+
+Assert-PortFree -Protocol UDP -Port 22346
+Assert-PortFree -Protocol UDP -Port 13250
+Assert-PortFree -Protocol TCP -Port 5052
+
 # Create virtualenv on first run
 if (-not (Test-Path $PythonBin)) {
     Write-Host "Creating .venv ..."

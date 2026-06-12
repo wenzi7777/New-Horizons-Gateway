@@ -1,4 +1,0 @@
-services:
-  gateway:
-    ports:
-      - "${NEWHORIZONS_GATEWAY_DISCOVERY_PORT:-22346}:${NEWHORIZONS_GATEWAY_DISCOVERY_PORT:-22346}/udp"

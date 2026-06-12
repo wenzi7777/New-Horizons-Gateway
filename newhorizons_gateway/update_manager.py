@@ -20,10 +20,6 @@ ALLOWED_UPDATE_ENTRIES = (
     "newhorizons_gateway",
     "scripts",
     "requirements.txt",
-    "Dockerfile",
-    "docker-compose.yml",
-    "docker-compose.local.yml",
-    ".dockerignore",
     "README.md",
 )
 
