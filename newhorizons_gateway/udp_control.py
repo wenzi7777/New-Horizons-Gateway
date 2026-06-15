@@ -203,7 +203,9 @@ class UDPCommandDispatcher:
         except Exception as exc:
             self.drop_session(entry.get("device_uid"), entry.get("addr"))
             self.last_error = str(exc) or exc.__class__.__name__
-            raise
+            entry["attempts"] = int(entry.get("attempts") or 0) + 1
+            entry["last_sent_at"] = self.now()
+            return
         entry["attempts"] = int(entry.get("attempts") or 0) + 1
         entry["last_sent_at"] = self.now()
         if retry:

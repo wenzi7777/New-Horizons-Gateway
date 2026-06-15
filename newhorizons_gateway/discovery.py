@@ -115,6 +115,7 @@ class DiscoveryResponder:
                 continue
 
             preferred_gw = str(obj.get("preferred_gateway_id") or "")
+            discover_claim_id = str(obj.get("claim_id") or "")
             if preferred_gw and preferred_gw != self.gateway_id:
                 decline_reason = "device_switching_gateway"
                 if self.on_request is not None:
@@ -135,6 +136,12 @@ class DiscoveryResponder:
             reason = "device_rejected" if denied else ""
             claim = self.active_claim(device_uid) if device_uid and not denied else None
             claim_id = str((claim or {}).get("claim_id") or "")
+            # When we are the preferred gateway, mirror the device's own claim_id back
+            # even if our internal claim record is gone or was marked failed by the
+            # upstream server.  This ensures the firmware's claimId_ == offer.claimId
+            # check passes and the transfer completes successfully.
+            if not claim_id and preferred_gw == self.gateway_id and discover_claim_id and not denied:
+                claim_id = discover_claim_id
             response = self._offer_payload(denied=denied, claim_id=claim_id)
             if claim_id:
                 response["claim_id"] = claim_id

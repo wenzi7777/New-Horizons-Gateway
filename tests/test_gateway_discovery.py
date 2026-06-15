@@ -237,5 +237,73 @@ class GatewayDiscoveryTest(unittest.TestCase):
         )
 
 
+    def test_offer_mirrors_discover_claim_id_when_claim_record_is_absent(self):
+        """When the upstream has expired or failed the claim record, the gateway must
+        still echo the device's own claim_id back so the firmware's claimId_ check passes."""
+        responder = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-b",
+            udp_port=13250,
+            priority=100,
+            active_claim=lambda uid: None,  # simulates upstream marking claim as failed
+        )
+        responder.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            sock.sendto(
+                findme_discover(
+                    device_uid="3CDC7545CCD0",
+                    mode="normal",
+                    preferred_gateway_id="gw-b",
+                    claim_id="abc123",
+                ),
+                ("127.0.0.1", responder.bound_port),
+            )
+            data, _addr = sock.recvfrom(1024)
+        finally:
+            responder.stop()
+            sock.close()
+
+        reply = json.loads(data.decode())
+        self.assertTrue(reply["accept"])
+        self.assertEqual(reply["claim_id"], "abc123")
+        self.assertGreater(reply["priority"], 100)
+
+    def test_offer_does_not_mirror_claim_id_when_not_preferred_gateway(self):
+        """claim_id mirroring must not occur when the device is switching to a different gateway."""
+        responder = DiscoveryResponder(
+            "127.0.0.1",
+            0,
+            gateway_id="gw-a",
+            udp_port=13250,
+            priority=100,
+            active_claim=lambda uid: None,
+        )
+        responder.start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.settimeout(1.0)
+            sock.sendto(
+                findme_discover(
+                    device_uid="3CDC7545CCD0",
+                    mode="normal",
+                    preferred_gateway_id="gw-b",  # switching AWAY from gw-a
+                    claim_id="abc123",
+                ),
+                ("127.0.0.1", responder.bound_port),
+            )
+            data, _addr = sock.recvfrom(1024)
+        finally:
+            responder.stop()
+            sock.close()
+
+        reply = json.loads(data.decode())
+        self.assertFalse(reply["accept"])
+        self.assertEqual(reply["reason"], "device_switching_gateway")
+        self.assertNotIn("claim_id", reply)
+
+
 if __name__ == "__main__":
     unittest.main()

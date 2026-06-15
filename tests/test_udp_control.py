@@ -192,6 +192,47 @@ class UDPCommandDispatcherTest(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(dispatcher.snapshot()["sessions"], 0)
 
+    def test_service_does_not_raise_when_send_datagram_fails(self):
+        """send_datagram failures must not propagate out of service() and crash the gateway."""
+        clock = Clock()
+        error_seen: list[str] = []
+
+        def failing_send(packet, addr):
+            raise OSError("network unreachable")
+
+        dispatcher = UDPCommandDispatcher(failing_send, now=clock.now)
+        dispatcher.set_session("3CDC7545CCD0", ("192.168.50.32", 43309))
+        dispatcher.send_command("3CDC7545CCD0", {"command": "status", "request_id": "req-fail"})
+        # Capture first error set by the initial failing send.
+        error_seen.append(dispatcher.last_error)
+
+        for _ in range(dispatcher.MAX_UNACKED_ATTEMPTS + 2):
+            clock.advance(dispatcher.RESEND_INTERVAL_SEC)
+            dispatcher.service()  # must not raise
+
+        # The send error was recorded and the entry eventually timed out.
+        self.assertIn("network unreachable", error_seen[0])
+        self.assertEqual(dispatcher.snapshot()["commands_timeout"], 1)
+        self.assertEqual(dispatcher.snapshot()["pending"], 0)
+
+    def test_send_command_to_fails_gracefully_when_send_datagram_raises(self):
+        """Initial send failure must not propagate out of send_command_to."""
+        clock = Clock()
+
+        def failing_send(packet, addr):
+            raise OSError("connection refused")
+
+        dispatcher = UDPCommandDispatcher(failing_send, now=clock.now)
+
+        result = dispatcher.send_command_to(
+            "3CDC7545CCD0",
+            ("192.168.50.32", 13250),
+            {"command": "findme_switch_gateway", "request_id": "req-1"},
+        )
+
+        self.assertTrue(result)
+        self.assertIn("connection refused", dispatcher.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()
