@@ -239,6 +239,7 @@ def main() -> None:
         state,
         upstream,
         udp_commands,
+        discovery=discovery,
         on_config_saved=apply_runtime_config,
         update_manager=update_manager,
     )

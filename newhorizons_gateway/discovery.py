@@ -8,6 +8,7 @@ from typing import Callable
 
 FINDME_DISCOVER_TYPE = "findme_discover"
 FINDME_OFFER_TYPE = "findme_offer"
+FINDME_PROBE_TYPE = "findme_probe"
 
 
 class DiscoveryResponder:
@@ -71,6 +72,22 @@ class DiscoveryResponder:
             thread.join(timeout=1.0)
         self.started = False
 
+    def send_probe(self) -> None:
+        """Broadcast a findme_probe so attached devices announce themselves."""
+        sock = self._sock
+        if sock is None:
+            return
+        packet = json.dumps({
+            "type": FINDME_PROBE_TYPE,
+            "gateway_id": self.gateway_id,
+            "gateway_name": self.gateway_name,
+            "udp_port": self._value(self._udp_port),
+        }, separators=(",", ":")).encode("utf-8")
+        try:
+            sock.sendto(packet, ("255.255.255.255", self.port))
+        except OSError as exc:
+            self.last_error = str(exc)
+
     def _run(self) -> None:
         while not self._stop.is_set():
             sock = self._sock
@@ -88,6 +105,15 @@ class DiscoveryResponder:
             if obj is None:
                 continue
             device_uid = str(obj.get("device_uid") or "").strip().upper()
+
+            # Device is already attached to another gateway (probe response).
+            # Record as nearby but do NOT send an offer — avoid stealing.
+            current_gw = str(obj.get("current_gateway_id") or "")
+            if current_gw and current_gw != self.gateway_id:
+                if self.on_request is not None:
+                    self.on_request(obj, addr, False, "device_attached_elsewhere")
+                continue
+
             preferred_gw = str(obj.get("preferred_gateway_id") or "")
             if preferred_gw and preferred_gw != self.gateway_id:
                 decline_reason = "device_switching_gateway"

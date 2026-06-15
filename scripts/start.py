@@ -76,6 +76,9 @@ def _launch():
     python = str(_venv_bin("python"))
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
+    env["NEWHORIZONS_GATEWAY_APP_ROOT"] = str(APP_DIR)
+    env["NEWHORIZONS_GATEWAY_RESTART_COMMAND"] = f"{sys.executable} {APP_DIR / 'scripts' / 'start.py'}"
+
     with open(LOG_FILE, "w") as log:
         kwargs = dict(
             stdout=log, stderr=log,

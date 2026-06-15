@@ -80,6 +80,8 @@ fi
 
 # Launch
 : > "${LOG_FILE}"
+NEWHORIZONS_GATEWAY_APP_ROOT="${APP_DIR}" \
+NEWHORIZONS_GATEWAY_RESTART_COMMAND="bash ${APP_DIR}/scripts/start.sh" \
 PYTHONUNBUFFERED=1 nohup \
   "${VENV}/bin/python" -m newhorizons_gateway.main --config "${CONFIG_FILE}" \
   >> "${LOG_FILE}" 2>&1 &

@@ -82,6 +82,8 @@ Set-Content -Path $LogFile -Value ""
 Set-Content -Path $ErrFile -Value ""
 
 $env:PYTHONUNBUFFERED = "1"
+$env:NEWHORIZONS_GATEWAY_APP_ROOT = $AppDir
+$env:NEWHORIZONS_GATEWAY_RESTART_COMMAND = "powershell -File `"$ScriptDir\start.ps1`""
 $Process = Start-Process -FilePath $PythonBin `
     -ArgumentList @("-m", "newhorizons_gateway.main", "--config", $ConfigFile) `
     -WorkingDirectory $AppDir `

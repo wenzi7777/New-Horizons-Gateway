@@ -709,6 +709,7 @@ PAGE = """<!doctype html>
 
     document.getElementById("discover-nearby").addEventListener("click", async () => {
       showNearby = true;
+      await api("/api/discover", { method: "POST" }).catch(() => {});
       await refresh();
       const panel = document.getElementById("nearby-section");
       if (panel) panel.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -845,6 +846,7 @@ class GatewayWebServer:
         upstream: Any,
         udp_control: Any | None = None,
         *,
+        discovery: Any | None = None,
         on_config_saved: ConfigCallback | None = None,
         update_manager: GatewayUpdateManager | None = None,
     ) -> None:
@@ -854,6 +856,7 @@ class GatewayWebServer:
         self.state = state
         self.upstream = upstream
         self.udp_control = udp_control
+        self.discovery = discovery
         self.on_config_saved = on_config_saved
         self.update_manager = update_manager or GatewayUpdateManager()
         self.app = self._make_app()
@@ -923,6 +926,12 @@ class GatewayWebServer:
         @app.post("/api/update/restart")
         def update_restart() -> Any:
             return jsonify({"ok": True, "update_state": self.update_manager.restart()})
+
+        @app.post("/api/discover")
+        def discover() -> Any:
+            if self.discovery is not None:
+                self.discovery.send_probe()
+            return jsonify({"ok": True})
 
         @app.post("/api/devices/<device_uid>/reject")
         def reject(device_uid: str) -> Any:
