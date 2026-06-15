@@ -74,7 +74,7 @@ if (-not (Test-Path $PythonBin)) {
 # Create config from example on first run
 if (-not (Test-Path $ConfigFile)) {
     Copy-Item (Join-Path $AppDir "config.example.json") $ConfigFile
-    Write-Host "Created $ConfigFile — open the WebUI to finish setup."
+    Write-Host "Created $ConfigFile - open the WebUI to finish setup."
 }
 
 # Launch
