@@ -70,6 +70,7 @@ if [[ ! -x "${VENV}/bin/python" ]]; then
 fi
 
 "${VENV}/bin/pip" install -q -r "${APP_DIR}/requirements.txt"
+"${VENV}/bin/pip" install -q -e "${APP_DIR}"
 
 # Create config from example on first run
 if [[ ! -f "${CONFIG_FILE}" ]]; then

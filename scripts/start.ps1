@@ -69,6 +69,7 @@ if (-not (Test-Path $PythonBin)) {
 }
 
 & $PipBin install -q -r (Join-Path $AppDir "requirements.txt")
+& $PipBin install -q -e $AppDir
 
 # Create config from example on first run
 if (-not (Test-Path $ConfigFile)) {
