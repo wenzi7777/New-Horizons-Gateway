@@ -85,6 +85,7 @@ class GatewayWebUiTest(unittest.TestCase):
             "Dockerfile",
             "docker-compose.yml",
             "docker-compose.container-discovery.yml",
+            ".dockerignore",
             "scripts/discovery_proxy.py",
             "scripts/start_docker.sh",
             "scripts/start_docker.ps1",

@@ -90,14 +90,14 @@ The Gateway WebUI has an `Update` section:
 
 1. `Check for update` reads `releases/gateway-latest.json`.
 2. `Download update` downloads the source zip and verifies SHA-256.
-3. `Apply update` stages the update.
-4. `Restart Gateway` uses `NEWHORIZONS_GATEWAY_RESTART_COMMAND` when configured.
+3. `Apply update` stages the host-native update in place.
+4. `Restart Gateway` relaunches the Gateway when `NEWHORIZONS_GATEWAY_RESTART_COMMAND`
+   is configured by the bundled start scripts.
 
-Host self-update is intentionally gated behind:
-
-```bash
-export NEWHORIZONS_GATEWAY_ALLOW_SELF_UPDATE=1
-```
+If you launched the Gateway through `./scripts/start.sh`, `.\scripts\start.ps1`,
+or `python scripts/start.py`, restart is already wired up. If you launched it
+manually with `python -m newhorizons_gateway.main`, restart the process
+yourself after `Apply update`.
 
 ## Run On Another Computer
 

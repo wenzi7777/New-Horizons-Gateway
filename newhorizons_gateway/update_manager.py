@@ -19,6 +19,7 @@ DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons
 ALLOWED_UPDATE_ENTRIES = (
     "newhorizons_gateway",
     "scripts",
+    "pyproject.toml",
     "requirements.txt",
     "README.md",
 )
@@ -58,7 +59,6 @@ class GatewayUpdateManager:
             "downloaded_sha256": self.downloaded_sha256,
             "restart_required": self.restart_required,
             "manual_update_required": self.manual_update_required,
-            "self_update_supported": self.self_update_supported(),
             "checked_at": self.checked_at,
             "last_error": self.last_error,
         }
@@ -112,11 +112,6 @@ class GatewayUpdateManager:
             self.download()
         if not self.downloaded_zip.exists():
             return self.state()
-        if not self.self_update_supported():
-            self.manual_update_required = True
-            self.phase = "manual_update_required"
-            self.last_error = ""
-            return self.state()
         try:
             extract_dir = Path(tempfile.mkdtemp(prefix="gateway-update-", dir=str(self.staging_root)))
             with zipfile.ZipFile(self.downloaded_zip) as archive:
@@ -165,7 +160,3 @@ class GatewayUpdateManager:
         if len(entries) == 1 and entries[0].is_dir():
             return entries[0]
         return extract_dir
-
-    @staticmethod
-    def self_update_supported() -> bool:
-        return os.getenv("NEWHORIZONS_GATEWAY_ALLOW_SELF_UPDATE", "0") == "1"

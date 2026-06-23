@@ -41,8 +41,23 @@ class GatewayReleaseStaticTest(unittest.TestCase):
             names = archive.namelist()
         self.assertTrue(any(name.startswith("newhorizons_gateway/") for name in names))
         self.assertTrue(any(name.startswith("scripts/") for name in names))
+        self.assertIn("pyproject.toml", names)
         self.assertFalse(any("docker" in name.lower() for name in names))
         self.assertFalse(any("discovery_proxy" in name for name in names))
+
+    def test_gateway_readme_documents_host_only_ota_without_env_gate(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("The Gateway is host-only.", readme)
+        self.assertIn("Apply update", readme)
+        self.assertIn("Restart Gateway", readme)
+        self.assertNotIn("NEWHORIZONS_GATEWAY_ALLOW_SELF_UPDATE", readme)
+
+    def test_update_manager_no_longer_exposes_self_update_gate(self):
+        source = (ROOT / "newhorizons_gateway" / "update_manager.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("self_update_supported", source)
+        self.assertIn('"pyproject.toml"', source)
 
 
 if __name__ == "__main__":

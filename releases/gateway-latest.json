@@ -1,6 +1,6 @@
 {
-  "version": "v0.2.8",
-  "zip_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/artifacts/newhorizons-gateway-v0.2.8.zip",
-  "sha256": "0ef546ede5b48e71b3bbfcbfb1d56475ae7d03ef99236c51f34da0507d354823",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/notes/v0.2.8.md"
+  "version": "v0.2.9",
+  "zip_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/artifacts/newhorizons-gateway-v0.2.9.zip",
+  "sha256": "5805221cc80692f81eed7001bb64a76178b88a7db4bba497f35b7f0865360bb0",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/notes/v0.2.9.md"
 }
