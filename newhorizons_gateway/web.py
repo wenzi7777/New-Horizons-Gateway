@@ -128,6 +128,11 @@ PAGE = """<!doctype html>
     .update-banner { margin:12px 0 0; padding:10px 12px; border-radius:8px; background:#fff6da; border:1px solid #e7cf84; color:#755712; }
     .update-banner.ok { background:#edf8f0; border-color:#bed8c4; color:#2f694f; }
     .update-banner.error { background:#fff2ef; border-color:#e0b0ab; color:#9a3f37; }
+    .progress-stack { display:grid; gap:10px; margin-top:16px; }
+    .progress-head { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:6px; font-size:13px; color:var(--muted); }
+    .progress-track { width:100%; height:10px; border-radius:999px; background:#ebede6; overflow:hidden; border:1px solid #d8ddd0; }
+    .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,#80b48d 0%,#3f7b61 100%); transition:width .2s ease; }
+    .progress-track.warn .progress-fill { background:linear-gradient(90deg,#f0c66a 0%,#c89227 100%); }
 
     /* ── Force update overlay ── */
     .overlay { position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(14,20,16,.72); backdrop-filter:blur(6px); }
@@ -191,11 +196,20 @@ PAGE = """<!doctype html>
       </div>
       <div class="button-row">
         <button class="sm" id="overlay-check-update">Check</button>
-        <button class="sm" id="overlay-download-update">Download</button>
-        <button class="sm" id="overlay-apply-update">Apply</button>
+        <button class="sm primary" id="overlay-start-update">Update now</button>
         <button class="sm danger" id="overlay-restart-gateway">Restart</button>
       </div>
       <div class="update-banner" id="overlay-update-banner">Waiting for update metadata.</div>
+      <div class="progress-stack">
+        <div>
+          <div class="progress-head"><span>Download</span><strong id="overlay-download-progress-label">0%</strong></div>
+          <div class="progress-track"><div class="progress-fill" id="overlay-download-progress"></div></div>
+        </div>
+        <div>
+          <div class="progress-head"><span>Apply</span><strong id="overlay-apply-progress-label">0%</strong></div>
+          <div class="progress-track warn"><div class="progress-fill" id="overlay-apply-progress"></div></div>
+        </div>
+      </div>
       <pre class="update-notes overlay-note" id="overlay-update-notes">Update exists, but release notes are not loaded yet.</pre>
     </div>
   </div>
@@ -400,8 +414,7 @@ PAGE = """<!doctype html>
           </div>
           <div class="button-row">
             <button class="sm" id="check-update">Check</button>
-            <button class="sm" id="download-update">Download</button>
-            <button class="sm" id="apply-update">Apply</button>
+            <button class="sm primary" id="start-update">Update now</button>
             <button class="sm danger" id="restart-gateway">Restart</button>
           </div>
         </div>
@@ -417,6 +430,16 @@ PAGE = """<!doctype html>
           <div class="summary-card"><span class="stat">Auto Check</span><strong id="auto-check-interval">-</strong></div>
         </div>
         <div class="update-banner" id="update-banner">Waiting for update signal.</div>
+        <div class="progress-stack">
+          <div>
+            <div class="progress-head"><span>Download</span><strong id="download-progress-label">0%</strong></div>
+            <div class="progress-track"><div class="progress-fill" id="download-progress"></div></div>
+          </div>
+          <div>
+            <div class="progress-head"><span>Apply</span><strong id="apply-progress-label">0%</strong></div>
+            <div class="progress-track warn"><div class="progress-fill" id="apply-progress"></div></div>
+          </div>
+        </div>
         <p class="sub-heading" style="margin-top:18px">Changelog</p>
         <pre class="update-notes" id="update-notes">No changelog loaded.</pre>
         <p class="notice" id="update-message"></p>
@@ -580,6 +603,14 @@ PAGE = """<!doctype html>
     function setPre(id, value) {
       const node = document.getElementById(id);
       if (node) node.textContent = value || "";
+    }
+
+    function setProgress(id, labelId, pct) {
+      const value = Math.max(0, Math.min(100, Number(pct || 0)));
+      const fill = document.getElementById(id);
+      const label = document.getElementById(labelId);
+      if (fill) fill.style.width = `${value}%`;
+      if (label) label.textContent = `${value}%`;
     }
 
     function formatIsoTime(value) {
@@ -772,6 +803,10 @@ PAGE = """<!doctype html>
       text("overlay-manifest-latest", latest);
       text("update-mini", `${phase} / server ${serverLatest}`);
       text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest}`);
+      setProgress("download-progress", "download-progress-label", state.download_progress_pct);
+      setProgress("apply-progress", "apply-progress-label", state.apply_progress_pct);
+      setProgress("overlay-download-progress", "overlay-download-progress-label", state.download_progress_pct);
+      setProgress("overlay-apply-progress", "overlay-apply-progress-label", state.apply_progress_pct);
       setPre("update-notes", notes);
       setPre("overlay-update-notes", notes);
       const banner = state.required_update
@@ -792,12 +827,11 @@ PAGE = """<!doctype html>
         overlayNode.textContent = overlayBanner;
         overlayNode.className = `update-banner${state.last_error && !state.notes_markdown ? " error" : ""}`;
       }
-      document.getElementById("download-update").disabled = !state.zip_url;
-      document.getElementById("overlay-download-update").disabled = !state.zip_url;
-      document.getElementById("apply-update").disabled = !state.downloaded;
-      document.getElementById("overlay-apply-update").disabled = !state.downloaded;
-      document.getElementById("restart-gateway").disabled = !state.restart_required;
-      document.getElementById("overlay-restart-gateway").disabled = !state.restart_required;
+      const canStartUpdate = !state.busy && !!(state.required_update || state.update_available);
+      document.getElementById("start-update").disabled = !canStartUpdate;
+      document.getElementById("overlay-start-update").disabled = !canStartUpdate;
+      document.getElementById("restart-gateway").disabled = !!state.busy || !state.restart_required;
+      document.getElementById("overlay-restart-gateway").disabled = !!state.busy || !state.restart_required;
       setGatewayLock(state.required_update);
     }
 
@@ -813,12 +847,10 @@ PAGE = """<!doctype html>
     }
 
     document.getElementById("check-update").addEventListener("click", () => updateAction("/api/update/check"));
-    document.getElementById("download-update").addEventListener("click", () => updateAction("/api/update/download"));
-    document.getElementById("apply-update").addEventListener("click", () => updateAction("/api/update/apply"));
+    document.getElementById("start-update").addEventListener("click", () => updateAction("/api/update/start"));
     document.getElementById("restart-gateway").addEventListener("click", () => updateAction("/api/update/restart"));
     document.getElementById("overlay-check-update").addEventListener("click", () => updateAction("/api/update/check"));
-    document.getElementById("overlay-download-update").addEventListener("click", () => updateAction("/api/update/download"));
-    document.getElementById("overlay-apply-update").addEventListener("click", () => updateAction("/api/update/apply"));
+    document.getElementById("overlay-start-update").addEventListener("click", () => updateAction("/api/update/start"));
     document.getElementById("overlay-restart-gateway").addEventListener("click", () => updateAction("/api/update/restart"));
 
     // ── Device action clicks ─────────────────────────────────────────────
@@ -1075,13 +1107,17 @@ class GatewayWebServer:
         def update_check() -> Any:
             return jsonify({"ok": True, "update_state": self.update_manager.check()})
 
+        @app.post("/api/update/start")
+        def update_start() -> Any:
+            return jsonify({"ok": True, "update_state": self.update_manager.start_update()})
+
         @app.post("/api/update/download")
         def update_download() -> Any:
-            return jsonify({"ok": True, "update_state": self.update_manager.download()})
+            return jsonify({"ok": True, "update_state": self.update_manager.start_update()})
 
         @app.post("/api/update/apply")
         def update_apply() -> Any:
-            return jsonify({"ok": True, "update_state": self.update_manager.apply()})
+            return jsonify({"ok": True, "update_state": self.update_manager.start_update()})
 
         @app.post("/api/update/restart")
         def update_restart() -> Any:

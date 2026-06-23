@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.request
 import zipfile
@@ -66,43 +67,55 @@ class GatewayUpdateManager:
             60,
             int(os.getenv("NEWHORIZONS_GATEWAY_UPDATE_INTERVAL_SEC", str(DEFAULT_AUTO_CHECK_INTERVAL_SEC))),
         )
+        self.download_progress_pct = 0
+        self.apply_progress_pct = 0
+        self.busy = False
+        self._lock = threading.RLock()
+        self._worker: threading.Thread | None = None
         self._last_manifest_check_monotonic = 0.0
 
     def state(self) -> dict[str, Any]:
-        latest_version = str(self.latest_manifest.get("version") or "")
-        return {
-            "phase": self.phase,
-            "current_version": __version__,
-            "latest_gateway_version": self.latest_gateway_version,
-            "latest_version": latest_version,
-            "update_signal_source": self.update_signal_source,
-            "required_update": self.required_update,
-            "update_available": bool(self.required_update or (latest_version and _is_newer_version(latest_version, __version__))),
-            "manifest_url": self.manifest_url,
-            "zip_url": str(self.latest_manifest.get("zip_url") or ""),
-            "notes_url": str(self.latest_manifest.get("notes_url") or ""),
-            "notes_markdown": self.notes_markdown,
-            "sha256": str(self.latest_manifest.get("sha256") or ""),
-            "downloaded": self.downloaded_zip.exists(),
-            "downloaded_sha256": self.downloaded_sha256,
-            "restart_required": self.restart_required,
-            "manual_update_required": self.manual_update_required,
-            "last_checked_at": self.last_checked_at,
-            "checked_at": self.last_checked_at,
-            "auto_check_interval_sec": self.auto_check_interval_sec,
-            "last_error": self.last_error,
-        }
+        with self._lock:
+            latest_version = str(self.latest_manifest.get("version") or "")
+            return {
+                "phase": self.phase,
+                "current_version": __version__,
+                "latest_gateway_version": self.latest_gateway_version,
+                "latest_version": latest_version,
+                "update_signal_source": self.update_signal_source,
+                "required_update": self.required_update,
+                "update_available": bool(self.required_update or (latest_version and _is_newer_version(latest_version, __version__))),
+                "manifest_url": self.manifest_url,
+                "zip_url": str(self.latest_manifest.get("zip_url") or ""),
+                "notes_url": str(self.latest_manifest.get("notes_url") or ""),
+                "notes_markdown": self.notes_markdown,
+                "sha256": str(self.latest_manifest.get("sha256") or ""),
+                "downloaded": self.downloaded_zip.exists(),
+                "downloaded_sha256": self.downloaded_sha256,
+                "restart_required": self.restart_required,
+                "manual_update_required": self.manual_update_required,
+                "last_checked_at": self.last_checked_at,
+                "checked_at": self.last_checked_at,
+                "auto_check_interval_sec": self.auto_check_interval_sec,
+                "download_progress_pct": self.download_progress_pct,
+                "apply_progress_pct": self.apply_progress_pct,
+                "busy": self.busy,
+                "last_error": self.last_error,
+            }
 
     def set_server_latest_version(self, version: str, *, source: str = "server_ws") -> dict[str, Any]:
         normalized = str(version or "").strip()
         if not normalized:
             return self.state()
-        self.latest_gateway_version = normalized
-        self.update_signal_source = source
-        self.required_update = _is_newer_version(normalized, __version__)
+        with self._lock:
+            self.latest_gateway_version = normalized
+            self.update_signal_source = source
+            self.required_update = _is_newer_version(normalized, __version__)
         return self.state()
 
     def maybe_refresh(self) -> dict[str, Any]:
+        if self.busy:
+            return self.state()
         manifest_version = str(self.latest_manifest.get("version") or "")
         stale = (time.monotonic() - self._last_manifest_check_monotonic) >= self.auto_check_interval_sec
         if self.required_update and (not self.latest_manifest or manifest_version != self.latest_gateway_version or stale):
@@ -110,6 +123,8 @@ class GatewayUpdateManager:
         return self.state()
 
     def check(self, *, force: bool = True) -> dict[str, Any]:
+        if self.busy and self.phase in ("downloading", "applying"):
+            return self.state()
         if not force and not self.required_update:
             return self.state()
         checked_at = datetime.now(timezone.utc).isoformat()
@@ -159,23 +174,44 @@ class GatewayUpdateManager:
         zip_url = str(self.latest_manifest.get("zip_url") or "")
         expected_sha = str(self.latest_manifest.get("sha256") or "").lower()
         if not zip_url or not expected_sha:
-            self.phase = "error"
-            self.last_error = "manifest_not_ready"
+            with self._lock:
+                self.phase = "error"
+                self.last_error = "manifest_not_ready"
             return self.state()
         try:
             self.staging_root.mkdir(parents=True, exist_ok=True)
-            with urllib.request.urlopen(zip_url, timeout=30) as response:
-                payload = response.read()
-            actual_sha = hashlib.sha256(payload).hexdigest()
+            with self._lock:
+                self.phase = "downloading"
+                self.download_progress_pct = 0
+                self.last_error = ""
+            temp_zip = self.downloaded_zip.with_suffix(".part")
+            sha = hashlib.sha256()
+            with urllib.request.urlopen(zip_url, timeout=30) as response, temp_zip.open("wb") as handle:
+                total = int(response.headers.get("Content-Length") or 0)
+                downloaded = 0
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    sha.update(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        with self._lock:
+                            self.download_progress_pct = min(99, int(downloaded * 100 / total))
+            actual_sha = sha.hexdigest()
             if actual_sha.lower() != expected_sha:
                 raise ValueError("sha256_mismatch")
-            self.downloaded_zip.write_bytes(payload)
-            self.downloaded_sha256 = actual_sha
-            self.phase = "downloaded"
-            self.last_error = ""
+            temp_zip.replace(self.downloaded_zip)
+            with self._lock:
+                self.downloaded_sha256 = actual_sha
+                self.download_progress_pct = 100
+                self.phase = "downloaded"
+                self.last_error = ""
         except Exception as exc:
-            self.phase = "error"
-            self.last_error = str(exc)
+            with self._lock:
+                self.phase = "error"
+                self.last_error = str(exc)
         return self.state()
 
     def apply(self) -> dict[str, Any]:
@@ -184,12 +220,18 @@ class GatewayUpdateManager:
         if not self.downloaded_zip.exists():
             return self.state()
         try:
+            with self._lock:
+                self.phase = "applying"
+                self.apply_progress_pct = 0
+                self.last_error = ""
             extract_dir = Path(tempfile.mkdtemp(prefix="gateway-update-", dir=str(self.staging_root)))
             with zipfile.ZipFile(self.downloaded_zip) as archive:
                 archive.extractall(extract_dir)
             source_root = self._extracted_source_root(extract_dir)
             backup = self.staging_root / f"backup-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
             backup.mkdir(parents=True, exist_ok=True)
+            copy_total = max(1, self._copy_unit_total(source_root))
+            copied = 0
             for name in ALLOWED_UPDATE_ENTRIES:
                 src = source_root / name
                 if not src.exists():
@@ -197,32 +239,106 @@ class GatewayUpdateManager:
                 dst = self.app_root / name
                 if dst.exists():
                     shutil.move(str(dst), str(backup / name))
-                if src.is_dir():
-                    shutil.copytree(src, dst)
-                else:
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
-            self.restart_required = True
-            self.phase = "applied"
-            self.last_error = ""
+                copied = self._copy_entry_with_progress(src, dst, copied, copy_total)
+            with self._lock:
+                self.restart_required = True
+                self.manual_update_required = False
+                self.apply_progress_pct = 100
+                self.phase = "applied"
+                self.last_error = ""
         except Exception as exc:
-            self.phase = "error"
-            self.last_error = str(exc)
+            with self._lock:
+                self.phase = "error"
+                self.last_error = str(exc)
         return self.state()
+
+    def start_update(self) -> dict[str, Any]:
+        with self._lock:
+            if self._worker is not None and self._worker.is_alive():
+                return self.state()
+            self.busy = True
+            self.restart_required = False
+            self.manual_update_required = False
+            self.download_progress_pct = 0
+            self.apply_progress_pct = 0
+            self.last_error = ""
+            self.phase = "checking"
+            self._worker = threading.Thread(target=self._run_update_sequence, name="gateway-update-worker", daemon=True)
+            self._worker.start()
+        return self.state()
+
+    def wait_for_idle(self, timeout: float | None = None) -> None:
+        worker = self._worker
+        if worker is not None:
+            worker.join(timeout=timeout)
+
+    def _run_update_sequence(self) -> None:
+        try:
+            self.check(force=True)
+            state = self.state()
+            if not state.get("update_available"):
+                with self._lock:
+                    self.phase = "checked"
+                return
+            self.download()
+            if self.state().get("phase") == "error":
+                return
+            self.apply()
+        finally:
+            with self._lock:
+                self.busy = False
+
+    @staticmethod
+    def _copy_unit_total(source_root: Path) -> int:
+        total = 0
+        for name in ALLOWED_UPDATE_ENTRIES:
+            src = source_root / name
+            if not src.exists():
+                continue
+            if src.is_file():
+                total += 1
+            else:
+                total += sum(1 for child in src.rglob("*") if child.is_file())
+        return total
+
+    def _copy_entry_with_progress(self, src: Path, dst: Path, copied: int, total: int) -> int:
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            copied += 1
+            with self._lock:
+                self.apply_progress_pct = min(99, int(copied * 100 / total))
+            return copied
+        dst.mkdir(parents=True, exist_ok=True)
+        for child in sorted(src.rglob("*")):
+            relative = child.relative_to(src)
+            target = dst / relative
+            if child.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(child, target)
+            copied += 1
+            with self._lock:
+                self.apply_progress_pct = min(99, int(copied * 100 / total))
+        return copied
 
     def restart(self) -> dict[str, Any]:
         command = os.getenv("NEWHORIZONS_GATEWAY_RESTART_COMMAND", "").strip()
         if not command:
-            self.manual_update_required = True
-            self.phase = "restart_required"
+            with self._lock:
+                self.manual_update_required = True
+                self.phase = "restart_required"
             return self.state()
         try:
             subprocess.Popen(command, cwd=str(self.app_root), shell=True)
-            self.phase = "restarting"
-            self.last_error = ""
+            with self._lock:
+                self.phase = "restarting"
+                self.last_error = ""
         except Exception as exc:
-            self.phase = "error"
-            self.last_error = str(exc)
+            with self._lock:
+                self.phase = "error"
+                self.last_error = str(exc)
         return self.state()
 
     @staticmethod

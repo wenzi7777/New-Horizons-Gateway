@@ -66,6 +66,11 @@ class FakeUpdateManager:
         self.payload["phase"] = "applied"
         return dict(self.payload)
 
+    def start_update(self):
+        self.payload["phase"] = "downloading"
+        self.payload["busy"] = True
+        return dict(self.payload)
+
     def restart(self):
         self.payload["phase"] = "restarting"
         return dict(self.payload)
@@ -247,9 +252,10 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('id="gateway-enabled"', web_source)
         self.assertIn('id="auto-gateway-id"', web_source)
         self.assertIn('id="check-update"', web_source)
-        self.assertIn('id="download-update"', web_source)
-        self.assertIn('id="apply-update"', web_source)
+        self.assertIn('id="start-update"', web_source)
         self.assertIn('id="restart-gateway"', web_source)
+        self.assertIn('id="download-progress"', web_source)
+        self.assertIn('id="apply-progress"', web_source)
         self.assertIn('id="refresh-now"', web_source)
         self.assertIn('id="discover-nearby"', web_source)
         self.assertIn('id="nearby-toggle"', web_source)
