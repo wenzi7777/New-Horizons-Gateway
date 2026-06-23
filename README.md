@@ -70,11 +70,10 @@ The script creates `.venv` when needed and preserves Gateway configuration in
 and TCP `5052` are free. If a legacy Docker Gateway still owns those ports,
 stop and remove that container first.
 
-On Windows, use PowerShell:
+On Windows, use Python directly:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\start.ps1
+python scripts/start.py
 ```
 
 Start the main WebUI/backend separately:
@@ -86,18 +85,22 @@ cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Desktop
 
 ## Update
 
-The Gateway WebUI has an `Update` section:
+The Gateway WebUI has an `Update Center`:
 
-1. `Check for update` reads `releases/gateway-latest.json`.
-2. `Download update` downloads the source zip and verifies SHA-256.
-3. `Apply update` stages the host-native update in place.
-4. `Restart Gateway` relaunches the Gateway when `NEWHORIZONS_GATEWAY_RESTART_COMMAND`
+1. The Desktop backend WebSocket tells the Gateway the latest allowed version.
+2. `Check` reads `releases/gateway-latest.json` when update metadata is needed.
+3. `Download` downloads the source zip and verifies SHA-256.
+4. `Apply` stages the host-native update in place.
+5. `Restart` relaunches the Gateway when `NEWHORIZONS_GATEWAY_RESTART_COMMAND`
    is configured by the bundled start scripts.
 
-If you launched the Gateway through `./scripts/start.sh`, `.\scripts\start.ps1`,
-or `python scripts/start.py`, restart is already wired up. If you launched it
+If the backend reports a newer Gateway version, the Gateway enters a mandatory
+update overlay and blocks normal operations until the update is applied.
+
+If you launched the Gateway through `./scripts/start.sh` or
+`python scripts/start.py`, restart is already wired up. If you launched it
 manually with `python -m newhorizons_gateway.main`, restart the process
-yourself after `Apply update`.
+yourself after `Apply`.
 
 ## Run On Another Computer
 
@@ -120,6 +123,12 @@ export NEWHORIZONS_GATEWAY_SERVER_URL=wss://isensing-s1.u-aizu.ac.jp/newhorizons
 ```bash
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
 ./scripts/stop.sh
+```
+
+On Windows:
+
+```powershell
+python scripts/stop.py
 ```
 
 ## Direct Python Run

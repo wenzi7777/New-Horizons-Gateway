@@ -116,6 +116,25 @@ PAGE = """<!doctype html>
     .summary-card { border:1px solid var(--line); border-radius:7px; padding:12px; background:#fcfcf8; }
     .summary-card strong { font-size:15px; }
 
+    /* ── Update center ── */
+    .update-center { background:linear-gradient(180deg,#fffdf6 0%,#fff 100%); border-color:#e5d8b4; }
+    .update-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:16px 0; }
+    .update-card { border:1px solid #eadfbe; border-radius:10px; padding:14px; background:rgba(255,252,243,.95); }
+    .update-card strong { font-size:16px; }
+    .update-notes { min-height:140px; margin:0; padding:14px; border:1px solid #eadfbe; border-radius:10px; background:#fffdfa; white-space:pre-wrap; word-break:break-word; font:13px/1.55 ui-monospace,monospace; color:#333; }
+    .update-banner { margin:12px 0 0; padding:10px 12px; border-radius:8px; background:#fff6da; border:1px solid #e7cf84; color:#755712; }
+    .update-banner.error { background:#fff2ef; border-color:#e0b0ab; color:#9a3f37; }
+
+    /* ── Force update overlay ── */
+    .overlay { position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(14,20,16,.72); backdrop-filter:blur(6px); }
+    .overlay[hidden] { display:none; }
+    .overlay-card { width:min(820px,100%); max-height:calc(100vh - 40px); overflow:auto; padding:24px; border-radius:18px; border:1px solid rgba(255,255,255,.18); background:linear-gradient(180deg,#fffdf7 0%,#fff 100%); box-shadow:0 28px 80px rgba(0,0,0,.28); }
+    .overlay-kicker { display:inline-flex; align-items:center; gap:8px; margin-bottom:10px; padding:6px 12px; border-radius:999px; background:#fff1d2; color:#78560f; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .overlay-title { margin:0 0 8px; font-size:28px; line-height:1.1; }
+    .overlay-copy { margin:0 0 18px; color:var(--muted); font-size:15px; }
+    .overlay-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+    .overlay-note { margin:14px 0 0; }
+
     /* ── Tables ── */
     table { width:100%; border-collapse:collapse; }
     th, td { border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:middle; }
@@ -136,6 +155,7 @@ PAGE = """<!doctype html>
       .span-4,.span-6,.span-8 { grid-column:span 12; }
       main { padding:16px 14px; }
       .summary-grid { grid-template-columns:1fr; }
+      .update-grid, .overlay-grid { grid-template-columns:1fr; }
       .topbar-gw { display:none; }
       .header-row,.section-head { display:grid; }
     }
@@ -154,6 +174,27 @@ PAGE = """<!doctype html>
       <option value="zh">繁體中文</option>
     </select>
   </header>
+
+  <div id="update-required-overlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-kicker">Update Required</div>
+      <h1 class="overlay-title">Gateway update required before use</h1>
+      <p class="overlay-copy">The server has reported a newer Gateway version. Update this Gateway now; the current version is locked until the update is applied.</p>
+      <div class="overlay-grid">
+        <div class="update-card"><span class="stat">Current</span><strong id="overlay-current-version">-</strong></div>
+        <div class="update-card"><span class="stat">Server Latest</span><strong id="overlay-server-latest">-</strong></div>
+        <div class="update-card"><span class="stat">Manifest Latest</span><strong id="overlay-manifest-latest">-</strong></div>
+      </div>
+      <div class="button-row">
+        <button class="sm" id="overlay-check-update">Check</button>
+        <button class="sm" id="overlay-download-update">Download</button>
+        <button class="sm" id="overlay-apply-update">Apply</button>
+        <button class="sm danger" id="overlay-restart-gateway">Restart</button>
+      </div>
+      <div class="update-banner" id="overlay-update-banner">Waiting for update metadata.</div>
+      <pre class="update-notes overlay-note" id="overlay-update-notes">Update exists, but release notes are not loaded yet.</pre>
+    </div>
+  </div>
 
   <main>
 
@@ -347,19 +388,33 @@ PAGE = """<!doctype html>
       </section>
 
       <!-- ── Update ── -->
-      <section class="panel span-12">
+      <section class="panel span-12 update-center" id="update-center">
         <div class="section-head">
           <div>
-            <h2 data-i18n="update">Update</h2>
+            <h2 data-i18n="update">Update Center</h2>
             <p class="muted small" id="update-status">-</p>
           </div>
           <div class="button-row">
-            <button class="sm" id="check-update" data-i18n="checkUpdate">Check for update</button>
-            <button class="sm" id="download-update" data-i18n="downloadUpdate">Download update</button>
-            <button class="sm" id="apply-update" data-i18n="applyUpdate">Apply update</button>
-            <button class="sm danger" id="restart-gateway" data-i18n="restartGateway">Restart Gateway</button>
+            <button class="sm" id="check-update">Check</button>
+            <button class="sm" id="download-update">Download</button>
+            <button class="sm" id="apply-update">Apply</button>
+            <button class="sm danger" id="restart-gateway">Restart</button>
           </div>
         </div>
+        <div class="update-grid">
+          <div class="update-card"><span class="stat">Current Version</span><strong id="current-version-label">-</strong></div>
+          <div class="update-card"><span class="stat">Server Latest</span><strong id="server-latest-version">-</strong></div>
+          <div class="update-card"><span class="stat">Manifest Latest</span><strong id="manifest-latest-version">-</strong></div>
+          <div class="update-card"><span class="stat">Phase</span><strong id="update-phase">-</strong></div>
+        </div>
+        <div class="summary-grid" style="margin-bottom:14px">
+          <div class="summary-card"><span class="stat">Last Check</span><strong id="last-update-check">-</strong></div>
+          <div class="summary-card"><span class="stat">Source</span><strong id="update-source">-</strong></div>
+          <div class="summary-card"><span class="stat">Auto Check</span><strong id="auto-check-interval">-</strong></div>
+        </div>
+        <div class="update-banner" id="update-banner">Waiting for update signal.</div>
+        <p class="sub-heading" style="margin-top:18px">Changelog</p>
+        <pre class="update-notes" id="update-notes">No changelog loaded.</pre>
         <p class="notice" id="update-message"></p>
       </section>
 
@@ -479,6 +534,7 @@ PAGE = """<!doctype html>
     let targetSettingsDirty = false;
     let setupGatewayIdSuggested = false;
     let wizardStep = 0;
+    let updateLocked = false;
 
     function tr(key) { return (I18N[language] && I18N[language][key]) || I18N.en[key] || key; }
 
@@ -515,6 +571,41 @@ PAGE = """<!doctype html>
       if (!node) return;
       node.textContent = message || "";
       node.className = `notice ${cls}`.trim();
+    }
+
+    function setPre(id, value) {
+      const node = document.getElementById(id);
+      if (node) node.textContent = value || "";
+    }
+
+    function formatIsoTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString();
+    }
+
+    function setGatewayLock(locked) {
+      updateLocked = !!locked;
+      const overlay = document.getElementById("update-required-overlay");
+      if (overlay) overlay.hidden = !updateLocked;
+      [
+        "setup-auto-gateway-id",
+        "wiz-next-0",
+        "wiz-next-1",
+        "wiz-back-1",
+        "wiz-back-2",
+        "setup-save-id",
+        "auto-gateway-id",
+        "save-settings",
+        "refresh-now",
+        "discover-nearby",
+        "nearby-toggle",
+        "language-select",
+      ].forEach((id) => {
+        const node = document.getElementById(id);
+        if (node) node.disabled = updateLocked;
+      });
     }
 
     function resolveTargetServerUrl() {
@@ -654,12 +745,51 @@ PAGE = """<!doctype html>
     function renderUpdate(state) {
       const current = state.current_version || "-";
       const latest = state.latest_version || "-";
+      const serverLatest = state.latest_gateway_version || "-";
+      const phase = state.phase || "idle";
+      const source = state.update_signal_source || "-";
+      const notes = state.notes_markdown
+        || (state.required_update
+          ? "Update available, but release notes are not loaded yet."
+          : "No changelog loaded.");
       text("gateway-version", current);
-      text("update-mini", `${state.phase || "idle"} / latest ${latest}`);
-      text("update-status", `current ${current} / latest ${latest} / ${state.update_available ? "available" : "no update"}`);
-      document.getElementById("download-update").disabled = !state.update_available && !state.zip_url;
+      text("current-version-label", current);
+      text("server-latest-version", serverLatest);
+      text("manifest-latest-version", latest);
+      text("update-phase", phase);
+      text("last-update-check", formatIsoTime(state.last_checked_at));
+      text("update-source", source);
+      text("auto-check-interval", `${Number(state.auto_check_interval_sec || 0)}s`);
+      text("overlay-current-version", current);
+      text("overlay-server-latest", serverLatest);
+      text("overlay-manifest-latest", latest);
+      text("update-mini", `${phase} / server ${serverLatest}`);
+      text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest}`);
+      setPre("update-notes", notes);
+      setPre("overlay-update-notes", notes);
+      const banner = state.required_update
+        ? `Server requires ${serverLatest}. Update source: ${source}.`
+        : (state.last_error ? `Update check error: ${state.last_error}` : "Gateway is on an allowed version.");
+      const overlayBanner = state.required_update
+        ? (state.notes_markdown ? `Update ${serverLatest} is ready to download.` : "Update exists, but release notes are not loaded yet.")
+        : "No mandatory update at the moment.";
+      const bannerNode = document.getElementById("update-banner");
+      const overlayNode = document.getElementById("overlay-update-banner");
+      if (bannerNode) {
+        bannerNode.textContent = banner;
+        bannerNode.className = `update-banner${state.last_error && !state.required_update ? " error" : ""}`;
+      }
+      if (overlayNode) {
+        overlayNode.textContent = overlayBanner;
+        overlayNode.className = `update-banner${state.last_error && !state.notes_markdown ? " error" : ""}`;
+      }
+      document.getElementById("download-update").disabled = !state.zip_url;
+      document.getElementById("overlay-download-update").disabled = !state.zip_url;
       document.getElementById("apply-update").disabled = !state.downloaded;
+      document.getElementById("overlay-apply-update").disabled = !state.downloaded;
       document.getElementById("restart-gateway").disabled = !state.restart_required;
+      document.getElementById("overlay-restart-gateway").disabled = !state.restart_required;
+      setGatewayLock(state.required_update);
     }
 
     async function updateAction(path) {
@@ -677,11 +807,16 @@ PAGE = """<!doctype html>
     document.getElementById("download-update").addEventListener("click", () => updateAction("/api/update/download"));
     document.getElementById("apply-update").addEventListener("click", () => updateAction("/api/update/apply"));
     document.getElementById("restart-gateway").addEventListener("click", () => updateAction("/api/update/restart"));
+    document.getElementById("overlay-check-update").addEventListener("click", () => updateAction("/api/update/check"));
+    document.getElementById("overlay-download-update").addEventListener("click", () => updateAction("/api/update/download"));
+    document.getElementById("overlay-apply-update").addEventListener("click", () => updateAction("/api/update/apply"));
+    document.getElementById("overlay-restart-gateway").addEventListener("click", () => updateAction("/api/update/restart"));
 
     // ── Device action clicks ─────────────────────────────────────────────
     document.addEventListener("click", async (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
+      if (updateLocked) return;
       const reject = target.getAttribute("data-reject");
       const allow = target.getAttribute("data-allow");
       const serve = target.getAttribute("data-serve");
@@ -786,9 +921,11 @@ PAGE = """<!doctype html>
       body.innerHTML = "";
       for (const item of servingDevices) {
         const row = document.createElement("tr");
-        const action = item.denied
-          ? `<button class="sm" data-allow="${esc(item.device_uid)}">${tr("allow")}</button>`
-          : `<button class="sm danger" data-reject="${esc(item.device_uid)}">${tr("reject")}</button>`;
+        const action = updateLocked
+          ? `<button class="sm" disabled>Locked</button>`
+          : (item.denied
+            ? `<button class="sm" data-allow="${esc(item.device_uid)}">${tr("allow")}</button>`
+            : `<button class="sm danger" data-reject="${esc(item.device_uid)}">${tr("reject")}</button>`);
         row.innerHTML = `<td><strong>${esc(item.device_name || item.device_uid)}</strong><br><span class="muted mono small">${esc(item.device_uid)}</span></td><td class="small">${esc(item.mode || "-")}</td><td class="small">${esc(item.findme_state || "attached")}<br><span class="muted">${esc(item.wifi_rssi ?? "")}</span></td><td class="small">${Number(item.udp_packets || 0)} ${tr("packets")}<br><span class="muted">${Number(item.udp_dropped || 0)} ${tr("dropped")}</span></td><td>${action}</td>`;
         body.appendChild(row);
       }
@@ -803,7 +940,9 @@ PAGE = """<!doctype html>
         const row = document.createElement("tr");
         const stateLabel = item.serving ? tr("serving") : (item.denied ? tr("denied") : esc(item.findme_state || item.findme_reason || "-"));
         let action = "";
-        if (item.serving) {
+        if (updateLocked) {
+          action = `<button class="sm" disabled>Locked</button>`;
+        } else if (item.serving) {
           action = `<span class="badge ok">${tr("serving")}</span>`;
         } else if (item.denied) {
           action = `<button class="sm" data-allow="${esc(item.device_uid)}">${tr("allow")}</button>`;
@@ -866,6 +1005,14 @@ class GatewayWebServer:
     def _make_app(self) -> Flask:
         app = Flask(__name__)
 
+        def update_required_response() -> Any:
+            return jsonify({"ok": False, "error": "update_required"}), 409
+
+        def ensure_not_locked() -> Any | None:
+            if self.update_manager.state().get("required_update"):
+                return update_required_response()
+            return None
+
         @app.get("/")
         def index() -> str:
             return PAGE
@@ -873,17 +1020,21 @@ class GatewayWebServer:
         @app.get("/api/status")
         def status() -> Any:
             config = self.config_store.snapshot()
+            update_state = self.update_manager.maybe_refresh()
             return jsonify({
                 "config": self._public_config(config),
                 "version": __version__,
                 "upstream": self.upstream.status(),
                 "udp_control": self.udp_control.snapshot() if self.udp_control is not None else {},
                 "state": self.state.snapshot(config.get("denied_devices", [])),
-                "update_state": self.update_manager.state(),
+                "update_state": update_state,
             })
 
         @app.post("/api/settings")
         def settings() -> Any:
+            locked = ensure_not_locked()
+            if locked is not None:
+                return locked
             body = request.get_json(silent=True) or {}
             try:
                 patch = {
@@ -929,22 +1080,34 @@ class GatewayWebServer:
 
         @app.post("/api/discover")
         def discover() -> Any:
+            locked = ensure_not_locked()
+            if locked is not None:
+                return locked
             if self.discovery is not None:
                 self.discovery.send_probe()
             return jsonify({"ok": True})
 
         @app.post("/api/devices/<device_uid>/reject")
         def reject(device_uid: str) -> Any:
+            locked = ensure_not_locked()
+            if locked is not None:
+                return locked
             config = self.config_store.deny(device_uid)
             return jsonify({"ok": True, "denied_devices": config.get("denied_devices", [])})
 
         @app.post("/api/devices/<device_uid>/allow")
         def allow(device_uid: str) -> Any:
+            locked = ensure_not_locked()
+            if locked is not None:
+                return locked
             config = self.config_store.allow(device_uid)
             return jsonify({"ok": True, "denied_devices": config.get("denied_devices", [])})
 
         @app.post("/api/devices/<device_uid>/serve")
         def serve(device_uid: str) -> Any:
+            locked = ensure_not_locked()
+            if locked is not None:
+                return locked
             if self.config_store.is_denied(device_uid):
                 return jsonify({"ok": False, "error": "device_denied"}), 409
             if not self.upstream.is_connected():

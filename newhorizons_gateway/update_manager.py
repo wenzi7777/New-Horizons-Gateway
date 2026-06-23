@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -16,6 +18,7 @@ from . import __version__
 
 
 DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/gateway-latest.json"
+DEFAULT_AUTO_CHECK_INTERVAL_SEC = 600
 ALLOWED_UPDATE_ENTRIES = (
     "newhorizons_gateway",
     "scripts",
@@ -23,6 +26,18 @@ ALLOWED_UPDATE_ENTRIES = (
     "requirements.txt",
     "README.md",
 )
+
+
+def _version_key(value: str) -> tuple[int, ...]:
+    parts = tuple(int(part) for part in re.findall(r"\d+", str(value or "")))
+    return parts or (0,)
+
+
+def _is_newer_version(candidate: str, current: str) -> bool:
+    left = _version_key(candidate)
+    right = _version_key(current)
+    width = max(len(left), len(right))
+    return left + (0,) * (width - len(left)) > right + (0,) * (width - len(right))
 
 
 class GatewayUpdateManager:
@@ -42,28 +57,62 @@ class GatewayUpdateManager:
         self.last_error = ""
         self.restart_required = False
         self.manual_update_required = False
-        self.checked_at = ""
+        self.latest_gateway_version = ""
+        self.update_signal_source = ""
+        self.required_update = False
+        self.notes_markdown = ""
+        self.last_checked_at = ""
+        self.auto_check_interval_sec = max(
+            60,
+            int(os.getenv("NEWHORIZONS_GATEWAY_UPDATE_INTERVAL_SEC", str(DEFAULT_AUTO_CHECK_INTERVAL_SEC))),
+        )
+        self._last_manifest_check_monotonic = 0.0
 
     def state(self) -> dict[str, Any]:
         latest_version = str(self.latest_manifest.get("version") or "")
         return {
             "phase": self.phase,
             "current_version": __version__,
+            "latest_gateway_version": self.latest_gateway_version,
             "latest_version": latest_version,
-            "update_available": bool(latest_version and latest_version != __version__),
+            "update_signal_source": self.update_signal_source,
+            "required_update": self.required_update,
+            "update_available": bool(self.required_update or (latest_version and _is_newer_version(latest_version, __version__))),
             "manifest_url": self.manifest_url,
             "zip_url": str(self.latest_manifest.get("zip_url") or ""),
             "notes_url": str(self.latest_manifest.get("notes_url") or ""),
+            "notes_markdown": self.notes_markdown,
             "sha256": str(self.latest_manifest.get("sha256") or ""),
             "downloaded": self.downloaded_zip.exists(),
             "downloaded_sha256": self.downloaded_sha256,
             "restart_required": self.restart_required,
             "manual_update_required": self.manual_update_required,
-            "checked_at": self.checked_at,
+            "last_checked_at": self.last_checked_at,
+            "checked_at": self.last_checked_at,
+            "auto_check_interval_sec": self.auto_check_interval_sec,
             "last_error": self.last_error,
         }
 
-    def check(self) -> dict[str, Any]:
+    def set_server_latest_version(self, version: str, *, source: str = "server_ws") -> dict[str, Any]:
+        normalized = str(version or "").strip()
+        if not normalized:
+            return self.state()
+        self.latest_gateway_version = normalized
+        self.update_signal_source = source
+        self.required_update = _is_newer_version(normalized, __version__)
+        return self.state()
+
+    def maybe_refresh(self) -> dict[str, Any]:
+        manifest_version = str(self.latest_manifest.get("version") or "")
+        stale = (time.monotonic() - self._last_manifest_check_monotonic) >= self.auto_check_interval_sec
+        if self.required_update and (not self.latest_manifest or manifest_version != self.latest_gateway_version or stale):
+            return self.check(force=False)
+        return self.state()
+
+    def check(self, *, force: bool = True) -> dict[str, Any]:
+        if not force and not self.required_update:
+            return self.state()
+        checked_at = datetime.now(timezone.utc).isoformat()
         try:
             with urllib.request.urlopen(self.manifest_url, timeout=12) as response:
                 payload = response.read()
@@ -74,13 +123,35 @@ class GatewayUpdateManager:
                 if not str(manifest.get(key) or "").strip():
                     raise ValueError(f"manifest_missing_{key}")
             self.latest_manifest = manifest
+            if not self.update_signal_source:
+                self.update_signal_source = "manifest"
+            self.notes_markdown = self._download_notes(str(manifest.get("notes_url") or ""))
             self.phase = "checked"
-            self.last_error = ""
-            self.checked_at = datetime.now(timezone.utc).isoformat()
+            if not self.notes_markdown and str(manifest.get("notes_url") or "").strip():
+                self.last_error = self.last_error or "notes_unavailable"
+            else:
+                self.last_error = ""
+            self.last_checked_at = checked_at
         except Exception as exc:
             self.phase = "error"
             self.last_error = str(exc)
+            self.last_checked_at = checked_at
+            if not self.update_signal_source and force:
+                self.update_signal_source = "manifest"
+        self._last_manifest_check_monotonic = time.monotonic()
         return self.state()
+
+    def _download_notes(self, notes_url: str) -> str:
+        notes_url = str(notes_url or "").strip()
+        if not notes_url:
+            return ""
+        try:
+            with urllib.request.urlopen(notes_url, timeout=12) as response:
+                payload = response.read()
+            return payload.decode("utf-8")
+        except Exception as exc:
+            self.last_error = f"notes_unavailable: {exc}"
+            return ""
 
     def download(self) -> dict[str, Any]:
         if not self.latest_manifest:

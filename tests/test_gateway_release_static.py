@@ -44,13 +44,18 @@ class GatewayReleaseStaticTest(unittest.TestCase):
         self.assertIn("pyproject.toml", names)
         self.assertFalse(any("docker" in name.lower() for name in names))
         self.assertFalse(any("discovery_proxy" in name for name in names))
+        self.assertFalse(any(name.endswith(".ps1") for name in names))
 
     def test_gateway_readme_documents_host_only_ota_without_env_gate(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("The Gateway is host-only.", readme)
-        self.assertIn("Apply update", readme)
-        self.assertIn("Restart Gateway", readme)
+        self.assertIn("Update Center", readme)
+        self.assertIn("mandatory", readme)
+        self.assertIn("python scripts/start.py", readme)
+        self.assertIn("python scripts/stop.py", readme)
+        self.assertNotIn("start.ps1", readme)
+        self.assertNotIn("stop.ps1", readme)
         self.assertNotIn("NEWHORIZONS_GATEWAY_ALLOW_SELF_UPDATE", readme)
 
     def test_update_manager_no_longer_exposes_self_update_gate(self):

@@ -42,6 +42,35 @@ class FakeUDPControl:
         return True
 
 
+class FakeUpdateManager:
+    def __init__(self, payload=None):
+        self.payload = dict(payload or {})
+        self.refresh_calls = 0
+
+    def maybe_refresh(self):
+        self.refresh_calls += 1
+        return dict(self.payload)
+
+    def state(self):
+        return dict(self.payload)
+
+    def check(self):
+        self.payload["phase"] = "checked"
+        return dict(self.payload)
+
+    def download(self):
+        self.payload["phase"] = "downloaded"
+        return dict(self.payload)
+
+    def apply(self):
+        self.payload["phase"] = "applied"
+        return dict(self.payload)
+
+    def restart(self):
+        self.payload["phase"] = "restarting"
+        return dict(self.payload)
+
+
 class GatewayWebUiTest(unittest.TestCase):
     def test_gateway_config_no_longer_persists_token(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -87,6 +116,8 @@ class GatewayWebUiTest(unittest.TestCase):
             "docker-compose.container-discovery.yml",
             ".dockerignore",
             "scripts/discovery_proxy.py",
+            "scripts/start.ps1",
+            "scripts/stop.ps1",
             "scripts/start_docker.sh",
             "scripts/start_docker.ps1",
             "scripts/stop_docker.sh",
@@ -103,12 +134,13 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("Running on the host preserves the real device UDP source IP", script)
         self.assertIn("http://127.0.0.1:5052", script)
 
-    def test_start_gateway_windows_script_uses_power_shell_background_process(self):
-        script = (ROOT / "scripts" / "start.ps1").read_text(encoding="utf-8")
+    def test_gateway_windows_docs_use_python_entrypoints(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn('param(', script)
-        self.assertIn('$Process = Start-Process', script)
-        self.assertIn('http://127.0.0.1:5052', script)
+        self.assertIn("python scripts/start.py", readme)
+        self.assertIn("python scripts/stop.py", readme)
+        self.assertNotIn("start.ps1", readme)
+        self.assertNotIn("stop.ps1", readme)
 
     def test_host_gateway_script_runs_in_background_with_pid_tracking(self):
         # start.sh uses nohup + disown for a persistent background process on macOS/Linux.
@@ -120,16 +152,25 @@ class GatewayWebUiTest(unittest.TestCase):
 
     def test_host_start_scripts_detect_legacy_docker_port_conflicts(self):
         shell_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
-        powershell_script = (ROOT / "scripts" / "start.ps1").read_text(encoding="utf-8")
+        python_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
         self.assertIn("Legacy Docker Gateway", shell_script)
         self.assertIn("22346", shell_script)
         self.assertIn("13250", shell_script)
         self.assertIn("5052", shell_script)
         self.assertIn("command -v ss", shell_script)
-        self.assertIn("Legacy Docker Gateway", powershell_script)
-        self.assertIn("Get-NetUDPEndpoint", powershell_script)
-        self.assertIn("Get-NetTCPConnection", powershell_script)
+        self.assertIn("22346", python_script)
+        self.assertIn("13250", python_script)
+        self.assertIn("5052", python_script)
+
+    def test_windows_python_launcher_shows_dedicated_gateway_console_banner(self):
+        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+
+        self.assertIn("New Horizons Gateway", script)
+        self.assertIn("Closing this window stops Gateway", script)
+        self.assertIn("Web UI", script)
+        self.assertIn("CREATE_NEW_CONSOLE", script)
+        self.assertNotIn("CREATE_NO_WINDOW", script)
 
     def test_serve_device_queues_direct_standard_udp_command(self):
         upstream = FakeUpstream()
@@ -206,11 +247,24 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('id="check-update"', web_source)
         self.assertIn('id="download-update"', web_source)
         self.assertIn('id="apply-update"', web_source)
+        self.assertIn('id="restart-gateway"', web_source)
         self.assertIn('id="refresh-now"', web_source)
         self.assertIn('id="discover-nearby"', web_source)
         self.assertIn('id="nearby-toggle"', web_source)
         self.assertIn('data-i18n="operations"', web_source)
         self.assertNotIn('id="toggle-nearby"', web_source)
+
+    def test_gateway_web_ui_has_force_update_overlay_and_changelog_panel(self):
+        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="update-required-overlay"', web_source)
+        self.assertIn('id="update-center"', web_source)
+        self.assertIn('id="server-latest-version"', web_source)
+        self.assertIn('id="manifest-latest-version"', web_source)
+        self.assertIn('id="last-update-check"', web_source)
+        self.assertIn('id="update-notes"', web_source)
+        self.assertIn("required_update", web_source)
+        self.assertIn("notes_markdown", web_source)
 
     def test_gateway_setup_wizard_prefetches_id_once_without_overwriting_input(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
@@ -279,6 +333,61 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(upstream.updated[-1][1], "")
             self.assertNotIn("auth_token", response.get_json()["config"])
+
+    def test_status_route_refreshes_update_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            manager = FakeUpdateManager({"phase": "idle", "required_update": False})
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream(), update_manager=manager)
+            client = server.app.test_client()
+
+            response = client.get("/api/status")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(manager.refresh_calls, 1)
+            self.assertEqual(response.get_json()["update_state"]["phase"], "idle")
+
+    def test_update_required_blocks_non_update_routes(self):
+        payload = {
+            "phase": "checked",
+            "required_update": True,
+            "latest_gateway_version": "v9.9.9",
+            "latest_version": "",
+            "notes_markdown": "",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            store.save({"gateway_id": "nh-gateway-test", "enabled": True})
+            state = GatewayState()
+            state.record_findme_request(
+                {"device_uid": "3CDC7545CCD0", "device_name": "Device", "mode": "normal"},
+                ("192.168.1.152", 22346),
+                accepted=True,
+            )
+            upstream = FakeUpstream()
+            upstream.is_connected = lambda: True
+            server = GatewayWebServer(
+                "127.0.0.1",
+                0,
+                store,
+                state,
+                upstream,
+                FakeUDPControl(),
+                update_manager=FakeUpdateManager(payload),
+            )
+            client = server.app.test_client()
+
+            routes = [
+                client.post("/api/settings", json={"gateway_id": "nh-gateway-test", "enabled": True}),
+                client.post("/api/discover"),
+                client.post("/api/devices/3CDC7545CCD0/reject"),
+                client.post("/api/devices/3CDC7545CCD0/allow"),
+                client.post("/api/devices/3CDC7545CCD0/serve"),
+            ]
+
+            for response in routes:
+                self.assertEqual(response.status_code, 409)
+                self.assertEqual(response.get_json(), {"ok": False, "error": "update_required"})
 
     def test_gateway_web_ui_moves_update_last_and_removes_token_controls(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")

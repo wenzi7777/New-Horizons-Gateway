@@ -91,6 +91,8 @@ def main() -> None:
         )
 
     def on_upstream_message(message: dict[str, Any]) -> None:
+        if message.get("type") == "gateway_hello_ack":
+            update_manager.set_server_latest_version(str(message.get("latest_gateway_version") or ""))
         if message.get("type") == "gateway_claim_update":
             claim_id = str(message.get("claim_id") or "")
             if claim_id:
