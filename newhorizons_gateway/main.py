@@ -311,6 +311,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         )
     )
     last_gateway_status = 0.0
+    last_update_check = 0.0
     try:
         while running:
             if stop_event is not None and stop_event.is_set():
@@ -335,6 +336,13 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     "state": state.snapshot(current_config.get("denied_devices", [])),
                 })
                 publish_console_status(current_config)
+            check_interval = max(60, update_manager.auto_check_interval_sec)
+            if now - last_update_check >= check_interval:
+                last_update_check = now
+                try:
+                    update_manager.check(force=True)
+                except Exception:
+                    pass
             udp_commands.service()
             result_chunks.purge()
     finally:

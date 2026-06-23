@@ -164,6 +164,10 @@ class GatewayUpdateManager:
                 if not str(manifest.get(key) or "").strip():
                     raise ValueError(f"manifest_missing_{key}")
             self.latest_manifest = manifest
+            manifest_ver = str(manifest.get("version") or "").strip()
+            if manifest_ver and _is_newer_version(manifest_ver, __version__):
+                self.latest_gateway_version = manifest_ver
+                self.required_update = True
             if not self.update_signal_source:
                 self.update_signal_source = "manifest"
             self.notes_markdown = self._download_notes(str(manifest.get("notes_url") or ""))
