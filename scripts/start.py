@@ -25,6 +25,7 @@ from newhorizons_gateway.console_runtime import (  # noqa: E402
     classify_console_line,
     console_status_path,
 )
+from newhorizons_gateway.update_manager import ACTIVATE_UPDATE_FLAG, ALLOWED_UPDATE_ENTRIES  # noqa: E402
 
 
 IS_WIN = sys.platform == "win32"
@@ -111,6 +112,27 @@ def _create_config():
     if not CONFIG_FILE.exists():
         shutil.copy(APP_DIR / "config.example.json", CONFIG_FILE)
         print(f"Created {CONFIG_FILE} - open the WebUI to finish setup.")
+
+
+def _activate_pending_update(pending_root: Path):
+    if not pending_root.exists():
+        print(f"No pending update found at {pending_root}.")
+        return
+    print(f"Activating pending update from {pending_root} ...")
+    for name in ALLOWED_UPDATE_ENTRIES:
+        src = pending_root / name
+        if not src.exists():
+            continue
+        dst = APP_DIR / name
+        if src.is_dir():
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(src, dst)
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+    shutil.rmtree(pending_root, ignore_errors=True)
+    print("Pending update activated.")
 
 
 def _windows_console_title():
@@ -223,6 +245,21 @@ def _launch():
 
 
 def main():
+    if ACTIVATE_UPDATE_FLAG in sys.argv[1:]:
+        index = sys.argv.index(ACTIVATE_UPDATE_FLAG)
+        if index + 1 >= len(sys.argv):
+            print("ERROR: pending update path missing.", file=sys.stderr)
+            sys.exit(2)
+        pending_root = Path(sys.argv[index + 1]).resolve()
+        RUN_DIR.mkdir(exist_ok=True)
+        _stop_previous()
+        _activate_pending_update(pending_root)
+        _check_ports()
+        _create_venv()
+        _install_deps()
+        _create_config()
+        _launch()
+        return
     if IS_WIN and FOREGROUND_FLAG in sys.argv[1:]:
         _windows_foreground_main()
         return

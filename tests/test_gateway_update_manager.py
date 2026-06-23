@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 from newhorizons_gateway import __version__
 from newhorizons_gateway.update_manager import GatewayUpdateManager
@@ -127,10 +128,98 @@ class GatewayUpdateManagerTest(unittest.TestCase):
 
             self.assertEqual(state["phase"], "applied")
             self.assertTrue(state["restart_required"])
+            self.assertTrue(state["pending_release_ready"])
             self.assertEqual(state["download_progress_pct"], 100)
             self.assertEqual(state["apply_progress_pct"], 100)
-            self.assertEqual((app_root / "README.md").read_text(encoding="utf-8"), "new-readme")
-            self.assertEqual((app_root / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
+            self.assertEqual((app_root / "README.md").read_text(encoding="utf-8"), "old")
+            self.assertEqual((app_root / "scripts" / "start.py").read_text(encoding="utf-8"), "old-start")
+            self.assertEqual((manager.pending_release_root / "README.md").read_text(encoding="utf-8"), "new-readme")
+            self.assertEqual((manager.pending_release_root / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
+
+    def test_apply_does_not_move_live_directories_before_copying(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            app_root = tmp_path / "app"
+            app_root.mkdir()
+            package_dir = app_root / "newhorizons_gateway"
+            package_dir.mkdir()
+            (package_dir / "__init__.py").write_text('__version__ = "v0.3.3"\n', encoding="utf-8")
+            scripts_dir = app_root / "scripts"
+            scripts_dir.mkdir()
+            (scripts_dir / "start.py").write_text("old-start", encoding="utf-8")
+            (app_root / "README.md").write_text("old-readme", encoding="utf-8")
+            (app_root / "requirements.txt").write_text("old-req", encoding="utf-8")
+            (app_root / "pyproject.toml").write_text("old-proj", encoding="utf-8")
+
+            release_root = tmp_path / "release"
+            release_pkg = release_root / "newhorizons_gateway"
+            release_pkg.mkdir(parents=True)
+            (release_pkg / "__init__.py").write_text('__version__ = "v9.9.9"\n', encoding="utf-8")
+            release_scripts = release_root / "scripts"
+            release_scripts.mkdir()
+            (release_scripts / "start.py").write_text("new-start", encoding="utf-8")
+            (release_root / "README.md").write_text("new-readme", encoding="utf-8")
+            (release_root / "requirements.txt").write_text("new-req", encoding="utf-8")
+            (release_root / "pyproject.toml").write_text("new-proj", encoding="utf-8")
+            notes = tmp_path / "notes.md"
+            notes.write_text("notes", encoding="utf-8")
+            artifact = tmp_path / "gateway.zip"
+            with zipfile.ZipFile(artifact, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for child in sorted(release_root.rglob("*")):
+                    if child.is_dir():
+                        continue
+                    archive.write(child, child.relative_to(release_root).as_posix())
+            manifest = tmp_path / "gateway-latest.json"
+            manifest.write_text(json.dumps({
+                "version": "v9.9.9",
+                "zip_url": artifact.as_uri(),
+                "sha256": __import__("hashlib").sha256(artifact.read_bytes()).hexdigest(),
+                "notes_url": notes.as_uri(),
+            }), encoding="utf-8")
+
+            manager = GatewayUpdateManager(
+                app_root=app_root,
+                staging_root=tmp_path / "updates",
+                manifest_url=manifest.as_uri(),
+            )
+            manager.set_server_latest_version("v9.9.9")
+            manager.check()
+            manager.download()
+
+            from newhorizons_gateway import update_manager as update_manager_module
+
+            def forbid_directory_move(src, dst, *args, **kwargs):
+                if Path(src).is_dir():
+                    raise AssertionError(f"directory move attempted: {src}")
+                return original_move(src, dst, *args, **kwargs)
+
+            original_move = update_manager_module.shutil.move
+            with mock.patch.object(update_manager_module.shutil, "move", side_effect=forbid_directory_move):
+                state = manager.apply()
+
+            self.assertEqual(state["phase"], "applied")
+            self.assertEqual((app_root / "scripts" / "start.py").read_text(encoding="utf-8"), "old-start")
+            self.assertEqual((manager.pending_release_root / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
+
+    def test_restart_spawns_activation_launcher_for_pending_release(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            app_root = tmp_path / "app"
+            scripts_dir = app_root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            (scripts_dir / "start.py").write_text("print('start')\n", encoding="utf-8")
+            manager = GatewayUpdateManager(app_root=app_root, staging_root=tmp_path / "updates")
+            manager.pending_release_root.mkdir(parents=True)
+            (manager.pending_release_root / "README.md").write_text("new-readme", encoding="utf-8")
+
+            with mock.patch("newhorizons_gateway.update_manager.subprocess.Popen") as popen:
+                state = manager.restart()
+
+            self.assertEqual(state["phase"], "restarting")
+            popen.assert_called_once()
+            args = popen.call_args.args[0]
+            self.assertIn("--gateway-activate-update", args)
+            self.assertIn(str(manager.pending_release_root), args)
 
 
 if __name__ == "__main__":

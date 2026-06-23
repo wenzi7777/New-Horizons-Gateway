@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -20,6 +21,7 @@ from . import __version__
 
 DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/gateway-latest.json"
 DEFAULT_AUTO_CHECK_INTERVAL_SEC = 600
+ACTIVATE_UPDATE_FLAG = "--gateway-activate-update"
 ALLOWED_UPDATE_ENTRIES = (
     "newhorizons_gateway",
     "scripts",
@@ -53,6 +55,7 @@ class GatewayUpdateManager:
         self.manifest_url = manifest_url or os.getenv("NEWHORIZONS_GATEWAY_UPDATE_MANIFEST") or DEFAULT_MANIFEST_URL
         self.latest_manifest: dict[str, Any] = {}
         self.downloaded_zip = self.staging_root / "gateway-update.zip"
+        self.pending_release_root = self.staging_root / "pending-release"
         self.downloaded_sha256 = ""
         self.phase = "idle"
         self.last_error = ""
@@ -77,6 +80,7 @@ class GatewayUpdateManager:
     def state(self) -> dict[str, Any]:
         with self._lock:
             latest_version = str(self.latest_manifest.get("version") or "")
+            progress_pct = self._overall_progress_pct()
             return {
                 "phase": self.phase,
                 "current_version": __version__,
@@ -92,6 +96,7 @@ class GatewayUpdateManager:
                 "sha256": str(self.latest_manifest.get("sha256") or ""),
                 "downloaded": self.downloaded_zip.exists(),
                 "downloaded_sha256": self.downloaded_sha256,
+                "pending_release_ready": self.pending_release_root.exists(),
                 "restart_required": self.restart_required,
                 "manual_update_required": self.manual_update_required,
                 "last_checked_at": self.last_checked_at,
@@ -99,6 +104,8 @@ class GatewayUpdateManager:
                 "auto_check_interval_sec": self.auto_check_interval_sec,
                 "download_progress_pct": self.download_progress_pct,
                 "apply_progress_pct": self.apply_progress_pct,
+                "progress_pct": progress_pct,
+                "progress_label": self._progress_label(),
                 "busy": self.busy,
                 "last_error": self.last_error,
             }
@@ -228,18 +235,17 @@ class GatewayUpdateManager:
             with zipfile.ZipFile(self.downloaded_zip) as archive:
                 archive.extractall(extract_dir)
             source_root = self._extracted_source_root(extract_dir)
-            backup = self.staging_root / f"backup-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-            backup.mkdir(parents=True, exist_ok=True)
+            if self.pending_release_root.exists():
+                shutil.rmtree(self.pending_release_root)
+            self.pending_release_root.mkdir(parents=True, exist_ok=True)
             copy_total = max(1, self._copy_unit_total(source_root))
             copied = 0
             for name in ALLOWED_UPDATE_ENTRIES:
                 src = source_root / name
                 if not src.exists():
                     continue
-                dst = self.app_root / name
-                if dst.exists():
-                    shutil.move(str(dst), str(backup / name))
-                copied = self._copy_entry_with_progress(src, dst, copied, copy_total)
+                dst = self.pending_release_root / name
+                copied = self._copy_entry_with_progress(src, dst, None, copied, copy_total)
             with self._lock:
                 self.restart_required = True
                 self.manual_update_required = False
@@ -298,11 +304,12 @@ class GatewayUpdateManager:
             if src.is_file():
                 total += 1
             else:
-                total += sum(1 for child in src.rglob("*") if child.is_file())
+                    total += sum(1 for child in src.rglob("*") if child.is_file())
         return total
 
-    def _copy_entry_with_progress(self, src: Path, dst: Path, copied: int, total: int) -> int:
+    def _copy_entry_with_progress(self, src: Path, dst: Path, backup_dst: Path | None, copied: int, total: int) -> int:
         if src.is_file():
+            self._backup_existing_file(dst, backup_dst)
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
             copied += 1
@@ -313,9 +320,11 @@ class GatewayUpdateManager:
         for child in sorted(src.rglob("*")):
             relative = child.relative_to(src)
             target = dst / relative
+            backup_target = backup_dst / relative if backup_dst is not None else None
             if child.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
+            self._backup_existing_file(target, backup_target)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(child, target)
             copied += 1
@@ -323,15 +332,49 @@ class GatewayUpdateManager:
                 self.apply_progress_pct = min(99, int(copied * 100 / total))
         return copied
 
+    @staticmethod
+    def _backup_existing_file(target: Path, backup_target: Path | None) -> None:
+        if backup_target is None or not target.exists() or not target.is_file() or backup_target.exists():
+            return
+        backup_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, backup_target)
+
+    def _overall_progress_pct(self) -> int:
+        if self.phase in ("idle", "error"):
+            return 0
+        if self.phase == "checking":
+            return 2
+        if self.phase in ("downloading", "downloaded"):
+            return min(50, int(self.download_progress_pct * 0.5))
+        if self.phase in ("applying", "applied", "restart_required", "restarting"):
+            return min(100, 50 + int(self.apply_progress_pct * 0.5))
+        return 0
+
+    def _progress_label(self) -> str:
+        if self.phase == "checking":
+            return "Checking for update"
+        if self.phase in ("downloading", "downloaded"):
+            return "Downloading update"
+        if self.phase in ("applying", "applied", "restart_required", "restarting"):
+            return "Applying update"
+        if self.phase == "error":
+            return "Update failed"
+        return "Waiting"
+
     def restart(self) -> dict[str, Any]:
-        command = os.getenv("NEWHORIZONS_GATEWAY_RESTART_COMMAND", "").strip()
-        if not command:
+        if not self.pending_release_root.exists():
             with self._lock:
                 self.manual_update_required = True
                 self.phase = "restart_required"
             return self.state()
         try:
-            subprocess.Popen(command, cwd=str(self.app_root), shell=True)
+            script = self.app_root / "scripts" / "start.py"
+            if not script.exists():
+                raise FileNotFoundError(str(script))
+            subprocess.Popen(
+                [sys.executable, str(script), ACTIVATE_UPDATE_FLAG, str(self.pending_release_root)],
+                cwd=str(self.app_root),
+            )
             with self._lock:
                 self.phase = "restarting"
                 self.last_error = ""

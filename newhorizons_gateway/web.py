@@ -202,12 +202,8 @@ PAGE = """<!doctype html>
       <div class="update-banner" id="overlay-update-banner">Waiting for update metadata.</div>
       <div class="progress-stack">
         <div>
-          <div class="progress-head"><span>Download</span><strong id="overlay-download-progress-label">0%</strong></div>
-          <div class="progress-track"><div class="progress-fill" id="overlay-download-progress"></div></div>
-        </div>
-        <div>
-          <div class="progress-head"><span>Apply</span><strong id="overlay-apply-progress-label">0%</strong></div>
-          <div class="progress-track warn"><div class="progress-fill" id="overlay-apply-progress"></div></div>
+          <div class="progress-head"><span id="overlay-update-progress-phase">Waiting</span><strong id="overlay-update-progress-label">0%</strong></div>
+          <div class="progress-track"><div class="progress-fill" id="overlay-update-progress"></div></div>
         </div>
       </div>
       <pre class="update-notes overlay-note" id="overlay-update-notes">Update exists, but release notes are not loaded yet.</pre>
@@ -432,12 +428,8 @@ PAGE = """<!doctype html>
         <div class="update-banner" id="update-banner">Waiting for update signal.</div>
         <div class="progress-stack">
           <div>
-            <div class="progress-head"><span>Download</span><strong id="download-progress-label">0%</strong></div>
-            <div class="progress-track"><div class="progress-fill" id="download-progress"></div></div>
-          </div>
-          <div>
-            <div class="progress-head"><span>Apply</span><strong id="apply-progress-label">0%</strong></div>
-            <div class="progress-track warn"><div class="progress-fill" id="apply-progress"></div></div>
+            <div class="progress-head"><span id="update-progress-phase">Waiting</span><strong id="update-progress-label">0%</strong></div>
+            <div class="progress-track"><div class="progress-fill" id="update-progress"></div></div>
           </div>
         </div>
         <p class="sub-heading" style="margin-top:18px">Changelog</p>
@@ -803,10 +795,10 @@ PAGE = """<!doctype html>
       text("overlay-manifest-latest", latest);
       text("update-mini", `${phase} / server ${serverLatest}`);
       text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest}`);
-      setProgress("download-progress", "download-progress-label", state.download_progress_pct);
-      setProgress("apply-progress", "apply-progress-label", state.apply_progress_pct);
-      setProgress("overlay-download-progress", "overlay-download-progress-label", state.download_progress_pct);
-      setProgress("overlay-apply-progress", "overlay-apply-progress-label", state.apply_progress_pct);
+      text("update-progress-phase", state.progress_label || "Waiting");
+      text("overlay-update-progress-phase", state.progress_label || "Waiting");
+      setProgress("update-progress", "update-progress-label", state.progress_pct);
+      setProgress("overlay-update-progress", "overlay-update-progress-label", state.progress_pct);
       setPre("update-notes", notes);
       setPre("overlay-update-notes", notes);
       const banner = state.required_update
