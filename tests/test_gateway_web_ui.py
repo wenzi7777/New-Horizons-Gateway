@@ -192,6 +192,17 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("textual", requirements)
         self.assertIn("textual", pyproject)
 
+    def test_gateway_tui_quit_path_notifies_shutdown_and_ctrl_c_binding(self):
+        tui_source = (ROOT / "newhorizons_gateway" / "gateway_tui.py").read_text(encoding="utf-8")
+        start_source = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+
+        self.assertIn('BINDINGS = [("ctrl+c", "quit", "Quit")]', tui_source)
+        self.assertIn("def action_quit", tui_source)
+        self.assertIn("self._notify_exit()", tui_source)
+        self.assertIn("stop_event.set()", start_source)
+        self.assertIn("stream.detach_ui()", start_source)
+        self.assertIn("gateway_thread.join(timeout=5.0)", start_source)
+
     def test_serve_device_queues_direct_standard_udp_command(self):
         upstream = FakeUpstream()
         upstream.is_connected = lambda: True

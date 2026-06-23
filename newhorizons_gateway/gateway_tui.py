@@ -40,6 +40,7 @@ class GatewayConsoleApp(App[None]):
         config_path: Path,
         log_path: Path,
         on_ready: Callable[["GatewayConsoleApp"], None] | None = None,
+        on_exit: Callable[["GatewayConsoleApp"], None] | None = None,
     ) -> None:
         super().__init__()
         self.status_file = status_file
@@ -47,10 +48,12 @@ class GatewayConsoleApp(App[None]):
         self.config_path = config_path
         self.log_path = log_path
         self.on_ready = on_ready
+        self.on_exit = on_exit
         self._status_file_mtime_ns = -1
         self._status: dict[str, Any] = {}
         self._status_poll_count = 0
         self.exit_code = 0
+        self._exit_notified = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -99,3 +102,14 @@ class GatewayConsoleApp(App[None]):
     def finish(self, exit_code: int = 0) -> None:
         self.exit_code = exit_code
         self.exit()
+
+    def action_quit(self) -> None:
+        self._notify_exit()
+        self.exit()
+
+    def _notify_exit(self) -> None:
+        if self._exit_notified:
+            return
+        self._exit_notified = True
+        if self.on_exit is not None:
+            self.on_exit(self)

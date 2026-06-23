@@ -27,11 +27,8 @@ def _install_signal_handlers(stop_handler: Any) -> None:
     signal.signal(signal.SIGTERM, stop_handler)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="New Horizons local UDP/JSON to WSS gateway")
-    parser.add_argument("--config", help="Path to host gateway config", default=None)
-    args = parser.parse_args()
-    config_store = GatewayConfigStore(args.config)
+def run(config_path: str | None = None, stop_event: threading.Event | None = None) -> None:
+    config_store = GatewayConfigStore(config_path)
     config = config_store.snapshot()
     state = GatewayState(control_stale_sec=float(config.get("control_stale_sec", 16.0)))
     arduino_hosts: dict[str, str] = {}
@@ -292,6 +289,9 @@ def main() -> None:
     last_gateway_status = 0.0
     try:
         while running:
+            if stop_event is not None and stop_event.is_set():
+                running = False
+                continue
             time.sleep(0.5)
             now = time.time()
             if now - last_gateway_status >= 5.0:
@@ -319,6 +319,13 @@ def main() -> None:
         web_server.stop()
         udp_server.stop()
         upstream.stop()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="New Horizons local UDP/JSON to WSS gateway")
+    parser.add_argument("--config", help="Path to host gateway config", default=None)
+    args = parser.parse_args()
+    run(config_path=args.config)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import sys
 import time
 import traceback
 import shutil
+import threading
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -38,6 +39,7 @@ class _TextualGatewayStream:
         self.app = app
         self.file_handle = file_handle
         self.partial = ""
+        self.ui_active = True
 
     def write(self, data):
         text = str(data or "")
@@ -49,14 +51,22 @@ class _TextualGatewayStream:
         while "\n" in self.partial:
             line, self.partial = self.partial.split("\n", 1)
             kind = classify_console_line(line)
-            if kind == "status_poll":
-                self.app.call_from_thread(self.app.record_status_poll)
-            elif kind == "event":
-                self.app.call_from_thread(self.app.push_log_line, line.rstrip())
+            if not self.ui_active:
+                continue
+            try:
+                if kind == "status_poll":
+                    self.app.call_from_thread(self.app.record_status_poll)
+                elif kind == "event":
+                    self.app.call_from_thread(self.app.push_log_line, line.rstrip())
+            except RuntimeError:
+                self.ui_active = False
         return len(text)
 
     def flush(self):
         self.file_handle.flush()
+
+    def detach_ui(self):
+        self.ui_active = False
 
 
 def _venv_bin(name):
@@ -146,6 +156,7 @@ def _windows_console_title():
 
 def _foreground_main():
     from newhorizons_gateway.gateway_tui import GatewayConsoleApp
+    from newhorizons_gateway import main as gateway_main_module
 
     if IS_WIN:
         _windows_console_title()
@@ -158,10 +169,13 @@ def _foreground_main():
     original_stdout = sys.stdout
     original_stderr = sys.stderr
     result = {"exit_code": 0}
+    stop_event = threading.Event()
+    state: dict[str, object] = {"stream": None, "gateway_thread": None}
 
     def _run_gateway(app):
         with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as handle:
             stream = _TextualGatewayStream(app, handle)
+            state["stream"] = stream
             sys.stdout = stream
             sys.stderr = stream
             stream.write("Gateway console started.\n")
@@ -172,32 +186,60 @@ def _foreground_main():
             stream.write("Closing this window stops Gateway.\n")
             stream.write("Status polls are summarized in the header.\n")
             try:
-                sys.argv = ["newhorizons_gateway.main", "--config", str(CONFIG_FILE)]
-                runpy.run_module("newhorizons_gateway.main", run_name="__main__")
+                gateway_main_module.run(config_path=str(CONFIG_FILE), stop_event=stop_event)
             except SystemExit as exc:
                 code = exc.code if isinstance(exc.code, int) else 0
                 result["exit_code"] = code
-                app.call_from_thread(app.finish, code)
+                try:
+                    app.call_from_thread(app.finish, code)
+                except RuntimeError:
+                    pass
             except BaseException:
                 result["exit_code"] = 1
                 stream.write(traceback.format_exc())
-                app.call_from_thread(app.finish, 1)
+                try:
+                    app.call_from_thread(app.finish, 1)
+                except RuntimeError:
+                    pass
             else:
-                app.call_from_thread(app.finish, 0)
+                try:
+                    app.call_from_thread(app.finish, 0)
+                except RuntimeError:
+                    pass
             finally:
+                stream.detach_ui()
                 sys.stdout = original_stdout
                 sys.stderr = original_stderr
+
+    def _start_gateway(app):
+        gateway_thread = threading.Thread(target=_run_gateway, args=(app,), name="newhorizons-gateway-runtime", daemon=True)
+        state["gateway_thread"] = gateway_thread
+        gateway_thread.start()
+
+    def _on_app_exit(_app):
+        stop_event.set()
+        stream = state.get("stream")
+        if stream is not None:
+            stream.detach_ui()
 
     app = GatewayConsoleApp(
         status_file=STATUS_FILE,
         version=__version__,
         config_path=CONFIG_FILE,
         log_path=LOG_FILE,
-        on_ready=_run_gateway,
+        on_ready=_start_gateway,
+        on_exit=_on_app_exit,
     )
     try:
         app.run()
     finally:
+        stop_event.set()
+        stream = state.get("stream")
+        if stream is not None:
+            stream.detach_ui()
+        gateway_thread = state.get("gateway_thread")
+        if isinstance(gateway_thread, threading.Thread):
+            gateway_thread.join(timeout=5.0)
         PID_FILE.unlink(missing_ok=True)
     os._exit(result["exit_code"])
 
