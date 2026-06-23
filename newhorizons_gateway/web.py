@@ -118,11 +118,15 @@ PAGE = """<!doctype html>
 
     /* ── Update center ── */
     .update-center { background:linear-gradient(180deg,#fffdf6 0%,#fff 100%); border-color:#e5d8b4; }
+    .update-center.ok { background:linear-gradient(180deg,#f3fbf4 0%,#fbfffb 100%); border-color:#b8d7bf; box-shadow:0 1px 2px rgba(63,123,97,.08); }
     .update-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:16px 0; }
     .update-card { border:1px solid #eadfbe; border-radius:10px; padding:14px; background:rgba(255,252,243,.95); }
+    .update-center.ok .update-card,
+    .update-center.ok .summary-card { border-color:#c5dec9; background:rgba(247,255,248,.96); }
     .update-card strong { font-size:16px; }
     .update-notes { min-height:140px; margin:0; padding:14px; border:1px solid #eadfbe; border-radius:10px; background:#fffdfa; white-space:pre-wrap; word-break:break-word; font:13px/1.55 ui-monospace,monospace; color:#333; }
     .update-banner { margin:12px 0 0; padding:10px 12px; border-radius:8px; background:#fff6da; border:1px solid #e7cf84; color:#755712; }
+    .update-banner.ok { background:#edf8f0; border-color:#bed8c4; color:#2f694f; }
     .update-banner.error { background:#fff2ef; border-color:#e0b0ab; color:#9a3f37; }
 
     /* ── Force update overlay ── */
@@ -748,6 +752,9 @@ PAGE = """<!doctype html>
       const serverLatest = state.latest_gateway_version || "-";
       const phase = state.phase || "idle";
       const source = state.update_signal_source || "-";
+      const healthyUpdateCenter = !state.required_update
+        && !state.last_error
+        && (!serverLatest || serverLatest === "-" || serverLatest === current);
       const notes = state.notes_markdown
         || (state.required_update
           ? "Update available, but release notes are not loaded yet."
@@ -769,15 +776,17 @@ PAGE = """<!doctype html>
       setPre("overlay-update-notes", notes);
       const banner = state.required_update
         ? `Server requires ${serverLatest}. Update source: ${source}.`
-        : (state.last_error ? `Update check error: ${state.last_error}` : "Gateway is on an allowed version.");
+        : (state.last_error ? `Update check error: ${state.last_error}` : "Gateway is on the latest allowed version.");
       const overlayBanner = state.required_update
         ? (state.notes_markdown ? `Update ${serverLatest} is ready to download.` : "Update exists, but release notes are not loaded yet.")
         : "No mandatory update at the moment.";
       const bannerNode = document.getElementById("update-banner");
       const overlayNode = document.getElementById("overlay-update-banner");
+      const updateCenter = document.getElementById("update-center");
+      if (updateCenter) updateCenter.className = `panel span-12 update-center${healthyUpdateCenter ? " ok" : ""}`;
       if (bannerNode) {
         bannerNode.textContent = banner;
-        bannerNode.className = `update-banner${state.last_error && !state.required_update ? " error" : ""}`;
+        bannerNode.className = `update-banner${healthyUpdateCenter ? " ok" : state.last_error && !state.required_update ? " error" : ""}`;
       }
       if (overlayNode) {
         overlayNode.textContent = overlayBanner;

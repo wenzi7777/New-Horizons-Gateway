@@ -8,6 +8,7 @@ from typing import Any
 
 from .arduino_protocol import is_arduino_heartbeat_packet, is_arduino_stream_packet
 from .config_store import GatewayConfigStore
+from .console_runtime import write_console_status
 from .discovery import DiscoveryResponder
 from .local_device import LocalUDPIngestServer, packet_device_uid as stream_packet_device_uid
 from .result_chunks import RESULT_CHUNK_TYPE, ResultChunkReassembler
@@ -211,6 +212,27 @@ def main() -> None:
 
     runtime_started = False
 
+    def publish_console_status(current_config: dict[str, Any]) -> None:
+        upstream_state = upstream.status()
+        update_state = update_manager.state()
+        write_console_status(
+            None,
+            {
+                "enabled": bool(current_config.get("enabled")),
+                "gateway_id": str(current_config.get("gateway_id") or ""),
+                "gateway_name": str(current_config.get("gateway_name") or "New Horizons Gateway"),
+                "server_url": str(current_config.get("server_url") or ""),
+                "target_mode": str(current_config.get("target_mode") or ""),
+                "web_ui_url": "http://127.0.0.1:{}".format(int(current_config.get("listen_web_port", 5052))),
+                "listen_udp_port": int(udp_server.bound_port),
+                "listen_discovery_port": int(discovery.bound_port) if discovery is not None else int(current_config.get("listen_discovery_port", 22346)),
+                "upstream_connected": bool(upstream_state.get("connected")),
+                "required_update": bool(update_state.get("required_update")),
+                "latest_gateway_version": str(update_state.get("latest_gateway_version") or ""),
+                "current_version": str(update_state.get("current_version") or ""),
+            },
+        )
+
     def apply_runtime_config(current_config: dict[str, Any]) -> None:
         nonlocal runtime_started
         upstream.gateway_id = str(current_config.get("gateway_id") or "")
@@ -232,6 +254,7 @@ def main() -> None:
             udp_server.stop()
             upstream.stop()
             runtime_started = False
+        publish_console_status(current_config)
 
     update_manager = GatewayUpdateManager()
     web_server = GatewayWebServer(
@@ -280,6 +303,7 @@ def main() -> None:
                     "udp_control": udp_commands.snapshot(),
                     "state": state.snapshot(current_config.get("denied_devices", [])),
                 })
+                publish_console_status(current_config)
             udp_commands.service()
             result_chunks.purge()
     finally:

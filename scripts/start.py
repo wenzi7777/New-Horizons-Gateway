@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Cross-platform Gateway start script. Usage: python scripts/start.py"""
 import os
+import io
 import runpy
 import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
+from collections import deque
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -20,25 +23,131 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 from newhorizons_gateway import __version__  # noqa: E402
+from newhorizons_gateway.console_runtime import (  # noqa: E402
+    classify_console_line,
+    console_status_path,
+    format_console_header_lines,
+    read_console_status,
+)
 
 
 IS_WIN = sys.platform == "win32"
 FOREGROUND_FLAG = "--gateway-foreground"
+STATUS_FILE = console_status_path(APP_DIR)
 
 
-class _TeeStream:
-    def __init__(self, *streams):
-        self.streams = streams
+class _ConsoleDashboard:
+    def __init__(self, status_file: Path, *, version: str, config_path: Path, log_path: Path):
+        self.status_file = status_file
+        self.version = version
+        self.config_path = config_path
+        self.log_path = log_path
+        self.log_lines = deque(maxlen=800)
+        self.partial = ""
+        self.status = {}
+        self._status_file_mtime_ns = -1
+        self._status_poll_count = 0
+        self._stop = threading.Event()
+        self._lock = threading.RLock()
+        self._thread = threading.Thread(target=self._render_loop, name="newhorizons-gateway-console", daemon=True)
 
-    def write(self, data):
-        for stream in self.streams:
-            stream.write(data)
-            stream.flush()
-        return len(data)
+    def start(self):
+        self._enable_ansi()
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+
+    def write(self, data: str):
+        with self._lock:
+            self.partial += str(data or "")
+            while "\n" in self.partial:
+                line, self.partial = self.partial.split("\n", 1)
+                kind = classify_console_line(line)
+                if kind == "status_poll":
+                    self._status_poll_count += 1
+                    continue
+                if kind == "event":
+                    self.log_lines.append(line.rstrip())
 
     def flush(self):
-        for stream in self.streams:
-            stream.flush()
+        return None
+
+    def _enable_ansi(self):
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.GetStdHandle(-11)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+        except Exception:
+            pass
+
+    def _load_status(self):
+        try:
+            stat = self.status_file.stat()
+        except FileNotFoundError:
+            return
+        if stat.st_mtime_ns == self._status_file_mtime_ns:
+            return
+        payload = read_console_status(APP_DIR)
+        self.status = payload
+        self._status_file_mtime_ns = stat.st_mtime_ns
+
+    def _render_loop(self):
+        while not self._stop.is_set():
+            self._load_status()
+            self._render()
+            time.sleep(0.35)
+
+    def _render(self):
+        with self._lock:
+            status = dict(self.status)
+            status["status_poll_count"] = self._status_poll_count
+            header = format_console_header_lines(
+                status,
+                version=self.version,
+                config_path=self.config_path,
+                log_path=self.log_path,
+            )
+            columns, rows = shutil.get_terminal_size((140, 40))
+            header = [line[:columns] for line in header]
+            reserved = len(header) + 2
+            visible_logs = max(6, rows - reserved)
+            lines = list(self.log_lines)[-visible_logs:]
+            output = io.StringIO()
+            output.write("\x1b[2J\x1b[H")
+            for line in header:
+                output.write(line)
+                output.write("\n")
+            output.write("-" * min(columns, 80))
+            output.write("\n")
+            output.write("Recent events\n")
+            for line in lines:
+                output.write(line[:columns])
+                output.write("\n")
+            sys.__stdout__.write(output.getvalue())
+            sys.__stdout__.flush()
+
+
+class _DashboardStream:
+    def __init__(self, dashboard: _ConsoleDashboard, file_handle):
+        self.dashboard = dashboard
+        self.file_handle = file_handle
+
+    def write(self, data):
+        text = str(data or "")
+        self.file_handle.write(text)
+        self.file_handle.flush()
+        self.dashboard.write(text)
+        return len(text)
+
+    def flush(self):
+        self.file_handle.flush()
+        self.dashboard.flush()
 
 
 def _venv_bin(name):
@@ -114,18 +223,18 @@ def _windows_foreground_main():
     os.environ.update(env)
 
     with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as handle:
-        sys.stdout = _TeeStream(sys.__stdout__, handle)
-        sys.stderr = _TeeStream(sys.__stderr__, handle)
-        print("=" * 64)
-        print("New Horizons Gateway")
-        print(f"Version: {__version__}")
-        print(f"Config: {CONFIG_FILE}")
-        print(f"Log: {LOG_FILE}")
-        print("Web UI: http://127.0.0.1:5052")
-        print("Closing this window stops Gateway.")
-        print("=" * 64)
-        sys.argv = ["newhorizons_gateway.main", "--config", str(CONFIG_FILE)]
-        runpy.run_module("newhorizons_gateway.main", run_name="__main__")
+        dashboard = _ConsoleDashboard(STATUS_FILE, version=__version__, config_path=CONFIG_FILE, log_path=LOG_FILE)
+        dashboard.start()
+        sys.stdout = _DashboardStream(dashboard, handle)
+        sys.stderr = _DashboardStream(dashboard, handle)
+        dashboard.write("Gateway console started.\n")
+        dashboard.write("Closing this window stops Gateway.\n")
+        dashboard.write("Status polls are summarized in the header.\n")
+        try:
+            sys.argv = ["newhorizons_gateway.main", "--config", str(CONFIG_FILE)]
+            runpy.run_module("newhorizons_gateway.main", run_name="__main__")
+        finally:
+            dashboard.stop()
 
 
 def _launch():

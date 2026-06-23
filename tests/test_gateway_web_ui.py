@@ -171,6 +171,8 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("Web UI", script)
         self.assertIn("CREATE_NEW_CONSOLE", script)
         self.assertNotIn("CREATE_NO_WINDOW", script)
+        self.assertIn("console_status_path", script)
+        self.assertIn("Status polls", script)
 
     def test_serve_device_queues_direct_standard_udp_command(self):
         upstream = FakeUpstream()
@@ -265,6 +267,13 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('id="update-notes"', web_source)
         self.assertIn("required_update", web_source)
         self.assertIn("notes_markdown", web_source)
+
+    def test_gateway_update_center_has_green_healthy_state(self):
+        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+
+        self.assertIn(".update-center.ok", web_source)
+        self.assertIn("healthyUpdateCenter", web_source)
+        self.assertIn('updateCenter.className = `panel span-12 update-center${healthyUpdateCenter ? " ok" : ""}`', web_source)
 
     def test_gateway_setup_wizard_prefetches_id_once_without_overwriting_input(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
