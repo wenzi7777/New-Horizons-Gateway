@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """Cross-platform Gateway start script. Usage: python scripts/start.py"""
 import os
-import io
 import runpy
-import shutil
 import socket
 import subprocess
 import sys
-import threading
 import time
-from collections import deque
+import traceback
+import shutil
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -26,8 +24,6 @@ from newhorizons_gateway import __version__  # noqa: E402
 from newhorizons_gateway.console_runtime import (  # noqa: E402
     classify_console_line,
     console_status_path,
-    format_console_header_lines,
-    read_console_status,
 )
 
 
@@ -36,118 +32,30 @@ FOREGROUND_FLAG = "--gateway-foreground"
 STATUS_FILE = console_status_path(APP_DIR)
 
 
-class _ConsoleDashboard:
-    def __init__(self, status_file: Path, *, version: str, config_path: Path, log_path: Path):
-        self.status_file = status_file
-        self.version = version
-        self.config_path = config_path
-        self.log_path = log_path
-        self.log_lines = deque(maxlen=800)
-        self.partial = ""
-        self.status = {}
-        self._status_file_mtime_ns = -1
-        self._status_poll_count = 0
-        self._stop = threading.Event()
-        self._lock = threading.RLock()
-        self._thread = threading.Thread(target=self._render_loop, name="newhorizons-gateway-console", daemon=True)
-
-    def start(self):
-        self._enable_ansi()
-        self._thread.start()
-
-    def stop(self):
-        self._stop.set()
-        self._thread.join(timeout=1.0)
-
-    def write(self, data: str):
-        with self._lock:
-            self.partial += str(data or "")
-            while "\n" in self.partial:
-                line, self.partial = self.partial.split("\n", 1)
-                kind = classify_console_line(line)
-                if kind == "status_poll":
-                    self._status_poll_count += 1
-                    continue
-                if kind == "event":
-                    self.log_lines.append(line.rstrip())
-
-    def flush(self):
-        return None
-
-    def _enable_ansi(self):
-        try:
-            import ctypes
-
-            kernel32 = ctypes.windll.kernel32
-            handle = kernel32.GetStdHandle(-11)
-            mode = ctypes.c_uint32()
-            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-                kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-        except Exception:
-            pass
-
-    def _load_status(self):
-        try:
-            stat = self.status_file.stat()
-        except FileNotFoundError:
-            return
-        if stat.st_mtime_ns == self._status_file_mtime_ns:
-            return
-        payload = read_console_status(APP_DIR)
-        self.status = payload
-        self._status_file_mtime_ns = stat.st_mtime_ns
-
-    def _render_loop(self):
-        while not self._stop.is_set():
-            self._load_status()
-            self._render()
-            time.sleep(0.35)
-
-    def _render(self):
-        with self._lock:
-            status = dict(self.status)
-            status["status_poll_count"] = self._status_poll_count
-            header = format_console_header_lines(
-                status,
-                version=self.version,
-                config_path=self.config_path,
-                log_path=self.log_path,
-            )
-            columns, rows = shutil.get_terminal_size((140, 40))
-            header = [line[:columns] for line in header]
-            reserved = len(header) + 2
-            visible_logs = max(6, rows - reserved)
-            lines = list(self.log_lines)[-visible_logs:]
-            output = io.StringIO()
-            output.write("\x1b[2J\x1b[H")
-            for line in header:
-                output.write(line)
-                output.write("\n")
-            output.write("-" * min(columns, 80))
-            output.write("\n")
-            output.write("Recent events\n")
-            for line in lines:
-                output.write(line[:columns])
-                output.write("\n")
-            sys.__stdout__.write(output.getvalue())
-            sys.__stdout__.flush()
-
-
-class _DashboardStream:
-    def __init__(self, dashboard: _ConsoleDashboard, file_handle):
-        self.dashboard = dashboard
+class _TextualGatewayStream:
+    def __init__(self, app, file_handle):
+        self.app = app
         self.file_handle = file_handle
+        self.partial = ""
 
     def write(self, data):
         text = str(data or "")
+        if not text:
+            return 0
         self.file_handle.write(text)
         self.file_handle.flush()
-        self.dashboard.write(text)
+        self.partial += text
+        while "\n" in self.partial:
+            line, self.partial = self.partial.split("\n", 1)
+            kind = classify_console_line(line)
+            if kind == "status_poll":
+                self.app.call_from_thread(self.app.record_status_poll)
+            elif kind == "event":
+                self.app.call_from_thread(self.app.push_log_line, line.rstrip())
         return len(text)
 
     def flush(self):
         self.file_handle.flush()
-        self.dashboard.flush()
 
 
 def _venv_bin(name):
@@ -215,26 +123,56 @@ def _windows_console_title():
 
 
 def _windows_foreground_main():
+    from newhorizons_gateway.gateway_tui import GatewayConsoleApp
+
     _windows_console_title()
     RUN_DIR.mkdir(exist_ok=True)
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     env["NEWHORIZONS_GATEWAY_APP_ROOT"] = str(APP_DIR)
     env["NEWHORIZONS_GATEWAY_RESTART_COMMAND"] = f"\"{sys.executable}\" \"{Path(__file__).resolve()}\""
     os.environ.update(env)
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    result = {"exit_code": 0}
 
-    with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as handle:
-        dashboard = _ConsoleDashboard(STATUS_FILE, version=__version__, config_path=CONFIG_FILE, log_path=LOG_FILE)
-        dashboard.start()
-        sys.stdout = _DashboardStream(dashboard, handle)
-        sys.stderr = _DashboardStream(dashboard, handle)
-        dashboard.write("Gateway console started.\n")
-        dashboard.write("Closing this window stops Gateway.\n")
-        dashboard.write("Status polls are summarized in the header.\n")
-        try:
-            sys.argv = ["newhorizons_gateway.main", "--config", str(CONFIG_FILE)]
-            runpy.run_module("newhorizons_gateway.main", run_name="__main__")
-        finally:
-            dashboard.stop()
+    def _run_gateway(app):
+        with open(LOG_FILE, "a", encoding="utf-8", buffering=1) as handle:
+            stream = _TextualGatewayStream(app, handle)
+            sys.stdout = stream
+            sys.stderr = stream
+            stream.write("Gateway console started.\n")
+            stream.write(f"Version: {__version__}\n")
+            stream.write(f"Config: {CONFIG_FILE}\n")
+            stream.write(f"Log: {LOG_FILE}\n")
+            stream.write("Web UI: http://127.0.0.1:5052\n")
+            stream.write("Closing this window stops Gateway.\n")
+            stream.write("Status polls are summarized in the header.\n")
+            try:
+                sys.argv = ["newhorizons_gateway.main", "--config", str(CONFIG_FILE)]
+                runpy.run_module("newhorizons_gateway.main", run_name="__main__")
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 0
+                result["exit_code"] = code
+                app.call_from_thread(app.finish, code)
+            except BaseException:
+                result["exit_code"] = 1
+                stream.write(traceback.format_exc())
+                app.call_from_thread(app.finish, 1)
+            else:
+                app.call_from_thread(app.finish, 0)
+            finally:
+                sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
+    app = GatewayConsoleApp(
+        status_file=STATUS_FILE,
+        version=__version__,
+        config_path=CONFIG_FILE,
+        log_path=LOG_FILE,
+        on_ready=_run_gateway,
+    )
+    app.run()
+    os._exit(result["exit_code"])
 
 
 def _launch():

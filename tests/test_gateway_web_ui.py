@@ -179,6 +179,21 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("console_status_path", script)
         self.assertIn("Status polls", script)
 
+    def test_windows_python_launcher_uses_textual_tui(self):
+        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        tui_source = (ROOT / "newhorizons_gateway" / "gateway_tui.py").read_text(encoding="utf-8")
+        requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+        self.assertIn("GatewayConsoleApp", script)
+        self.assertIn("newhorizons_gateway.gateway_tui", script)
+        self.assertIn("from textual.app import App", tui_source)
+        self.assertIn("RichLog", tui_source)
+        self.assertIn("Header", tui_source)
+        self.assertIn("Footer", tui_source)
+        self.assertIn("textual", requirements)
+        self.assertIn("textual", pyproject)
+
     def test_serve_device_queues_direct_standard_udp_command(self):
         upstream = FakeUpstream()
         upstream.is_connected = lambda: True
