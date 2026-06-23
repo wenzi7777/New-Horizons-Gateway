@@ -303,6 +303,11 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn('id="update-notes"', web_source)
         self.assertIn("required_update", web_source)
         self.assertIn("notes_markdown", web_source)
+        self.assertIn('data-i18n="updateCenter"', web_source)
+        self.assertIn('updateCenter:"更新センター"', web_source)
+        self.assertIn('updateCenter:"更新中心"', web_source)
+        self.assertIn("function localizePhaseCode", web_source)
+        self.assertIn("function localizeSource", web_source)
 
     def test_gateway_update_center_has_green_healthy_state(self):
         web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")

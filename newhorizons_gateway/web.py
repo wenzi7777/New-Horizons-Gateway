@@ -186,27 +186,27 @@ PAGE = """<!doctype html>
 
   <div id="update-required-overlay" class="overlay" hidden>
     <div class="overlay-card">
-      <div class="overlay-kicker">Update Required</div>
-      <h1 class="overlay-title">Gateway update required before use</h1>
-      <p class="overlay-copy">The server has reported a newer Gateway version. Update this Gateway now; the current version is locked until the update is applied.</p>
+      <div class="overlay-kicker" data-i18n="updateRequired">Update Required</div>
+      <h1 class="overlay-title" data-i18n="overlayTitle">Gateway update required before use</h1>
+      <p class="overlay-copy" data-i18n="overlayCopy">The server has reported a newer Gateway version. Update this Gateway now; the current version is locked until the update is applied.</p>
       <div class="overlay-grid">
-        <div class="update-card"><span class="stat">Current</span><strong id="overlay-current-version">-</strong></div>
-        <div class="update-card"><span class="stat">Server Latest</span><strong id="overlay-server-latest">-</strong></div>
-        <div class="update-card"><span class="stat">Manifest Latest</span><strong id="overlay-manifest-latest">-</strong></div>
+        <div class="update-card"><span class="stat" data-i18n="current">Current</span><strong id="overlay-current-version">-</strong></div>
+        <div class="update-card"><span class="stat" data-i18n="serverLatest">Server Latest</span><strong id="overlay-server-latest">-</strong></div>
+        <div class="update-card"><span class="stat" data-i18n="manifestLatest">Manifest Latest</span><strong id="overlay-manifest-latest">-</strong></div>
       </div>
       <div class="button-row">
-        <button class="sm" id="overlay-check-update">Check</button>
-        <button class="sm primary" id="overlay-start-update">Update now</button>
-        <button class="sm danger" id="overlay-restart-gateway">Restart</button>
+        <button class="sm" id="overlay-check-update" data-i18n="check">Check</button>
+        <button class="sm primary" id="overlay-start-update" data-i18n="updateNow">Update now</button>
+        <button class="sm danger" id="overlay-restart-gateway" data-i18n="restart">Restart</button>
       </div>
-      <div class="update-banner" id="overlay-update-banner">Waiting for update metadata.</div>
+      <div class="update-banner" id="overlay-update-banner" data-i18n="waitingForUpdateMetadata">Waiting for update metadata.</div>
       <div class="progress-stack">
         <div>
-          <div class="progress-head"><span id="overlay-update-progress-phase">Waiting</span><strong id="overlay-update-progress-label">0%</strong></div>
+          <div class="progress-head"><span id="overlay-update-progress-phase" data-i18n="waiting">Waiting</span><strong id="overlay-update-progress-label">0%</strong></div>
           <div class="progress-track"><div class="progress-fill" id="overlay-update-progress"></div></div>
         </div>
       </div>
-      <pre class="update-notes overlay-note" id="overlay-update-notes">Update exists, but release notes are not loaded yet.</pre>
+      <pre class="update-notes overlay-note" id="overlay-update-notes" data-i18n="updateNotesPending">Update exists, but release notes are not loaded yet.</pre>
     </div>
   </div>
 
@@ -405,38 +405,38 @@ PAGE = """<!doctype html>
       <section class="panel span-12 update-center" id="update-center">
         <div class="section-head">
           <div>
-            <h2 data-i18n="update">Update Center</h2>
+            <h2 data-i18n="updateCenter">Update Center</h2>
             <p class="muted small" id="update-status">-</p>
           </div>
           <div class="button-row">
-            <button class="sm" id="check-update">Check</button>
-            <button class="sm primary" id="start-update">Update now</button>
-            <button class="sm danger" id="restart-gateway">Restart</button>
+            <button class="sm" id="check-update" data-i18n="check">Check</button>
+            <button class="sm primary" id="start-update" data-i18n="updateNow">Update now</button>
+            <button class="sm danger" id="restart-gateway" data-i18n="restart">Restart</button>
           </div>
         </div>
         <div class="update-grid">
-          <div class="update-card"><span class="stat">Current Version</span><strong id="current-version-label">-</strong></div>
-          <div class="update-card"><span class="stat">Server Latest</span><strong id="server-latest-version">-</strong></div>
-          <div class="update-card"><span class="stat">Manifest Latest</span><strong id="manifest-latest-version">-</strong></div>
-          <div class="update-card"><span class="stat">Phase</span><strong id="update-phase">-</strong></div>
+          <div class="update-card"><span class="stat" data-i18n="currentVersion">Current Version</span><strong id="current-version-label">-</strong></div>
+          <div class="update-card"><span class="stat" data-i18n="serverLatest">Server Latest</span><strong id="server-latest-version">-</strong></div>
+          <div class="update-card"><span class="stat" data-i18n="manifestLatest">Manifest Latest</span><strong id="manifest-latest-version">-</strong></div>
+          <div class="update-card"><span class="stat" data-i18n="phaseLabel">Phase</span><strong id="update-phase">-</strong></div>
         </div>
         <div class="summary-grid" style="margin-bottom:14px">
-          <div class="summary-card"><span class="stat">Active Slot</span><strong id="active-slot-version">-</strong></div>
-          <div class="summary-card"><span class="stat">Pending Slot</span><strong id="pending-slot-version">-</strong></div>
-          <div class="summary-card"><span class="stat">Boot Phase</span><strong id="boot-phase-label">-</strong></div>
-          <div class="summary-card"><span class="stat">Last Check</span><strong id="last-update-check">-</strong></div>
-          <div class="summary-card"><span class="stat">Source</span><strong id="update-source">-</strong></div>
-          <div class="summary-card"><span class="stat">Auto Check</span><strong id="auto-check-interval">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="activeSlot">Active Slot</span><strong id="active-slot-version">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="pendingSlot">Pending Slot</span><strong id="pending-slot-version">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="bootPhaseLabel">Boot Phase</span><strong id="boot-phase-label">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="lastCheck">Last Check</span><strong id="last-update-check">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="source">Source</span><strong id="update-source">-</strong></div>
+          <div class="summary-card"><span class="stat" data-i18n="autoCheck">Auto Check</span><strong id="auto-check-interval">-</strong></div>
         </div>
-        <div class="update-banner" id="update-banner">Waiting for update signal.</div>
+        <div class="update-banner" id="update-banner" data-i18n="waitingForUpdateSignal">Waiting for update signal.</div>
         <div class="progress-stack">
           <div>
-            <div class="progress-head"><span id="update-progress-phase">Waiting</span><strong id="update-progress-label">0%</strong></div>
+            <div class="progress-head"><span id="update-progress-phase" data-i18n="waiting">Waiting</span><strong id="update-progress-label">0%</strong></div>
             <div class="progress-track"><div class="progress-fill" id="update-progress"></div></div>
           </div>
         </div>
-        <p class="sub-heading" style="margin-top:18px">Changelog</p>
-        <pre class="update-notes" id="update-notes">No changelog loaded.</pre>
+        <p class="sub-heading" style="margin-top:18px" data-i18n="changelog">Changelog</p>
+        <pre class="update-notes" id="update-notes" data-i18n="noChangelogLoaded">No changelog loaded.</pre>
         <p class="notice" id="update-message"></p>
       </section>
 
@@ -471,7 +471,29 @@ PAGE = """<!doctype html>
         state:"State", status:"Status", targetServer:"Target Server",
         time:"Time", transfer:"Transfer to this gateway",
         upstream:"Upstream", upstreamSent:"Upstream sent", upstreamStatus:"Upstream status",
-        udpIn:"UDP in", update:"Update", version:"Version",
+        udpIn:"UDP in", update:"Update", updateCenter:"Update Center", updateRequired:"Update Required", updateNow:"Update now", version:"Version",
+        check:"Check", restart:"Restart", current:"Current", currentVersion:"Current Version",
+        serverLatest:"Server Latest", manifestLatest:"Manifest Latest", phaseLabel:"Phase", activeSlot:"Active Slot",
+        pendingSlot:"Pending Slot", bootPhaseLabel:"Boot Phase", lastCheck:"Last Check", source:"Source",
+        autoCheck:"Auto Check", waitingForUpdateSignal:"Waiting for update signal.", waitingForUpdateMetadata:"Waiting for update metadata.",
+        waiting:"Waiting", changelog:"Changelog", noChangelogLoaded:"No changelog loaded.",
+        updateNotesPending:"Update exists, but release notes are not loaded yet.",
+        overlayTitle:"Gateway update required before use",
+        overlayCopy:"The server has reported a newer Gateway version. Update this Gateway now; the current version is locked until the update is applied.",
+        updateStatusSummary:"current {current} / server {server} / manifest {manifest} / boot {boot}",
+        updateMiniSummary:"{phase} / server {server} / slot {slot}",
+        bannerRequired:"Server requires {version}. Update source: {source}.",
+        bannerError:"Update check error: {error}",
+        bannerHealthy:"Gateway is on the latest allowed version.",
+        overlayBannerReady:"Update {version} is ready to download.",
+        overlayBannerNoMandatory:"No mandatory update at the moment.",
+        sourceServerWs:"WS server", sourceManifest:"Release manifest",
+        phaseIdle:"Idle", phaseChecking:"Checking", phaseChecked:"Checked", phaseDownloading:"Downloading",
+        phaseDownloaded:"Downloaded", phaseStaging:"Staging", phaseStaged:"Staged", phaseSwitchPending:"Switch pending",
+        phaseRestarting:"Restarting", phaseError:"Error",
+        progressChecking:"Checking for update", progressDownloading:"Downloading update", progressDownloaded:"Download complete",
+        progressStaging:"Staging inactive slot", progressStaged:"Staging complete", progressSwitching:"Switching slots",
+        progressFailed:"Update failed", bootIdle:"Idle", bootPendingSwitch:"Pending switch", bootRolledBack:"Rolled back",
         w0title:"Set up your Gateway",
         w0sub:"Assign a unique ID so devices can identify this gateway on your local network.",
         w1title:"Upstream server",
@@ -505,7 +527,29 @@ PAGE = """<!doctype html>
         state:"状態", status:"状態", targetServer:"接続先サーバー",
         time:"時刻", transfer:"このゲートウェイに転送",
         upstream:"上流接続", upstreamSent:"上流送信", upstreamStatus:"上流状態",
-        udpIn:"UDP入力", update:"更新", version:"バージョン",
+        udpIn:"UDP入力", update:"更新", updateCenter:"更新センター", updateRequired:"更新必須", updateNow:"今すぐ更新", version:"バージョン",
+        check:"確認", restart:"再起動", current:"現在", currentVersion:"現在のバージョン",
+        serverLatest:"サーバー最新", manifestLatest:"マニフェスト最新", phaseLabel:"フェーズ", activeSlot:"アクティブスロット",
+        pendingSlot:"保留スロット", bootPhaseLabel:"起動フェーズ", lastCheck:"最終確認", source:"ソース",
+        autoCheck:"自動確認", waitingForUpdateSignal:"更新通知を待機しています。", waitingForUpdateMetadata:"更新メタデータを待機しています。",
+        waiting:"待機中", changelog:"更新履歴", noChangelogLoaded:"更新履歴はまだ読み込まれていません。",
+        updateNotesPending:"更新はありますが、リリースノートはまだ読み込まれていません。",
+        overlayTitle:"使用前に Gateway を更新してください",
+        overlayCopy:"サーバーがより新しい Gateway バージョンを報告しました。今すぐこの Gateway を更新してください。更新が適用されるまで現在のバージョンはロックされます。",
+        updateStatusSummary:"現在 {current} / サーバー {server} / マニフェスト {manifest} / 起動 {boot}",
+        updateMiniSummary:"{phase} / サーバー {server} / スロット {slot}",
+        bannerRequired:"サーバーは {version} を要求しています。更新ソース: {source}。",
+        bannerError:"更新確認エラー: {error}",
+        bannerHealthy:"Gateway は許可された最新バージョンで動作しています。",
+        overlayBannerReady:"更新 {version} をダウンロードできます。",
+        overlayBannerNoMandatory:"現在、必須更新はありません。",
+        sourceServerWs:"WS サーバー", sourceManifest:"リリースマニフェスト",
+        phaseIdle:"待機", phaseChecking:"確認中", phaseChecked:"確認済み", phaseDownloading:"ダウンロード中",
+        phaseDownloaded:"ダウンロード完了", phaseStaging:"ステージング中", phaseStaged:"ステージング完了", phaseSwitchPending:"切り替え待機",
+        phaseRestarting:"再起動中", phaseError:"エラー",
+        progressChecking:"更新を確認中", progressDownloading:"更新をダウンロード中", progressDownloaded:"ダウンロード完了",
+        progressStaging:"非アクティブスロットをステージング中", progressStaged:"ステージング完了", progressSwitching:"スロットを切り替え中",
+        progressFailed:"更新に失敗しました", bootIdle:"待機", bootPendingSwitch:"切り替え待機", bootRolledBack:"ロールバック済み",
         w0title:"ゲートウェイのセットアップ",
         w0sub:"ネットワーク上でこのゲートウェイを識別する固有のIDを割り当てます。",
         w1title:"上流サーバー",
@@ -539,7 +583,29 @@ PAGE = """<!doctype html>
         state:"状态", status:"状态", targetServer:"目标服务器",
         time:"时间", transfer:"转移到此网关",
         upstream:"上游", upstreamSent:"上游已发送", upstreamStatus:"上游状态",
-        udpIn:"UDP 输入", update:"更新", version:"版本",
+        udpIn:"UDP 输入", update:"更新", updateCenter:"更新中心", updateRequired:"必须更新", updateNow:"立即更新", version:"版本",
+        check:"检查", restart:"重启", current:"当前", currentVersion:"当前版本",
+        serverLatest:"服务器最新版本", manifestLatest:"清单最新版本", phaseLabel:"阶段", activeSlot:"活动槽位",
+        pendingSlot:"待切换槽位", bootPhaseLabel:"启动阶段", lastCheck:"最后检查", source:"来源",
+        autoCheck:"自动检查", waitingForUpdateSignal:"等待更新信号。", waitingForUpdateMetadata:"等待更新元数据。",
+        waiting:"等待中", changelog:"更新日志", noChangelogLoaded:"尚未加载更新日志。",
+        updateNotesPending:"发现更新，但更新说明尚未加载。",
+        overlayTitle:"使用前需要更新 Gateway",
+        overlayCopy:"服务器报告了更高版本的 Gateway。请立即更新此 Gateway；在更新完成前，当前版本将被锁定。",
+        updateStatusSummary:"当前 {current} / 服务器 {server} / 清单 {manifest} / 启动 {boot}",
+        updateMiniSummary:"{phase} / 服务器 {server} / 槽位 {slot}",
+        bannerRequired:"服务器要求版本 {version}。更新来源：{source}。",
+        bannerError:"检查更新出错：{error}",
+        bannerHealthy:"Gateway 当前已运行在允许使用的最新版本。",
+        overlayBannerReady:"更新 {version} 已可下载。",
+        overlayBannerNoMandatory:"当前没有强制更新。",
+        sourceServerWs:"WS 服务器", sourceManifest:"发布清单",
+        phaseIdle:"空闲", phaseChecking:"检查中", phaseChecked:"已检查", phaseDownloading:"下载中",
+        phaseDownloaded:"下载完成", phaseStaging:"准备中", phaseStaged:"准备完成", phaseSwitchPending:"等待切换",
+        phaseRestarting:"重启中", phaseError:"错误",
+        progressChecking:"正在检查更新", progressDownloading:"正在下载更新", progressDownloaded:"下载完成",
+        progressStaging:"正在准备非活动槽位", progressStaged:"准备完成", progressSwitching:"正在切换槽位",
+        progressFailed:"更新失败", bootIdle:"空闲", bootPendingSwitch:"等待切换", bootRolledBack:"已回滚",
         w0title:"设置你的 Gateway",
         w0sub:"分配一个唯一 ID，让设备能在本地网络中识别此 Gateway。",
         w1title:"上游服务器",
@@ -580,6 +646,65 @@ PAGE = """<!doctype html>
     let updateLocked = false;
 
     function tr(key) { return (I18N[language] && I18N[language][key]) || I18N.en[key] || key; }
+
+    function fmt(key, values = {}) {
+      let template = tr(key);
+      Object.entries(values).forEach(([name, value]) => {
+        template = template.replaceAll(`{${name}}`, String(value ?? "-"));
+      });
+      return template;
+    }
+
+    function localizeSource(value) {
+      const source = String(value || "").trim();
+      if (source === "server_ws") return tr("sourceServerWs");
+      if (source === "manifest") return tr("sourceManifest");
+      return source || "-";
+    }
+
+    function localizePhaseCode(value) {
+      const phase = String(value || "").trim();
+      const keyMap = {
+        idle: "phaseIdle",
+        checking: "phaseChecking",
+        checked: "phaseChecked",
+        downloading: "phaseDownloading",
+        downloaded: "phaseDownloaded",
+        staging: "phaseStaging",
+        staged: "phaseStaged",
+        switch_pending: "phaseSwitchPending",
+        restarting: "phaseRestarting",
+        error: "phaseError",
+      };
+      return keyMap[phase] ? tr(keyMap[phase]) : (phase || "-");
+    }
+
+    function localizeProgressPhase(value) {
+      const phase = String(value || "").trim();
+      const keyMap = {
+        idle: "waiting",
+        checking: "progressChecking",
+        checked: "phaseChecked",
+        downloading: "progressDownloading",
+        downloaded: "progressDownloaded",
+        staging: "progressStaging",
+        staged: "progressStaged",
+        switch_pending: "progressSwitching",
+        restarting: "phaseRestarting",
+        error: "progressFailed",
+      };
+      return keyMap[phase] ? tr(keyMap[phase]) : (phase || tr("waiting"));
+    }
+
+    function localizeBootPhase(value) {
+      const phase = String(value || "").trim();
+      const keyMap = {
+        idle: "bootIdle",
+        pending_switch: "bootPendingSwitch",
+        rolled_back: "bootRolledBack",
+      };
+      return keyMap[phase] ? tr(keyMap[phase]) : (phase || "-");
+    }
 
     function updateNearbyToggleLabel() {
       const node = document.getElementById("nearby-toggle");
@@ -799,45 +924,48 @@ PAGE = """<!doctype html>
       const serverLatest = state.latest_gateway_version || "-";
       const phase = state.phase || "idle";
       const source = state.update_signal_source || "-";
+      const sourceText = localizeSource(source);
+      const phaseText = localizePhaseCode(phase);
       const activeSlot = state.active_slot || "-";
       const pendingSlot = state.pending_slot || "-";
       const bootPhase = state.boot_phase || "idle";
+      const bootPhaseText = localizeBootPhase(bootPhase);
       const rollbackReason = state.rollback_reason || "";
       const healthyUpdateCenter = !state.required_update
         && !state.last_error
         && (!serverLatest || serverLatest === "-" || serverLatest === current);
       const notes = state.notes_markdown
         || (state.required_update
-          ? "Update available, but release notes are not loaded yet."
-          : "No changelog loaded.");
+          ? tr("updateNotesPending")
+          : tr("noChangelogLoaded"));
       text("gateway-version", current);
       text("current-version-label", current);
       text("server-latest-version", serverLatest);
       text("manifest-latest-version", latest);
-      text("update-phase", phase);
+      text("update-phase", phaseText);
       text("active-slot-version", `${activeSlot} / ${current}`);
       text("pending-slot-version", pendingSlot ? `${pendingSlot} / ${state.target_version || "-"}` : "-");
-      text("boot-phase-label", rollbackReason ? `${bootPhase} (${rollbackReason})` : bootPhase);
+      text("boot-phase-label", rollbackReason ? `${bootPhaseText} (${rollbackReason})` : bootPhaseText);
       text("last-update-check", formatIsoTime(state.last_checked_at));
-      text("update-source", source);
+      text("update-source", sourceText);
       text("auto-check-interval", `${Number(state.auto_check_interval_sec || 0)}s`);
       text("overlay-current-version", current);
       text("overlay-server-latest", serverLatest);
       text("overlay-manifest-latest", latest);
-      text("update-mini", `${phase} / server ${serverLatest} / slot ${activeSlot}`);
-      text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest} / boot ${bootPhase}`);
-      text("update-progress-phase", state.progress_label || "Waiting");
-      text("overlay-update-progress-phase", state.progress_label || "Waiting");
+      text("update-mini", fmt("updateMiniSummary", { phase: phaseText, server: serverLatest, slot: activeSlot }));
+      text("update-status", fmt("updateStatusSummary", { current, server: serverLatest, manifest: latest, boot: bootPhaseText }));
+      text("update-progress-phase", localizeProgressPhase(phase));
+      text("overlay-update-progress-phase", localizeProgressPhase(phase));
       setProgress("update-progress", "update-progress-label", state.progress_pct);
       setProgress("overlay-update-progress", "overlay-update-progress-label", state.progress_pct);
       setPre("update-notes", notes);
       setPre("overlay-update-notes", notes);
       const banner = state.required_update
-        ? `Server requires ${serverLatest}. Update source: ${source}.`
-        : (state.last_error ? `Update check error: ${state.last_error}` : "Gateway is on the latest allowed version.");
+        ? fmt("bannerRequired", { version: serverLatest, source: sourceText })
+        : (state.last_error ? fmt("bannerError", { error: state.last_error }) : tr("bannerHealthy"));
       const overlayBanner = state.required_update
-        ? (state.notes_markdown ? `Update ${serverLatest} is ready to download.` : "Update exists, but release notes are not loaded yet.")
-        : "No mandatory update at the moment.";
+        ? (state.notes_markdown ? fmt("overlayBannerReady", { version: serverLatest }) : tr("updateNotesPending"))
+        : tr("overlayBannerNoMandatory");
       const bannerNode = document.getElementById("update-banner");
       const overlayNode = document.getElementById("overlay-update-banner");
       const updateCenter = document.getElementById("update-center");
@@ -863,7 +991,7 @@ PAGE = """<!doctype html>
       try {
         const payload = await api(path, { method: "POST" });
         renderUpdate(payload.update_state || payload);
-        notice("update-message", (payload.update_state || payload).phase || "ok", "success");
+        notice("update-message", localizePhaseCode((payload.update_state || payload).phase || "checked"), "success");
       } catch (error) {
         notice("update-message", error.message || String(error), "error");
       }
