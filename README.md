@@ -58,23 +58,17 @@ without manually restarting the process.
 
 ## Local Start
 
-Start the Gateway separately:
+Start the Gateway separately with Python on macOS, Linux, or Windows:
 
 ```bash
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
-./scripts/start.sh
+python scripts/start.py
 ```
 
-The script creates `.venv` when needed and preserves Gateway configuration in
+The launcher creates `.venv` when needed and preserves Gateway configuration in
 `.run/config.json`. Before startup it verifies that UDP `22346`, UDP `13250`,
 and TCP `5052` are free. If a legacy Docker Gateway still owns those ports,
 stop and remove that container first.
-
-On Windows, use Python directly:
-
-```powershell
-python scripts/start.py
-```
 
 Start the main WebUI/backend separately:
 
@@ -97,8 +91,8 @@ The Gateway WebUI has an `Update Center`:
 If the backend reports a newer Gateway version, the Gateway enters a mandatory
 update overlay and blocks normal operations until the update is applied.
 
-If you launched the Gateway through `./scripts/start.sh` or
-`python scripts/start.py`, restart is already wired up. If you launched it
+If you launched the Gateway through `python scripts/start.py`, restart is
+already wired up. If you launched it
 manually with `python -m newhorizons_gateway.main`, restart the process
 yourself after `Apply`.
 
@@ -108,26 +102,20 @@ Use the Gateway WebUI target settings, or set the backend URL before starting:
 
 ```bash
 export NEWHORIZONS_GATEWAY_SERVER_URL=ws://192.168.1.153:5051/newhorizons/gateway/ws
-./scripts/start.sh
+python scripts/start.py
 ```
 
 For lab deployment:
 
 ```bash
 export NEWHORIZONS_GATEWAY_SERVER_URL=wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws
-./scripts/start.sh
+python scripts/start.py
 ```
 
 ## Stop
 
 ```bash
 cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Gateway
-./scripts/stop.sh
-```
-
-On Windows:
-
-```powershell
 python scripts/stop.py
 ```
 

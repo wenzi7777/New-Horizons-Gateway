@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, RichLog, Static
+from textual.widgets import Footer, Header, Log, Static
 
 from .console_runtime import format_console_header_lines, read_console_status
 
@@ -56,7 +56,7 @@ class GatewayConsoleApp(App[None]):
         yield Header(show_clock=True)
         with Vertical():
             yield Static("", id="status-panel")
-            yield RichLog(id="event-panel", wrap=True, highlight=False, markup=False, auto_scroll=True)
+            yield Log(id="event-panel", auto_scroll=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -70,8 +70,8 @@ class GatewayConsoleApp(App[None]):
         self._render_status()
 
     def push_log_line(self, line: str) -> None:
-        widget = self.query_one("#event-panel", RichLog)
-        widget.write(line.rstrip())
+        widget = self.query_one("#event-panel", Log)
+        widget.write_line(line.rstrip())
 
     def _refresh_status(self) -> None:
         try:

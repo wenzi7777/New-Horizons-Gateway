@@ -144,11 +144,13 @@ def _windows_console_title():
         pass
 
 
-def _windows_foreground_main():
+def _foreground_main():
     from newhorizons_gateway.gateway_tui import GatewayConsoleApp
 
-    _windows_console_title()
+    if IS_WIN:
+        _windows_console_title()
     RUN_DIR.mkdir(exist_ok=True)
+    PID_FILE.write_text(str(os.getpid()))
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     env["NEWHORIZONS_GATEWAY_APP_ROOT"] = str(APP_DIR)
     env["NEWHORIZONS_GATEWAY_RESTART_COMMAND"] = f"\"{sys.executable}\" \"{Path(__file__).resolve()}\""
@@ -193,7 +195,10 @@ def _windows_foreground_main():
         log_path=LOG_FILE,
         on_ready=_run_gateway,
     )
-    app.run()
+    try:
+        app.run()
+    finally:
+        PID_FILE.unlink(missing_ok=True)
     os._exit(result["exit_code"])
 
 
@@ -201,7 +206,7 @@ def _launch():
     python = str(_venv_bin("python"))
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     env["NEWHORIZONS_GATEWAY_APP_ROOT"] = str(APP_DIR)
-    env["NEWHORIZONS_GATEWAY_RESTART_COMMAND"] = f"\"{sys.executable}\" \"{Path(__file__).resolve()}\""
+    env["NEWHORIZONS_GATEWAY_RESTART_COMMAND"] = f"\"{python}\" \"{Path(__file__).resolve()}\""
 
     if IS_WIN:
         proc = subprocess.Popen(
@@ -221,27 +226,11 @@ def _launch():
         print(f"Log               {LOG_FILE}")
         return
 
-    with open(LOG_FILE, "w", encoding="utf-8") as log:
-        proc = subprocess.Popen(
-            [python, "-m", "newhorizons_gateway.main", "--config", str(CONFIG_FILE)],
-            stdout=log,
-            stderr=log,
-            env=env,
-            cwd=str(APP_DIR),
-            start_new_session=True,
-        )
-
-    PID_FILE.write_text(str(proc.pid))
-    time.sleep(1)
-
-    if proc.poll() is not None:
-        print("ERROR: Gateway failed to start.", file=sys.stderr)
-        print(LOG_FILE.read_text(errors="replace")[:2000], file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Gateway started   PID {proc.pid}")
-    print("WebUI             http://127.0.0.1:5052")
-    print(f"Log               {LOG_FILE}")
+    os.execvpe(
+        python,
+        [python, str(Path(__file__).resolve()), FOREGROUND_FLAG],
+        env,
+    )
 
 
 def main():
@@ -260,8 +249,8 @@ def main():
         _create_config()
         _launch()
         return
-    if IS_WIN and FOREGROUND_FLAG in sys.argv[1:]:
-        _windows_foreground_main()
+    if FOREGROUND_FLAG in sys.argv[1:]:
+        _foreground_main()
         return
     RUN_DIR.mkdir(exist_ok=True)
     _stop_previous()

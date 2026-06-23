@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import signal
+import threading
 import time
 from typing import Any
 
@@ -17,6 +18,13 @@ from .udp_control import UDPCommandDispatcher, normalize_device_uid
 from .update_manager import GatewayUpdateManager
 from .upstream_wss import UpstreamWSSClient
 from .web import GatewayWebServer
+
+
+def _install_signal_handlers(stop_handler: Any) -> None:
+    if threading.current_thread() is not threading.main_thread():
+        return
+    signal.signal(signal.SIGINT, stop_handler)
+    signal.signal(signal.SIGTERM, stop_handler)
 
 
 def main() -> None:
@@ -42,8 +50,7 @@ def main() -> None:
         return bool(expires_at_ms and int(time.time() * 1000) > expires_at_ms)
 
 
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
+    _install_signal_handlers(stop)
 
     def on_command(device_uid: str, payload: dict[str, Any]) -> None:
         normalized_uid = normalize_device_uid(device_uid)

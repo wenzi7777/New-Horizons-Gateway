@@ -84,7 +84,7 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertNotIn("auth_token", store.snapshot())
 
     def test_gateway_startup_has_no_token_env_override(self):
-        host_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
+        host_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
         self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", host_script)
 
@@ -121,6 +121,8 @@ class GatewayWebUiTest(unittest.TestCase):
             "docker-compose.container-discovery.yml",
             ".dockerignore",
             "scripts/discovery_proxy.py",
+            "scripts/start.sh",
+            "scripts/stop.sh",
             "scripts/start.ps1",
             "scripts/stop.ps1",
             "scripts/start_docker.sh",
@@ -132,38 +134,34 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertEqual([path for path in removed if (ROOT / path).exists()], [])
         self.assertFalse(any("docker" in entry.lower() for entry in ALLOWED_UPDATE_ENTRIES))
 
-    def test_start_gateway_defaults_to_host_gateway_on_macos(self):
-        # start.sh IS the host-mode script for macOS/Linux — no wrapper needed.
-        script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
+    def test_python_start_gateway_defaults_to_host_gateway_on_macos(self):
+        python_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
-        self.assertIn("Running on the host preserves the real device UDP source IP", script)
-        self.assertIn("http://127.0.0.1:5052", script)
+        self.assertIn("http://127.0.0.1:5052", python_script)
+        self.assertIn("os.execvpe", python_script)
+        self.assertIn("FOREGROUND_FLAG", python_script)
 
     def test_gateway_windows_docs_use_python_entrypoints(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("python scripts/start.py", readme)
         self.assertIn("python scripts/stop.py", readme)
+        self.assertNotIn("start.sh", readme)
+        self.assertNotIn("stop.sh", readme)
         self.assertNotIn("start.ps1", readme)
         self.assertNotIn("stop.ps1", readme)
 
-    def test_host_gateway_script_runs_in_background_with_pid_tracking(self):
-        # start.sh uses nohup + disown for a persistent background process on macOS/Linux.
-        script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
+    def test_python_launcher_runs_foreground_tui_on_macos(self):
+        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
-        self.assertIn("PID_FILE", script)
-        self.assertIn("nohup", script)
-        self.assertIn("disown", script)
+        self.assertIn("os.execvpe", script)
+        self.assertIn("FOREGROUND_FLAG", script)
+        self.assertNotIn("nohup", script)
+        self.assertNotIn("disown", script)
 
-    def test_host_start_scripts_detect_legacy_docker_port_conflicts(self):
-        shell_script = (ROOT / "scripts" / "start.sh").read_text(encoding="utf-8")
+    def test_python_start_script_detects_legacy_docker_port_conflicts(self):
         python_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
-        self.assertIn("Legacy Docker Gateway", shell_script)
-        self.assertIn("22346", shell_script)
-        self.assertIn("13250", shell_script)
-        self.assertIn("5052", shell_script)
-        self.assertIn("command -v ss", shell_script)
         self.assertIn("22346", python_script)
         self.assertIn("13250", python_script)
         self.assertIn("5052", python_script)
@@ -188,7 +186,7 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("GatewayConsoleApp", script)
         self.assertIn("newhorizons_gateway.gateway_tui", script)
         self.assertIn("from textual.app import App", tui_source)
-        self.assertIn("RichLog", tui_source)
+        self.assertIn("Log", tui_source)
         self.assertIn("Header", tui_source)
         self.assertIn("Footer", tui_source)
         self.assertIn("textual", requirements)
