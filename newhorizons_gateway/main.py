@@ -24,7 +24,7 @@ def main() -> None:
     args = parser.parse_args()
     config_store = GatewayConfigStore(args.config)
     config = config_store.snapshot()
-    state = GatewayState()
+    state = GatewayState(control_stale_sec=float(config.get("control_stale_sec", 16.0)))
     arduino_hosts: dict[str, str] = {}
     result_chunks = ResultChunkReassembler()
     running = True

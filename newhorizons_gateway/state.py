@@ -13,9 +13,14 @@ def utc_now() -> str:
 
 
 class GatewayState:
-    def __init__(self, *, now: Callable[[], float] | None = None, control_stale_sec: float = 90.0, findme_attach_window_sec: float = 20.0) -> None:
+    def __init__(self, *, now: Callable[[], float] | None = None, control_stale_sec: float = 16.0, findme_attach_window_sec: float = 20.0) -> None:
         self._now = now or time.time
-        self.control_stale_sec = max(1.0, float(control_stale_sec or 90.0))
+        # 16s = ~3 missed 5s heartbeats (Config.h kHeartbeatIntervalMs=5000) plus
+        # jitter slack. A live device — streaming, idle, or in maintenance — sends a
+        # heartbeat every 5s, so missing one or two keeps it connected; a powered-off
+        # device stops heartbeating and is dropped within ~16-21s (next snapshot push).
+        # `is not None` (not `or`) so an explicit small value is never bumped back up.
+        self.control_stale_sec = max(1.0, float(control_stale_sec if control_stale_sec is not None else 16.0))
         self.findme_attach_window_sec = max(1.0, float(findme_attach_window_sec or 20.0))
         self._lock = threading.RLock()
         self.devices: dict[str, dict[str, Any]] = {}
@@ -162,6 +167,12 @@ class GatewayState:
             device["udp_bytes"] = int(device.get("udp_bytes", 0)) + int(byte_count)
             if forwarded:
                 device["udp_forwarded"] = int(device.get("udp_forwarded", 0)) + 1
+                # A forwarded stream packet proves the device is alive, so it counts
+                # as liveness under the tighter control_stale_sec window — a busy
+                # streamer never flaps offline just because a heartbeat was missed.
+                # Only forwarded (accepted) packets count; a denied device's raw
+                # packets must not make it appear connected.
+                device["last_seen_monotonic"] = self._now()
             else:
                 device["udp_dropped"] = int(device.get("udp_dropped", 0)) + 1
             device["last_udp_at"] = utc_now()

@@ -11,10 +11,53 @@ from newhorizons_gateway.state import GatewayState  # noqa: E402
 
 
 class GatewayStateTest(unittest.TestCase):
-    def test_default_control_stale_window_covers_reboot_to_os_transition(self):
+    def test_default_control_stale_window_is_fast_offline_detect(self):
         state = GatewayState()
 
-        self.assertGreaterEqual(state.control_stale_sec, 60.0)
+        # Detect a powered-off device within ~3 missed 5s heartbeats, but tolerate
+        # one or two dropped heartbeats so a live device never flaps offline.
+        self.assertGreaterEqual(state.control_stale_sec, 15.0)
+        self.assertLessEqual(state.control_stale_sec, 20.0)
+
+    def test_powered_off_device_goes_disconnected_within_window(self):
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0)
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+
+        # Two missed heartbeats (10s): still serving.
+        clock["t"] = 1010.0
+        self.assertTrue(state.is_serving("3CDC7545CCD0"))
+        snap = state.snapshot([])
+        self.assertTrue(snap["devices"][0]["connected"])
+
+        # Past the window (17s since last heartbeat): dropped.
+        clock["t"] = 1017.0
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+        snap = state.snapshot([])
+        self.assertFalse(snap["devices"][0]["connected"])
+        self.assertEqual(snap["devices"][0]["findme_state"], "disconnected")
+
+    def test_forwarded_udp_packet_refreshes_liveness(self):
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0)
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+
+        # A forwarded stream packet at 12s keeps the device alive past the window.
+        clock["t"] = 1012.0
+        state.record_udp_packet("3CDC7545CCD0", 64, forwarded=True)
+        clock["t"] = 1020.0  # 20s since heartbeat, but only 8s since the packet
+        self.assertTrue(state.is_serving("3CDC7545CCD0"))
+
+    def test_non_forwarded_udp_packet_is_not_liveness(self):
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0)
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+
+        # A denied / non-forwarded packet must NOT count as liveness.
+        clock["t"] = 1012.0
+        state.record_udp_packet("3CDC7545CCD0", 64, forwarded=False)
+        clock["t"] = 1020.0
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
 
     def test_control_attach_and_disconnect_update_findme_state(self):
         state = GatewayState()

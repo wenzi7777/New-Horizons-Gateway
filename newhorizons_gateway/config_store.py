@@ -28,6 +28,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "listen_web_port": 5052,
     "discovery_enabled": True,
     "discovery_priority": 100,
+    "control_stale_sec": 16.0,
     "denied_devices": [],
 }
 
@@ -107,6 +108,10 @@ class GatewayConfigStore:
         config["target_mode"] = str(config.get("target_mode") or "production")
         if config["target_mode"] not in ("production", "local", "manual"):
             config["target_mode"] = "production"
+        try:
+            config["control_stale_sec"] = max(1.0, float(config.get("control_stale_sec", 16.0)))
+        except (TypeError, ValueError):
+            config["control_stale_sec"] = 16.0
         config.pop("auth_token", None)
         if not isinstance(config.get("denied_devices"), list):
             config["denied_devices"] = []
