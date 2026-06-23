@@ -83,18 +83,19 @@ The Gateway WebUI has an `Update Center`:
 
 1. The Desktop backend WebSocket tells the Gateway the latest allowed version.
 2. `Check` reads `releases/gateway-latest.json` when update metadata is needed.
-3. `Download` downloads the source zip and verifies SHA-256.
-4. `Apply` stages the host-native update in place.
-5. `Restart` relaunches the Gateway when `NEWHORIZONS_GATEWAY_RESTART_COMMAND`
-   is configured by the bundled start scripts.
+3. `Update now` downloads the source zip, verifies SHA-256, and stages the new
+   version into the inactive A/B slot.
+4. The bootloader switches from the active slot to the staged slot.
+5. The new slot must report local health (`health.json` + WebUI port ready) or
+   the bootloader rolls back automatically.
 
 If the backend reports a newer Gateway version, the Gateway enters a mandatory
 update overlay and blocks normal operations until the update is applied.
 
-If you launched the Gateway through `python scripts/start.py`, restart is
-already wired up. If you launched it
-manually with `python -m newhorizons_gateway.main`, restart the process
-yourself after `Apply`.
+If you launched the Gateway through `python scripts/start.py`, slot switching
+and rollback are already wired up by the bootloader. The bootloader itself is
+not updated by daily OTA; the first bootloader-capable release must be
+installed manually.
 
 ## Run On Another Computer
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import threading
 import time
@@ -10,6 +11,7 @@ from typing import Any
 from .arduino_protocol import is_arduino_heartbeat_packet, is_arduino_stream_packet
 from .config_store import GatewayConfigStore
 from .console_runtime import write_console_status
+from .boot_state import GatewayHealthStore
 from .discovery import DiscoveryResponder
 from .local_device import LocalUDPIngestServer, packet_device_uid as stream_packet_device_uid
 from .result_chunks import RESULT_CHUNK_TYPE, ResultChunkReassembler
@@ -30,6 +32,11 @@ def _install_signal_handlers(stop_handler: Any) -> None:
 def run(config_path: str | None = None, stop_event: threading.Event | None = None) -> None:
     config_store = GatewayConfigStore(config_path)
     config = config_store.snapshot()
+    health_store = GatewayHealthStore(
+        os.getenv("NEWHORIZONS_GATEWAY_HEALTH_PATH") or str(config_store.path.parent / "health.json"),
+    )
+    slot_name = str(os.getenv("NEWHORIZONS_GATEWAY_SLOT_NAME") or "")
+    expected_version = str(os.getenv("NEWHORIZONS_GATEWAY_EXPECTED_VERSION") or __version__)
     state = GatewayState(control_stale_sec=float(config.get("control_stale_sec", 16.0)))
     arduino_hosts: dict[str, str] = {}
     result_chunks = ResultChunkReassembler()
@@ -48,6 +55,14 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
 
 
     _install_signal_handlers(stop)
+
+    health_store.write({
+        "slot": slot_name,
+        "version": expected_version,
+        "ready": False,
+        "phase": "starting",
+        "web_port": int(config.get("listen_web_port", 5052)),
+    })
 
     def on_command(device_uid: str, payload: dict[str, Any]) -> None:
         normalized_uid = normalize_device_uid(device_uid)
@@ -261,6 +276,8 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         publish_console_status(current_config)
 
     update_manager = GatewayUpdateManager()
+    if stop_event is not None:
+        update_manager.set_restart_callback(stop_event.set)
     web_server = GatewayWebServer(
         str(config["listen_web_host"]),
         int(config["listen_web_port"]),
@@ -275,6 +292,13 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
 
     web_server.start()
     apply_runtime_config(config)
+    health_store.write({
+        "slot": slot_name,
+        "version": expected_version,
+        "ready": True,
+        "phase": "running",
+        "web_port": int(config.get("listen_web_port", 5052)),
+    })
     print(
         "New Horizons Gateway web=http://127.0.0.1:{} enabled={} udp={}:{} findme={}:{} upstream={}".format(
             config["listen_web_port"],
@@ -314,6 +338,13 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
             udp_commands.service()
             result_chunks.purge()
     finally:
+        health_store.write({
+            "slot": slot_name,
+            "version": expected_version,
+            "ready": False,
+            "phase": "stopped",
+            "web_port": int(config.get("listen_web_port", 5052)),
+        })
         if discovery is not None:
             discovery.stop()
         web_server.stop()

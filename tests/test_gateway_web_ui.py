@@ -137,9 +137,9 @@ class GatewayWebUiTest(unittest.TestCase):
     def test_python_start_gateway_defaults_to_host_gateway_on_macos(self):
         python_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
 
-        self.assertIn("http://127.0.0.1:5052", python_script)
-        self.assertIn("os.execvpe", python_script)
-        self.assertIn("FOREGROUND_FLAG", python_script)
+        self.assertIn("GatewayBootloader", python_script)
+        self.assertIn("slot_a", python_script)
+        self.assertIn("start_runtime.py", python_script)
 
     def test_gateway_windows_docs_use_python_entrypoints(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -152,12 +152,13 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("stop.ps1", readme)
 
     def test_python_launcher_runs_foreground_tui_on_macos(self):
-        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        bootloader_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        runtime_script = (ROOT / "scripts" / "start_runtime.py").read_text(encoding="utf-8")
 
-        self.assertIn("os.execvpe", script)
-        self.assertIn("FOREGROUND_FLAG", script)
-        self.assertNotIn("nohup", script)
-        self.assertNotIn("disown", script)
+        self.assertIn("GatewayBootloader", bootloader_script)
+        self.assertIn("GatewayConsoleApp", runtime_script)
+        self.assertNotIn("nohup", runtime_script)
+        self.assertNotIn("disown", runtime_script)
 
     def test_python_start_script_detects_legacy_docker_port_conflicts(self):
         python_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
@@ -167,18 +168,19 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("5052", python_script)
 
     def test_windows_python_launcher_shows_dedicated_gateway_console_banner(self):
-        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        bootloader_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        runtime_script = (ROOT / "scripts" / "start_runtime.py").read_text(encoding="utf-8")
 
-        self.assertIn("New Horizons Gateway", script)
-        self.assertIn("Closing this window stops Gateway", script)
-        self.assertIn("Web UI", script)
-        self.assertIn("CREATE_NEW_CONSOLE", script)
-        self.assertNotIn("CREATE_NO_WINDOW", script)
-        self.assertIn("console_status_path", script)
-        self.assertIn("Status polls", script)
+        self.assertIn("New Horizons Gateway", runtime_script)
+        self.assertIn("Closing this window stops Gateway", runtime_script)
+        self.assertIn("Web UI", runtime_script)
+        self.assertIn("CREATE_NEW_CONSOLE", bootloader_script)
+        self.assertNotIn("CREATE_NO_WINDOW", bootloader_script)
+        self.assertIn("console_status_path", runtime_script)
+        self.assertIn("Status polls", runtime_script)
 
     def test_windows_python_launcher_uses_textual_tui(self):
-        script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        script = (ROOT / "scripts" / "start_runtime.py").read_text(encoding="utf-8")
         tui_source = (ROOT / "newhorizons_gateway" / "gateway_tui.py").read_text(encoding="utf-8")
         requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -194,7 +196,7 @@ class GatewayWebUiTest(unittest.TestCase):
 
     def test_gateway_tui_quit_path_notifies_shutdown_and_ctrl_c_binding(self):
         tui_source = (ROOT / "newhorizons_gateway" / "gateway_tui.py").read_text(encoding="utf-8")
-        start_source = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
+        start_source = (ROOT / "scripts" / "start_runtime.py").read_text(encoding="utf-8")
 
         self.assertIn('BINDINGS = [("ctrl+c", "quit", "Quit")]', tui_source)
         self.assertIn("def action_quit", tui_source)
@@ -293,6 +295,8 @@ class GatewayWebUiTest(unittest.TestCase):
 
         self.assertIn('id="update-required-overlay"', web_source)
         self.assertIn('id="update-center"', web_source)
+        self.assertIn('id="active-slot-version"', web_source)
+        self.assertIn('id="pending-slot-version"', web_source)
         self.assertIn('id="server-latest-version"', web_source)
         self.assertIn('id="manifest-latest-version"', web_source)
         self.assertIn('id="last-update-check"', web_source)
@@ -378,7 +382,7 @@ class GatewayWebUiTest(unittest.TestCase):
     def test_status_route_refreshes_update_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
-            manager = FakeUpdateManager({"phase": "idle", "required_update": False})
+            manager = FakeUpdateManager({"phase": "idle", "required_update": False, "active_slot": "slot_a", "inactive_slot": "slot_b", "pending_slot": ""})
             server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream(), update_manager=manager)
             client = server.app.test_client()
 

@@ -180,7 +180,7 @@ PAGE = """<!doctype html>
     <select id="language-select" style="width:auto;min-height:34px;padding:4px 8px">
       <option value="en">English</option>
       <option value="ja">日本語</option>
-      <option value="zh">繁體中文</option>
+      <option value="zh-CN">简体中文</option>
     </select>
   </header>
 
@@ -421,6 +421,9 @@ PAGE = """<!doctype html>
           <div class="update-card"><span class="stat">Phase</span><strong id="update-phase">-</strong></div>
         </div>
         <div class="summary-grid" style="margin-bottom:14px">
+          <div class="summary-card"><span class="stat">Active Slot</span><strong id="active-slot-version">-</strong></div>
+          <div class="summary-card"><span class="stat">Pending Slot</span><strong id="pending-slot-version">-</strong></div>
+          <div class="summary-card"><span class="stat">Boot Phase</span><strong id="boot-phase-label">-</strong></div>
           <div class="summary-card"><span class="stat">Last Check</span><strong id="last-update-check">-</strong></div>
           <div class="summary-card"><span class="stat">Source</span><strong id="update-source">-</strong></div>
           <div class="summary-card"><span class="stat">Auto Check</span><strong id="auto-check-interval">-</strong></div>
@@ -510,43 +513,64 @@ PAGE = """<!doctype html>
         w2title:"ゲートウェイを有効化",
         w2sub:"設定を確認してサービスを開始します。",
       },
-      zh: {
-        action:"操作", address:"位址", allow:"允許", applyUpdate:"套用更新", autoGenerate:"自動生成",
-        appTitle:"New Horizons 閘道器", back:"← 返回", checkUpdate:"檢查更新",
-        claims:"認領記錄", connectionMode:"連線模式", denied:"已拒絕", device:"設備",
-        discoverDevices:"搜尋設備", downloadUpdate:"下載更新",
-        effectiveServer:"實際伺服器", enableAndStart:"啟用並開始",
-        enabledCopy:"啟用上游連線、UDP 及 FindMe 服務", error:"錯誤",
-        gateway:"閘道器", gatewayId:"閘道器 ID", gatewaySettings:"閘道器設定",
-        hideNearby:"隱藏附近", showNearby:"顯示附近",
-        language:"語言", lastSeen:"最後發現", localServices:"本地服務",
-        localServicesCopy:"FindMe / UDP 控制與資料", manualUrl:"手動 WS/WSS 網址", mode:"模式", next:"下一步 →",
-        nearbyCopy:"本閘道器收到的近期 FindMe 廣播。僅對尚未由本閘道器服務的設備使用「轉移」功能。",
-        nearbyDevices:"附近設備 / FindMe 偵測",
-        noActiveClaims:"目前沒有認領記錄。", noDevices:"目前沒有正在服務的設備。", noNearby:"尚未收到附近的 FindMe 請求。",
-        offline:"離線", online:"上線", operations:"操作",
-        operationsCopy:"設備探索與管理。「附近」設備透過 FindMe 廣播發現——點擊「轉移」可將其移至本閘道器。",
-        packets:"封包", production:"生產環境", reject:"拒絕",
-        refresh:"重新整理", refreshNow:"立即重新整理", restartGateway:"重新啟動閘道器",
-        dropped:"丟棄", queueDropped:"佇列丟棄",
-        save:"儲存", saved:"已儲存", serveThisDevice:"轉移至本閘道器",
-        serving:"服務中", servingDevices:"服務中的設備",
-        setupCopy:"在啟用上游連線、UDP 及 FindMe 服務前，請先設定唯一的閘道器 ID。",
-        setupTitle:"設定閘道器 ID", firstRun:"首次設定",
-        state:"狀態", status:"狀態", targetServer:"目標伺服器",
-        time:"時間", transfer:"轉移至本閘道器",
-        upstream:"上游連線", upstreamSent:"上游已傳送", upstreamStatus:"上游狀態",
-        udpIn:"UDP 輸入", update:"更新", version:"版本",
-        w0title:"設定閘道器",
-        w0sub:"為本閘道器指定一個唯一 ID，以便在區域網路上識別。",
-        w1title:"上游伺服器",
-        w1sub:"選擇本閘道器要轉發設備資料的伺服器。",
-        w2title:"啟用閘道器",
-        w2sub:"確認設定並啟動閘道器服務。",
+      "zh-CN": {
+        action:"操作", address:"地址", allow:"允许", applyUpdate:"应用更新", autoGenerate:"自动生成",
+        appTitle:"New Horizons Gateway", back:"← 返回", checkUpdate:"检查更新",
+        claims:"Claims", connectionMode:"连接模式", denied:"已拒绝", device:"设备",
+        discoverDevices:"发现设备", downloadUpdate:"下载更新",
+        effectiveServer:"实际服务器", enableAndStart:"启用并启动",
+        enabledCopy:"启动上游、UDP 和 FindMe", error:"错误",
+        gateway:"网关", gatewayId:"Gateway ID", gatewaySettings:"网关设置",
+        hideNearby:"隐藏附近设备", showNearby:"显示附近设备",
+        language:"语言", lastSeen:"最后发现", localServices:"本地服务",
+        localServicesCopy:"FindMe / UDP 控制与数据", manualUrl:"手动 WS/WSS URL", mode:"模式", next:"下一步 →",
+        nearbyCopy:"此网关最近收到的 FindMe 广播。仅对当前未由此网关服务的设备使用“转移”。",
+        nearbyDevices:"附近设备 / FindMe 发现",
+        noActiveClaims:"当前没有活动 Claims。", noDevices:"当前没有服务中的设备。", noNearby:"尚未收到附近的 FindMe 请求。",
+        offline:"离线", online:"在线", operations:"操作",
+        operationsCopy:"设备发现与管理。附近设备通过 FindMe 被看到后，可点击“转移”将其切换到此网关。",
+        packets:"数据包", production:"生产环境", reject:"拒绝",
+        refresh:"刷新", refreshNow:"立即刷新", restartGateway:"重启 Gateway",
+        dropped:"丢弃", queueDropped:"队列丢弃",
+        save:"保存", saved:"已保存", serveThisDevice:"转移到此网关",
+        serving:"服务中", servingDevices:"服务中的设备",
+        setupCopy:"在启用上游、UDP 和 FindMe 服务之前，请先创建唯一的 Gateway ID。",
+        setupTitle:"设置 Gateway ID", firstRun:"首次设置",
+        state:"状态", status:"状态", targetServer:"目标服务器",
+        time:"时间", transfer:"转移到此网关",
+        upstream:"上游", upstreamSent:"上游已发送", upstreamStatus:"上游状态",
+        udpIn:"UDP 输入", update:"更新", version:"版本",
+        w0title:"设置你的 Gateway",
+        w0sub:"分配一个唯一 ID，让设备能在本地网络中识别此 Gateway。",
+        w1title:"上游服务器",
+        w1sub:"选择此 Gateway 要把设备数据转发到哪个 New Horizons 服务器。",
+        w2title:"启用 Gateway",
+        w2sub:"确认设置并启动 Gateway 服务。",
       },
     };
 
-    let language = localStorage.getItem("newhorizons-gateway-language") || "en";
+    function normalizeLanguage(value) {
+      const input = String(value || "").trim().toLowerCase();
+      if (input === "ja" || input.startsWith("ja-")) return "ja";
+      if (input === "zh" || input === "zh-cn" || input === "zh-hans" || input.startsWith("zh-cn") || input.startsWith("zh-hans")) return "zh-CN";
+      return "en";
+    }
+
+    function detectBrowserLanguage() {
+      const candidates = Array.isArray(navigator.languages) && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language];
+      for (const candidate of candidates) {
+        const normalized = normalizeLanguage(candidate);
+        if (I18N[normalized]) return normalized;
+      }
+      return "en";
+    }
+
+    let language = normalizeLanguage(localStorage.getItem("newhorizons-gateway-language")) || detectBrowserLanguage();
+    if (!localStorage.getItem("newhorizons-gateway-language")) {
+      language = detectBrowserLanguage();
+    }
     const PRODUCTION_URL = "__PRODUCTION_URL__";
     const LOCAL_URL = "__LOCAL_URL__";
     let showNearby = true;
@@ -775,6 +799,10 @@ PAGE = """<!doctype html>
       const serverLatest = state.latest_gateway_version || "-";
       const phase = state.phase || "idle";
       const source = state.update_signal_source || "-";
+      const activeSlot = state.active_slot || "-";
+      const pendingSlot = state.pending_slot || "-";
+      const bootPhase = state.boot_phase || "idle";
+      const rollbackReason = state.rollback_reason || "";
       const healthyUpdateCenter = !state.required_update
         && !state.last_error
         && (!serverLatest || serverLatest === "-" || serverLatest === current);
@@ -787,14 +815,17 @@ PAGE = """<!doctype html>
       text("server-latest-version", serverLatest);
       text("manifest-latest-version", latest);
       text("update-phase", phase);
+      text("active-slot-version", `${activeSlot} / ${current}`);
+      text("pending-slot-version", pendingSlot ? `${pendingSlot} / ${state.target_version || "-"}` : "-");
+      text("boot-phase-label", rollbackReason ? `${bootPhase} (${rollbackReason})` : bootPhase);
       text("last-update-check", formatIsoTime(state.last_checked_at));
       text("update-source", source);
       text("auto-check-interval", `${Number(state.auto_check_interval_sec || 0)}s`);
       text("overlay-current-version", current);
       text("overlay-server-latest", serverLatest);
       text("overlay-manifest-latest", latest);
-      text("update-mini", `${phase} / server ${serverLatest}`);
-      text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest}`);
+      text("update-mini", `${phase} / server ${serverLatest} / slot ${activeSlot}`);
+      text("update-status", `current ${current} / server ${serverLatest} / manifest ${latest} / boot ${bootPhase}`);
       text("update-progress-phase", state.progress_label || "Waiting");
       text("overlay-update-progress-phase", state.progress_label || "Waiting");
       setProgress("update-progress", "update-progress-label", state.progress_pct);
@@ -889,7 +920,7 @@ PAGE = """<!doctype html>
     });
 
     document.getElementById("language-select").addEventListener("change", (event) => {
-      language = event.target.value;
+      language = normalizeLanguage(event.target.value);
       if (!I18N[language]) language = "en";
       localStorage.setItem("newhorizons-gateway-language", language);
       refresh();

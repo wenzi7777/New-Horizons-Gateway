@@ -10,6 +10,19 @@ from newhorizons_gateway.update_manager import GatewayUpdateManager
 
 
 class GatewayUpdateManagerTest(unittest.TestCase):
+    def test_state_exposes_slot_boot_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = GatewayUpdateManager(app_root=tmpdir, staging_root=Path(tmpdir) / "updates")
+
+            state = manager.state()
+
+        self.assertEqual(state["active_slot"], "slot_a")
+        self.assertEqual(state["inactive_slot"], "slot_b")
+        self.assertEqual(state["pending_slot"], "")
+        self.assertEqual(state["boot_phase"], "idle")
+        self.assertEqual(state["rollback_reason"], "")
+        self.assertFalse(state["health_ready"])
+
     def test_server_version_newer_requires_update_without_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = GatewayUpdateManager(app_root=tmpdir, staging_root=Path(tmpdir) / "updates")
@@ -74,7 +87,7 @@ class GatewayUpdateManagerTest(unittest.TestCase):
             self.assertEqual(state["phase"], "error")
             self.assertTrue(state["last_error"])
 
-    def test_start_update_downloads_and_applies_package_then_requires_restart(self):
+    def test_start_update_downloads_and_stages_package_into_inactive_slot_then_requests_switch(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             app_root = tmp_path / "app"
@@ -120,21 +133,25 @@ class GatewayUpdateManagerTest(unittest.TestCase):
                 staging_root=tmp_path / "updates",
                 manifest_url=manifest.as_uri(),
             )
+            restart_requests = []
+            manager.set_restart_callback(lambda: restart_requests.append("requested"))
 
             manager.set_server_latest_version("v9.9.9")
             manager.start_update()
             manager.wait_for_idle(timeout=5.0)
             state = manager.state()
 
-            self.assertEqual(state["phase"], "applied")
-            self.assertTrue(state["restart_required"])
-            self.assertTrue(state["pending_release_ready"])
+            self.assertEqual(state["phase"], "switch_pending")
+            self.assertEqual(state["active_slot"], "slot_a")
+            self.assertEqual(state["pending_slot"], "slot_b")
+            self.assertEqual(state["target_version"], "v9.9.9")
             self.assertEqual(state["download_progress_pct"], 100)
             self.assertEqual(state["apply_progress_pct"], 100)
+            self.assertEqual(restart_requests, ["requested"])
             self.assertEqual((app_root / "README.md").read_text(encoding="utf-8"), "old")
             self.assertEqual((app_root / "scripts" / "start.py").read_text(encoding="utf-8"), "old-start")
-            self.assertEqual((manager.pending_release_root / "README.md").read_text(encoding="utf-8"), "new-readme")
-            self.assertEqual((manager.pending_release_root / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
+            self.assertEqual((manager.slots_root / "slot_b" / "README.md").read_text(encoding="utf-8"), "new-readme")
+            self.assertEqual((manager.slots_root / "slot_b" / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
 
     def test_apply_does_not_move_live_directories_before_copying(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -197,29 +214,9 @@ class GatewayUpdateManagerTest(unittest.TestCase):
             with mock.patch.object(update_manager_module.shutil, "move", side_effect=forbid_directory_move):
                 state = manager.apply()
 
-            self.assertEqual(state["phase"], "applied")
+            self.assertEqual(state["phase"], "staged")
             self.assertEqual((app_root / "scripts" / "start.py").read_text(encoding="utf-8"), "old-start")
-            self.assertEqual((manager.pending_release_root / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
-
-    def test_restart_spawns_activation_launcher_for_pending_release(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            app_root = tmp_path / "app"
-            scripts_dir = app_root / "scripts"
-            scripts_dir.mkdir(parents=True)
-            (scripts_dir / "start.py").write_text("print('start')\n", encoding="utf-8")
-            manager = GatewayUpdateManager(app_root=app_root, staging_root=tmp_path / "updates")
-            manager.pending_release_root.mkdir(parents=True)
-            (manager.pending_release_root / "README.md").write_text("new-readme", encoding="utf-8")
-
-            with mock.patch("newhorizons_gateway.update_manager.subprocess.Popen") as popen:
-                state = manager.restart()
-
-            self.assertEqual(state["phase"], "restarting")
-            popen.assert_called_once()
-            args = popen.call_args.args[0]
-            self.assertIn("--gateway-activate-update", args)
-            self.assertIn(str(manager.pending_release_root), args)
+            self.assertEqual((manager.slots_root / "slot_b" / "scripts" / "start.py").read_text(encoding="utf-8"), "new-start")
 
 
 if __name__ == "__main__":
