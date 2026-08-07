@@ -13,7 +13,7 @@ def utc_now() -> str:
 
 
 class GatewayState:
-    def __init__(self, *, now: Callable[[], float] | None = None, control_stale_sec: float = 16.0, findme_attach_window_sec: float = 20.0) -> None:
+    def __init__(self, *, now: Callable[[], float] | None = None, control_stale_sec: float = 16.0, findme_attach_window_sec: float = 20.0, prune_after_sec: float = 300.0) -> None:
         self._now = now or time.time
         # 16s = ~3 missed 5s heartbeats (Config.h kHeartbeatIntervalMs=5000) plus
         # jitter slack. A live device — streaming, idle, or in maintenance — sends a
@@ -22,6 +22,21 @@ class GatewayState:
         # `is not None` (not `or`) so an explicit small value is never bumped back up.
         self.control_stale_sec = max(1.0, float(control_stale_sec if control_stale_sec is not None else 16.0))
         self.findme_attach_window_sec = max(1.0, float(findme_attach_window_sec or 20.0))
+        # A device this gateway hasn't heard from (control OR findme) in this
+        # long is dropped from self.devices entirely by _mark_stale_control_locked(),
+        # not just flagged connected=False -- otherwise a device that migrated
+        # to a different gateway/hub (or left for good) keeps getting
+        # re-asserted into every ~5s snapshot() heartbeat forever, which is
+        # what let the Desktop backend's device-presence display keep
+        # flipping back to this gateway even long after ownership moved on
+        # (see New-Horizons-Desktop's _record_gateway_device_presence_locked()
+        # fix -- this is the complementary cleanup on this side). No scarcity
+        # pressure here (unlike New-Horizons-Hub's fixed 4-slot roster), so
+        # 300s is just a comfortable multiple of any realistic reconnect/
+        # reboot/migration window, not a tuned value. Floored at
+        # control_stale_sec so it can never fire before the connected flag
+        # itself flips.
+        self.prune_after_sec = max(self.control_stale_sec, float(prune_after_sec if prune_after_sec is not None else 300.0))
         self._lock = threading.RLock()
         self.devices: dict[str, dict[str, Any]] = {}
         self.findme_requests: deque[dict[str, Any]] = deque(maxlen=120)
@@ -342,17 +357,27 @@ class GatewayState:
 
     def _mark_stale_control_locked(self) -> None:
         now = self._now()
-        for device in self.devices.values():
-            if not device.get("connected"):
-                continue
-            seen_at = device.get("last_seen_monotonic")
-            if seen_at is None:
-                continue
-            if now - float(seen_at or 0.0) <= self.control_stale_sec:
-                continue
-            device["connected"] = False
-            device["disconnected_at"] = utc_now()
-            device["findme_state"] = "disconnected"
+        stale_uids: list[str] = []
+        for uid, device in self.devices.items():
+            if device.get("connected"):
+                seen_at = device.get("last_seen_monotonic")
+                if seen_at is not None and now - float(seen_at or 0.0) > self.control_stale_sec:
+                    device["connected"] = False
+                    device["disconnected_at"] = utc_now()
+                    device["findme_state"] = "disconnected"
+            # Prune using whichever of the two activity timestamps is newer --
+            # a device only ever seen via a denied/rejected FindMe request
+            # never gets last_seen_monotonic set (only record_control()/
+            # record_heartbeat()/record_udp_packet(forwarded=True) set that),
+            # so relying on last_seen_monotonic alone would make such a
+            # device permanently unprunable.
+            activity_candidates = [
+                t for t in (device.get("last_seen_monotonic"), device.get("last_findme_monotonic")) if t is not None
+            ]
+            if activity_candidates and now - max(float(t) for t in activity_candidates) > self.prune_after_sec:
+                stale_uids.append(uid)
+        for uid in stale_uids:
+            del self.devices[uid]
 
     def _active_claim_locked(self, uid: str, now_ms: int | None = None) -> dict[str, Any] | None:
         current_ms = int(time.time() * 1000) if now_ms is None else now_ms

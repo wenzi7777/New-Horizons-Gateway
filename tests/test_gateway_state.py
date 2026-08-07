@@ -37,6 +37,39 @@ class GatewayStateTest(unittest.TestCase):
         self.assertFalse(snap["devices"][0]["connected"])
         self.assertEqual(snap["devices"][0]["findme_state"], "disconnected")
 
+    def test_device_pruned_after_prune_after_sec_of_inactivity(self):
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0, prune_after_sec=300.0)
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+
+        # Well past control_stale_sec (offline) but not yet prune_after_sec:
+        # still present in the roster, just disconnected.
+        clock["t"] = 1200.0
+        snap = state.snapshot([])
+        self.assertEqual(len(snap["devices"]), 1)
+        self.assertFalse(snap["devices"][0]["connected"])
+
+        # Past prune_after_sec since the last heartbeat: dropped entirely.
+        clock["t"] = 1000.0 + 301.0
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+        snap = state.snapshot([])
+        self.assertEqual(snap["devices"], [])
+
+    def test_findme_only_device_is_still_prunable(self):
+        # A device only ever seen via a denied/rejected FindMe request never
+        # sets last_seen_monotonic (only record_control/record_heartbeat/
+        # record_udp_packet(forwarded=True) do) -- must not be permanently
+        # unprunable as a result.
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0, prune_after_sec=300.0)
+        state.record_findme_request(
+            {"device_uid": "3CDC7545CCD0"}, ("192.168.1.152", 12345), accepted=False, reason="denied",
+        )
+
+        clock["t"] = 1000.0 + 301.0
+        snap = state.snapshot([])
+        self.assertEqual(snap["devices"], [])
+
     def test_forwarded_udp_packet_refreshes_liveness(self):
         clock = {"t": 1000.0}
         state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0)
