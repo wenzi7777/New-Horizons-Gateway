@@ -8,6 +8,7 @@ import threading
 import time
 from typing import Any
 
+from . import __version__
 from .arduino_protocol import is_arduino_heartbeat_packet, is_arduino_stream_packet
 from .config_store import GatewayConfigStore
 from .console_runtime import write_console_status
