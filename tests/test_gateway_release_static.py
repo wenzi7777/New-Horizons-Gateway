@@ -46,6 +46,16 @@ class GatewayReleaseStaticTest(unittest.TestCase):
         self.assertFalse(any("discovery_proxy" in name for name in names))
         self.assertFalse(any(name.endswith(".ps1") for name in names))
 
+    def test_package_metadata_matches_runtime_release_version(self):
+        source_init = (ROOT / "newhorizons_gateway" / "__init__.py").read_text(encoding="utf-8")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        runtime_match = re.search(r'__version__ = "v(\d+\.\d+\.\d+)"', source_init)
+        package_match = re.search(r'^version = "(\d+\.\d+\.\d+)"$', pyproject, re.M)
+
+        self.assertIsNotNone(runtime_match)
+        self.assertIsNotNone(package_match)
+        self.assertEqual(package_match.group(1), runtime_match.group(1))
+
     def test_gateway_readme_documents_host_only_ota_without_env_gate(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

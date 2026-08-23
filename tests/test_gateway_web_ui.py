@@ -444,7 +444,7 @@ class GatewayWebUiTest(unittest.TestCase):
 
         operations_index = web_source.index('data-i18n="operations"')
         claims_index = web_source.index('data-i18n="claims"')
-        update_index = web_source.rindex('data-i18n="update"')
+        update_index = web_source.rindex('id="update-center"')
 
         self.assertLess(operations_index, claims_index)
         self.assertGreater(update_index, claims_index)
