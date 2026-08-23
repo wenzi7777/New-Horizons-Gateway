@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,6 +6,24 @@ from unittest import mock
 
 
 class GatewayBootloaderTest(unittest.TestCase):
+    def test_stale_slot_venv_is_recreated_before_installing_runtime(self):
+        from newhorizons_gateway.bootloader import GatewayBootloader
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app_root = Path(tmpdir)
+            bootloader = GatewayBootloader(app_root=app_root)
+            slot_root = bootloader.slot_root("slot_a")
+            stale_python = slot_root / ".venv" / "bin" / "python"
+            stale_python.parent.mkdir(parents=True)
+            stale_python.symlink_to(app_root / "missing-python")
+
+            with mock.patch("newhorizons_gateway.bootloader.subprocess.run") as run:
+                bootloader.ensure_slot_runtime(slot_root)
+
+            self.assertFalse(stale_python.exists())
+            self.assertFalse(stale_python.is_symlink())
+            self.assertEqual(run.call_args_list[0].args[0][:3], [sys.executable, "-m", "venv"])
+
     def test_bootstrap_slot_a_seeds_runtime_payload_from_app_root(self):
         from newhorizons_gateway.bootloader import GatewayBootloader
 

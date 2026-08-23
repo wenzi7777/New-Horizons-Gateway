@@ -60,6 +60,24 @@ class ArduinoProtocolTest(unittest.TestCase):
         struct.pack_into("<IIH", matrix_packet, 10, 10, 5010, 4)
         self.assertFalse(is_arduino_heartbeat_packet(matrix_packet))
 
+    def test_identifies_arduino_v5_stream_and_heartbeat_packets(self):
+        stream_packet = bytearray(24 + 6)
+        struct.pack_into("<HBB", stream_packet, 0, 0xA55A, 5, 0)
+        stream_packet[4:10] = bytes.fromhex("9CCC01E2BD2C")
+        struct.pack_into("<IQH", stream_packet, 10, 1, 1_725_000_000_000, 6)
+
+        self.assertTrue(is_arduino_stream_packet(stream_packet))
+        self.assertFalse(is_arduino_heartbeat_packet(stream_packet))
+        self.assertEqual(packet_device_uid(stream_packet), "9CCC01E2BD2C")
+
+        heartbeat_packet = bytearray(24)
+        struct.pack_into("<HBB", heartbeat_packet, 0, 0xA55A, 5, PACKET_FLAG_HEARTBEAT)
+        heartbeat_packet[4:10] = bytes.fromhex("9CCC01E2BD2C")
+        struct.pack_into("<IQH", heartbeat_packet, 10, 2, 1_725_000_000_005, 0)
+
+        self.assertTrue(is_arduino_stream_packet(heartbeat_packet))
+        self.assertTrue(is_arduino_heartbeat_packet(heartbeat_packet))
+
 
 if __name__ == "__main__":
     unittest.main()

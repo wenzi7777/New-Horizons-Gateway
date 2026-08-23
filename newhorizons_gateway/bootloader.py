@@ -101,6 +101,12 @@ class GatewayBootloader:
         slot_version = self._slot_version(slot_root)
         if python.exists() and version_file.exists() and version_file.read_text(encoding="utf-8").strip() == slot_version:
             return
+        # A copied slot can retain a venv symlink to an interpreter that no
+        # longer exists (for example after a Python/Conda upgrade). `venv`
+        # refuses to initialise an already-populated directory, so rebuild
+        # that generated runtime before attempting installation.
+        if venv_root.exists() and not python.exists():
+            shutil.rmtree(venv_root)
         if not python.exists():
             subprocess.run([sys.executable, "-m", "venv", str(venv_root)], check=True, cwd=str(slot_root))
         pip = self._venv_bin(venv_root, "pip")

@@ -10,6 +10,7 @@ CONTROL_PORT = 22345
 PACKET_MAGIC = 0xA55A
 PACKET_VERSION = 3
 PACKET_VERSION_V4 = 4
+PACKET_VERSION_V5 = 5
 PACKET_FLAG_HEARTBEAT = 0x80
 HEADER_LEN = 20
 HEADER_PREFIX = struct.Struct("<HBB")
@@ -21,7 +22,7 @@ HEADER_TAIL_V4 = struct.Struct("<IQH")
 def _header_len_and_tail(version: int) -> tuple[int, struct.Struct] | None:
     if version == PACKET_VERSION:
         return HEADER_LEN, HEADER_TAIL
-    if version == PACKET_VERSION_V4:
+    if version in (PACKET_VERSION_V4, PACKET_VERSION_V5):
         return HEADER_LEN_V4, HEADER_TAIL_V4
     return None
 
