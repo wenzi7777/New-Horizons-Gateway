@@ -33,7 +33,7 @@ def _launch_foreground_console() -> None:
     )
     print(f"Gateway bootloader PID {proc.pid}")
     print("Gateway active slot  slot_a")
-    print("Gateway console      New Horizons Gateway")
+    print("Gateway console      NHOS Gateway")
     print(f"Gateway runtime      {RUNTIME_ENTRY}")
     print(f"Gateway ports        {KNOWN_PORTS[0]}/{KNOWN_PORTS[1]}/{KNOWN_PORTS[2]}")
     print("Web UI               http://127.0.0.1:5052")

@@ -15,7 +15,7 @@ GATEWAY_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": False,
-    "gateway_name": "New Horizons Gateway",
+    "gateway_name": "NHOS Gateway",
     "gateway_id": "",
     "target_mode": "production",
     "manual_url": "",

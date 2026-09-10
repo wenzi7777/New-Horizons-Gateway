@@ -27,7 +27,7 @@ PAGE = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>New Horizons Gateway</title>
+  <title>NHOS Gateway</title>
   <style>
     :root { color-scheme:light; --bg:#f7f7f3; --panel:#fffffb; --ink:#151816; --muted:#697068; --line:#d9ddd4; --green:#3f7b61; --danger:#b6554c; --warn:#b5842a; --blue:#3f648f; }
     * { box-sizing:border-box; }
@@ -174,7 +174,7 @@ PAGE = """<!doctype html>
 
   <!-- ── Sticky topbar ── -->
   <header class="topbar">
-    <span class="topbar-brand" data-i18n="appTitle">New Horizons Gateway</span>
+    <span class="topbar-brand" data-i18n="appTitle">NHOS Gateway</span>
     <span class="topbar-gw mono" id="topbar-gw-id"></span>
     <span id="topbar-badge" class="badge">-</span>
     <select id="language-select" style="width:auto;min-height:34px;padding:4px 8px">
@@ -447,7 +447,7 @@ PAGE = """<!doctype html>
     const I18N = {
       en: {
         action:"Action", address:"Address", allow:"Allow", applyUpdate:"Apply update", autoGenerate:"Auto-generate",
-        appTitle:"New Horizons Gateway", back:"← Back", checkUpdate:"Check for update",
+        appTitle:"NHOS Gateway", back:"← Back", checkUpdate:"Check for update",
         claims:"Claims", connectionMode:"Connection mode", denied:"Denied", device:"Device",
         discoverDevices:"Discover devices", downloadUpdate:"Download update",
         effectiveServer:"Effective server", enableAndStart:"Enable & Start",
@@ -503,7 +503,7 @@ PAGE = """<!doctype html>
       },
       ja: {
         action:"操作", address:"アドレス", allow:"許可", applyUpdate:"更新を適用", autoGenerate:"自動生成",
-        appTitle:"New Horizons Gateway", back:"← 戻る", checkUpdate:"更新を確認",
+        appTitle:"NHOS Gateway", back:"← 戻る", checkUpdate:"更新を確認",
         claims:"要求", connectionMode:"接続モード", denied:"拒否済み", device:"デバイス",
         discoverDevices:"デバイスを検出", downloadUpdate:"更新をダウンロード",
         effectiveServer:"実際の接続先", enableAndStart:"有効化して開始",
@@ -559,7 +559,7 @@ PAGE = """<!doctype html>
       },
       "zh-CN": {
         action:"操作", address:"地址", allow:"允许", applyUpdate:"应用更新", autoGenerate:"自动生成",
-        appTitle:"New Horizons Gateway", back:"← 返回", checkUpdate:"检查更新",
+        appTitle:"NHOS Gateway", back:"← 返回", checkUpdate:"检查更新",
         claims:"Claims", connectionMode:"连接模式", denied:"已拒绝", device:"设备",
         discoverDevices:"发现设备", downloadUpdate:"下载更新",
         effectiveServer:"实际服务器", enableAndStart:"启用并启动",

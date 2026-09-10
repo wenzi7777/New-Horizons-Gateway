@@ -43,7 +43,7 @@ class GatewayDiscoveryTest(unittest.TestCase):
         payload = json.loads(data.decode())
         self.assertEqual(payload["type"], "findme_offer")
         self.assertEqual(payload["gateway_id"], "gw-test")
-        self.assertEqual(payload["gateway_name"], "New Horizons Gateway")
+        self.assertEqual(payload["gateway_name"], "NHOS Gateway")
         self.assertTrue(payload["accept"])
         self.assertEqual(payload["udp_port"], 13250)
 

@@ -67,7 +67,7 @@ def _windows_console_title():
     try:
         import ctypes
 
-        ctypes.windll.kernel32.SetConsoleTitleW("New Horizons Gateway")
+        ctypes.windll.kernel32.SetConsoleTitleW("NHOS Gateway")
     except Exception:
         pass
 

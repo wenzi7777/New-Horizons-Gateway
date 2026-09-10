@@ -171,7 +171,7 @@ class GatewayWebUiTest(unittest.TestCase):
         bootloader_script = (ROOT / "scripts" / "start.py").read_text(encoding="utf-8")
         runtime_script = (ROOT / "scripts" / "start_runtime.py").read_text(encoding="utf-8")
 
-        self.assertIn("New Horizons Gateway", runtime_script)
+        self.assertIn("NHOS Gateway", runtime_script)
         self.assertIn("Closing this window stops Gateway", runtime_script)
         self.assertIn("Web UI", runtime_script)
         self.assertIn("CREATE_NEW_CONSOLE", bootloader_script)

@@ -188,7 +188,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                 device_uid,
                 {
                     "device_uid": device_uid,
-                    "device_name": "New Horizons OS-{}".format(device_uid),
+                    "device_name": "NHOS-{}".format(device_uid),
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_heartbeat",
                 },
@@ -202,7 +202,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                 "status",
                 {
                     "device_uid": device_uid,
-                    "device_name": "New Horizons OS-{}".format(device_uid),
+                    "device_name": "NHOS-{}".format(device_uid),
                     "protocol": "NHO/Arduino/1",
                     "transport_path": "arduino_udp",
                 },
@@ -240,7 +240,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
             {
                 "enabled": bool(current_config.get("enabled")),
                 "gateway_id": str(current_config.get("gateway_id") or ""),
-                "gateway_name": str(current_config.get("gateway_name") or "New Horizons Gateway"),
+                "gateway_name": str(current_config.get("gateway_name") or "NHOS Gateway"),
                 "server_url": str(current_config.get("server_url") or ""),
                 "target_mode": str(current_config.get("target_mode") or ""),
                 "web_ui_url": "http://127.0.0.1:{}".format(int(current_config.get("listen_web_port", 5052))),
@@ -259,7 +259,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         upstream.update_server(str(current_config["server_url"]), str(current_config.get("auth_token") or ""))
         if discovery is not None:
             discovery.gateway_id = str(current_config.get("gateway_id") or "")
-            discovery.gateway_name = str(current_config.get("gateway_name") or "New Horizons Gateway")
+            discovery.gateway_name = str(current_config.get("gateway_name") or "NHOS Gateway")
             discovery.priority = int(current_config.get("discovery_priority", 100))
         should_run = bool(current_config.get("enabled"))
         if should_run and not runtime_started:
@@ -324,7 +324,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                 last_gateway_status = now
                 current_config = config_store.snapshot()
                 upstream.send_gateway_status({
-                    "gateway_name": current_config.get("gateway_name", "New Horizons Gateway"),
+                    "gateway_name": current_config.get("gateway_name", "NHOS Gateway"),
                     "gateway_id": current_config.get("gateway_id", ""),
                     "enabled": bool(current_config.get("enabled")),
                     "version": update_manager.state().get("current_version", ""),

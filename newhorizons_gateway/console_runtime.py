@@ -55,7 +55,7 @@ def format_console_header_lines(
     required_update = bool(status.get("required_update"))
     update_state = "REQUIRED" if required_update else "OK"
     lines = [
-        f"New Horizons Gateway  {version}",
+        f"NHOS Gateway  {version}",
         f"Enabled: {enabled} | Upstream: {upstream} | Update: {update_state} | Status polls: {int(status.get('status_poll_count') or 0)}",
         f"Gateway ID: {status.get('gateway_id') or '-'} | Mode: {status.get('target_mode') or '-'}",
         f"Web UI: {status.get('web_ui_url') or 'http://127.0.0.1:5052'}",

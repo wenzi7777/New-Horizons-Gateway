@@ -20,7 +20,7 @@ class DiscoveryResponder:
         gateway_id: str,
         udp_port: Callable[[], int] | int,
         priority: int = 100,
-        gateway_name: str = "New Horizons Gateway",
+        gateway_name: str = "NHOS Gateway",
         upstream_status: Callable[[], str] | None = None,
         is_denied: Callable[[str], bool] | None = None,
         active_claim: Callable[[str], dict | None] | None = None,
