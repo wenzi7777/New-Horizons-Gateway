@@ -17,6 +17,7 @@ from .discovery import DiscoveryResponder
 from .local_device import LocalUDPIngestServer, packet_device_uid as stream_packet_device_uid
 from .result_chunks import RESULT_CHUNK_TYPE, ResultChunkReassembler
 from .state import GatewayState
+from .time_service import build_time_response, is_time_request, now_epoch_us
 from .udp_control import UDPCommandDispatcher, normalize_device_uid
 from .update_manager import GatewayUpdateManager
 from .upstream_wss import UpstreamWSSClient
@@ -173,6 +174,18 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
             upstream.send_device_message(message_type, data)
 
     def on_udp_packet(payload: bytes, addr: tuple[str, int]) -> None:
+        # First thing after recvfrom(): this is t2 of a device's time request.
+        rx_epoch_us = now_epoch_us()
+        if is_time_request(payload):
+            # Answered here rather than forwarded: devices sync their clocks
+            # to this Gateway (time_service.py). Never reaches the backend.
+            response = build_time_response(payload, rx_epoch_us)
+            if response is not None:
+                try:
+                    udp_server.send_datagram(response, addr)
+                except (OSError, RuntimeError):
+                    pass  # the device times out and asks again
+            return
         if payload.lstrip().startswith(b"{"):
             handle_udp_control(payload, addr)
             return

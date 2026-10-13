@@ -45,6 +45,20 @@ Device <-> Gateway                 Gateway <-> Backend
 FindMe + UDP control/data           WebSocket / WSS
 ```
 
+## Device Time
+
+WiFi-mode devices (firmware v1.12.0+) set their clocks from this Gateway:
+they send a 12-byte time request to UDP `13250`, and the Gateway replies with
+its own wall-clock time, timed NTP-style so the network delay cancels out
+(`newhorizons_gateway/time_service.py`). Every device behind one Gateway
+therefore shares a single clock, which keeps multi-device recordings aligned.
+
+The Gateway's time is the host OS clock, so keep the host's automatic time
+(NTP) enabled -- it is on by default on Windows, macOS and Linux. Devices fall
+back to an NTP server of their own when no Gateway answers (including older
+Gateway versions, which ignore the request). Time requests are answered
+locally and never forwarded upstream.
+
 ## Target Server Modes
 
 The Gateway owns the upstream server configuration; the device only needs Wi-Fi.
