@@ -5,6 +5,8 @@ import threading
 import struct
 from typing import Any, Callable
 
+from .wire import PACKET_MAGIC
+
 
 PacketCallback = Callable[[bytes, tuple[str, int]], None]
 
@@ -76,6 +78,6 @@ def packet_device_uid(payload: bytes) -> str:
         magic = struct.unpack_from("<H", payload, 0)[0]
     except struct.error:
         return ""
-    if magic != 0xA55A:
+    if magic != PACKET_MAGIC:
         return ""
     return payload[4:10].hex().upper()

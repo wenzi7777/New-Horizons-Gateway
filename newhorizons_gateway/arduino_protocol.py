@@ -5,13 +5,12 @@ import struct
 from typing import Any
 
 
-PROTOCOL = "NHO/Arduino/1"
-CONTROL_PORT = 22345
-PACKET_MAGIC = 0xA55A
+# Generated from the firmware's spec/wire.json; v3/v4 below are frozen history.
+from .wire import CONTROL_PORT, PACKET_MAGIC, PACKET_VERSION_V5, PROTOCOL
+from .wire import FLAG_HEARTBEAT as PACKET_FLAG_HEARTBEAT
+
 PACKET_VERSION = 3
 PACKET_VERSION_V4 = 4
-PACKET_VERSION_V5 = 5
-PACKET_FLAG_HEARTBEAT = 0x80
 HEADER_LEN = 20
 HEADER_PREFIX = struct.Struct("<HBB")
 HEADER_TAIL = struct.Struct("<IIH")

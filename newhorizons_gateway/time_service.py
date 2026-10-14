@@ -24,16 +24,13 @@ import struct
 import time
 from typing import Callable, Optional
 
-TIME_REQ_MAGIC = 0xE8
-TIME_RESP_MAGIC = 0xE9
-TIME_WIRE_VERSION = 1
-TIME_REQ_LEN = 12
-TIME_RESP_LEN = 32
+# Generated from the device firmware's spec/wire.json.
+from .wire import TIME_FLAG_SYNCED, TIME_REQ_LEN, TIME_REQ_MAGIC, TIME_RESP_LEN, TIME_RESP_MAGIC, TIME_WIRE_VERSION
 
 # TIME_RESP flags: bit0 = server clock valid; high nibble = server's own time
 # source (TimeSource in the firmware's ClockCore.h). 1 = "sntp": the host OS
 # clock is assumed NTP-disciplined, which the Gateway cannot verify itself.
-FLAG_SERVER_SYNCED = 0x01
+FLAG_SERVER_SYNCED = TIME_FLAG_SYNCED
 SERVER_SOURCE_SNTP = 1
 
 # ~2020-09-13, as in the firmware: a host clock earlier than this is unset.
