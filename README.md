@@ -95,8 +95,11 @@ cd /Users/nickxu/Documents/vd-ctl-r-os-lts/New-Horizons-Desktop
 
 The Gateway WebUI has an `Update Center`:
 
-1. The Desktop backend WebSocket tells the Gateway the latest allowed version.
-2. `Check` reads `releases/gateway-latest.json` when update metadata is needed.
+1. The Desktop backend WebSocket tells the Gateway the latest allowed version
+   on the Gateway's update channel (sent in `hello`).
+2. `Check` reads the channel's manifest when update metadata is needed:
+   `releases/gateway-latest.json` (stable, the default) or
+   `releases/gateway-beta.json` (beta).
 3. `Update now` downloads the source zip, verifies SHA-256, and stages the new
    version into the inactive A/B slot.
 4. The bootloader switches from the active slot to the staged slot.
@@ -105,6 +108,20 @@ The Gateway WebUI has an `Update Center`:
 
 If the backend reports a newer Gateway version, the Gateway enters a mandatory
 update overlay and blocks normal operations until the update is applied.
+
+### Update channels
+
+`Update Center` → `Update channel` switches between `stable` and `beta`
+(stored as `update_channel` in `.run/config.json`, or
+`NEWHORIZONS_GATEWAY_UPDATE_CHANNEL`). Beta versions carry a prerelease
+suffix (`v0.7.1-beta.1`) and sort below their release; switching back to
+stable never downgrades, and clears a beta-only mandatory update.
+
+Publishing: a stable release writes `releases/gateway-latest.json` as before,
+and also `releases/gateway-beta.json` unless that already holds a newer beta.
+A beta release writes only `releases/gateway-beta.json` (same fields:
+`version`, `zip_url`, `sha256`, `notes_url`). Never put a prerelease in
+`gateway-latest.json`: every Gateway older than v0.7.0 reads only that file.
 
 If you launched the Gateway through `python scripts/start.py`, slot switching
 and rollback are already wired up by the bootloader. The bootloader itself is

@@ -37,6 +37,9 @@ class UpstreamWSSClient:
         self.server_url = server_url
         self.gateway_id = gateway_id
         self.auth_token = auth_token
+        # Sent in hello so the Backend answers with this channel's latest
+        # version (gateway_hello_ack.latest_gateway_version).
+        self.update_channel = "stable"
         self.on_command = on_command
         self.on_message = on_message
         self.data_queue: DropOldestQueue[bytes] = DropOldestQueue(data_queue_size)
@@ -145,6 +148,26 @@ class UpstreamWSSClient:
             "control_queue_size": self.control_queue.qsize(),
         }
 
+    def _hello_payload(self) -> dict[str, Any]:
+        return {
+            "type": "hello",
+            "gateway_id": self.gateway_id,
+            "version": __version__,
+            "update_channel": self.update_channel,
+            "connected_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def set_update_channel(self, channel: str) -> None:
+        """Re-announces the Gateway when its channel changes, so the Backend's
+        hello_ack carries the new channel's latest version straight away."""
+        if channel == self.update_channel:
+            return
+        self.update_channel = channel
+        try:
+            self._send_json(self._hello_payload())
+        except Exception:
+            pass  # not connected: the next connect's hello carries it
+
     def update_server(self, server_url: str, auth_token: str | None = None) -> None:
         self.server_url = server_url
         if auth_token is not None:
@@ -220,14 +243,7 @@ class UpstreamWSSClient:
                 self.last_error = ""
                 self.last_connected_at = datetime.now(timezone.utc).isoformat()
                 backoff = 1.0
-                self._send_json(
-                    {
-                        "type": "hello",
-                        "gateway_id": self.gateway_id,
-                        "version": __version__,
-                        "connected_at": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
+                self._send_json(self._hello_payload())
                 self._send_thread = threading.Thread(target=self._send_loop, name="newhorizons-gateway-wss-send", daemon=True)
                 self._send_thread.start()
                 self._receive_loop(ws)

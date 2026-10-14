@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from .versioning import normalize_channel
+
 
 PRODUCTION_URL = "wss://isensing-s1.u-aizu.ac.jp/newhorizons/gateway/ws"
 LOCAL_URL = "ws://127.0.0.1:5051/newhorizons/gateway/ws"
@@ -30,6 +32,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "discovery_priority": 100,
     "control_stale_sec": 16.0,
     "denied_devices": [],
+    # Self-update channel: "stable" (gateway-latest.json) or "beta"
+    # (gateway-beta.json). See versioning.py.
+    "update_channel": "stable",
 }
 
 
@@ -86,6 +91,7 @@ class GatewayConfigStore:
             "NEWHORIZONS_GATEWAY_ID": "gateway_id",
             "NEWHORIZONS_GATEWAY_ENABLED": "enabled",
             "NEWHORIZONS_GATEWAY_NAME": "gateway_name",
+            "NEWHORIZONS_GATEWAY_UPDATE_CHANNEL": "update_channel",
         }
         for env_name, key in env_map.items():
             value = os.getenv(env_name)
@@ -105,6 +111,7 @@ class GatewayConfigStore:
         if config["gateway_id"] and not GATEWAY_ID_PATTERN.fullmatch(config["gateway_id"]):
             config["gateway_id"] = ""
             config["enabled"] = False
+        config["update_channel"] = normalize_channel(config.get("update_channel"))
         config["target_mode"] = str(config.get("target_mode") or "production")
         if config["target_mode"] not in ("production", "local", "manual"):
             config["target_mode"] = "production"

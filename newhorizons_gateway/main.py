@@ -269,6 +269,9 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
     def apply_runtime_config(current_config: dict[str, Any]) -> None:
         nonlocal runtime_started
         upstream.gateway_id = str(current_config.get("gateway_id") or "")
+        channel = str(current_config.get("update_channel") or "stable")
+        update_manager.set_channel(channel)
+        upstream.set_update_channel(channel)
         upstream.update_server(str(current_config["server_url"]), str(current_config.get("auth_token") or ""))
         if discovery is not None:
             discovery.gateway_id = str(current_config.get("gateway_id") or "")
@@ -289,7 +292,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
             runtime_started = False
         publish_console_status(current_config)
 
-    update_manager = GatewayUpdateManager()
+    update_manager = GatewayUpdateManager(channel=str(config.get("update_channel") or "stable"))
     if stop_event is not None:
         update_manager.set_restart_callback(stop_event.set)
     web_server = GatewayWebServer(
@@ -341,6 +344,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     "gateway_id": current_config.get("gateway_id", ""),
                     "enabled": bool(current_config.get("enabled")),
                     "version": update_manager.state().get("current_version", ""),
+                    "update_channel": current_config.get("update_channel", "stable"),
                     "target_mode": current_config.get("target_mode", ""),
                     "server_url": current_config.get("server_url", ""),
                     "listen_udp_port": int(udp_server.bound_port),

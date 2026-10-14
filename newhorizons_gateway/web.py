@@ -15,6 +15,7 @@ from . import __version__
 from .config_store import GatewayConfigStore, LOCAL_URL, PRODUCTION_URL, validate_gateway_id
 from .state import GatewayState
 from .update_manager import GatewayUpdateManager
+from .versioning import UPDATE_CHANNELS
 
 
 ConfigCallback = Callable[[dict[str, Any]], None]
@@ -414,6 +415,16 @@ PAGE = """<!doctype html>
             <button class="sm danger" id="restart-gateway" data-i18n="restart">Restart</button>
           </div>
         </div>
+        <div class="toolbar" style="margin-bottom:14px">
+          <div class="field narrow">
+            <label data-i18n="updateChannel">Update channel</label>
+            <select id="update-channel">
+              <option value="stable" data-i18n="channelStable">Stable</option>
+              <option value="beta" data-i18n="channelBeta">Beta (experimental)</option>
+            </select>
+          </div>
+          <p class="muted small" data-i18n="channelHint">Beta gets experimental releases first. Switching back to stable never downgrades: this Gateway stays on its version until a stable release is newer.</p>
+        </div>
         <div class="update-grid">
           <div class="update-card"><span class="stat" data-i18n="currentVersion">Current Version</span><strong id="current-version-label">-</strong></div>
           <div class="update-card"><span class="stat" data-i18n="serverLatest">Server Latest</span><strong id="server-latest-version">-</strong></div>
@@ -473,6 +484,9 @@ PAGE = """<!doctype html>
         upstream:"Upstream", upstreamSent:"Upstream sent", upstreamStatus:"Upstream status",
         udpIn:"UDP in", update:"Update", updateCenter:"Update Center", updateRequired:"Update Required", updateNow:"Update now", version:"Version",
         check:"Check", restart:"Restart", current:"Current", currentVersion:"Current Version",
+        updateChannel:"Update channel", channelStable:"Stable", channelBeta:"Beta (experimental)",
+        channelHint:"Beta gets experimental releases first. Switching back to stable never downgrades: this Gateway stays on its version until a stable release is newer.",
+        channelBetaConfirm:"Switch to the beta channel? Beta releases are experimental and may be unstable.",
         serverLatest:"Server Latest", manifestLatest:"Manifest Latest", phaseLabel:"Phase", activeSlot:"Active Slot",
         pendingSlot:"Pending Slot", bootPhaseLabel:"Boot Phase", lastCheck:"Last Check", source:"Source",
         autoCheck:"Auto Check", waitingForUpdateSignal:"Waiting for update signal.", waitingForUpdateMetadata:"Waiting for update metadata.",
@@ -529,6 +543,9 @@ PAGE = """<!doctype html>
         upstream:"上流接続", upstreamSent:"上流送信", upstreamStatus:"上流状態",
         udpIn:"UDP入力", update:"更新", updateCenter:"更新センター", updateRequired:"更新必須", updateNow:"今すぐ更新", version:"バージョン",
         check:"確認", restart:"再起動", current:"現在", currentVersion:"現在のバージョン",
+        updateChannel:"アップデートチャンネル", channelStable:"安定版", channelBeta:"ベータ版（実験的）",
+        channelHint:"ベータ版は実験的なリリースを先に受け取ります。安定版に戻してもダウングレードはしません。新しい安定版が出るまで現在のバージョンのままです。",
+        channelBetaConfirm:"ベータチャンネルに切り替えますか？ベータ版は実験的で、不安定な場合があります。",
         serverLatest:"サーバー最新", manifestLatest:"マニフェスト最新", phaseLabel:"フェーズ", activeSlot:"アクティブスロット",
         pendingSlot:"保留スロット", bootPhaseLabel:"起動フェーズ", lastCheck:"最終確認", source:"ソース",
         autoCheck:"自動確認", waitingForUpdateSignal:"更新通知を待機しています。", waitingForUpdateMetadata:"更新メタデータを待機しています。",
@@ -585,6 +602,9 @@ PAGE = """<!doctype html>
         upstream:"上游", upstreamSent:"上游已发送", upstreamStatus:"上游状态",
         udpIn:"UDP 输入", update:"更新", updateCenter:"更新中心", updateRequired:"必须更新", updateNow:"立即更新", version:"版本",
         check:"检查", restart:"重启", current:"当前", currentVersion:"当前版本",
+        updateChannel:"更新通道", channelStable:"正式版", channelBeta:"测试版（实验性）",
+        channelHint:"测试版会先收到实验性版本。切回正式版不会降级：在有更新的正式版之前，会保持当前版本。",
+        channelBetaConfirm:"切换到测试版通道？测试版是实验性的，可能不稳定。",
         serverLatest:"服务器最新版本", manifestLatest:"清单最新版本", phaseLabel:"阶段", activeSlot:"活动槽位",
         pendingSlot:"待切换槽位", bootPhaseLabel:"启动阶段", lastCheck:"最后检查", source:"来源",
         autoCheck:"自动检查", waitingForUpdateSignal:"等待更新信号。", waitingForUpdateMetadata:"等待更新元数据。",
@@ -939,6 +959,10 @@ PAGE = """<!doctype html>
           ? tr("updateNotesPending")
           : tr("noChangelogLoaded"));
       text("gateway-version", current);
+      const channelSelect = document.getElementById("update-channel");
+      if (channelSelect && document.activeElement !== channelSelect) {
+        channelSelect.value = state.update_channel || "stable";
+      }
       text("current-version-label", current);
       text("server-latest-version", serverLatest);
       text("manifest-latest-version", latest);
@@ -996,6 +1020,27 @@ PAGE = """<!doctype html>
         notice("update-message", error.message || String(error), "error");
       }
     }
+
+    document.getElementById("update-channel").addEventListener("change", async (event) => {
+      const select = event.target;
+      const channel = select.value;
+      if (channel === "beta" && !window.confirm(tr("channelBetaConfirm"))) {
+        select.value = "stable";
+        return;
+      }
+      notice("update-message", "");
+      try {
+        const payload = await api("/api/update/channel", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel }),
+        });
+        renderUpdate(payload.update_state || {});
+        notice("update-message", tr("saved"), "success");
+      } catch (error) {
+        notice("update-message", error.message || String(error), "error");
+        refresh();
+      }
+    });
 
     document.getElementById("check-update").addEventListener("click", () => updateAction("/api/update/check"));
     document.getElementById("start-update").addEventListener("click", () => updateAction("/api/update/start"));
@@ -1269,6 +1314,22 @@ class GatewayWebServer:
         @app.post("/api/update/apply")
         def update_apply() -> Any:
             return jsonify({"ok": True, "update_state": self.update_manager.start_update()})
+
+        @app.post("/api/update/channel")
+        def update_channel() -> Any:
+            # Deliberately not behind ensure_not_locked(): switching back to
+            # stable is how an operator gets out of a beta-required update.
+            body = request.get_json(silent=True) or {}
+            channel = str(body.get("channel") or "").strip().lower()
+            if channel not in UPDATE_CHANNELS:
+                return jsonify({"ok": False, "error": "invalid_update_channel"}), 400
+            config = self.config_store.save({"update_channel": channel})
+            if self.on_config_saved is not None:
+                self.on_config_saved(config)
+            else:
+                self.update_manager.set_channel(channel)
+                self.upstream.set_update_channel(channel)
+            return jsonify({"ok": True, "config": self._public_config(config), "update_state": self.update_manager.state()})
 
         @app.post("/api/update/restart")
         def update_restart() -> Any:

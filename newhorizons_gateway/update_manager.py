@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import shutil
 import tempfile
 import threading
@@ -17,25 +16,21 @@ from typing import Any, Callable
 from . import __version__
 from .boot_state import GatewayBootStateStore, GatewayHealthStore
 from .bootloader import RUNTIME_SLOT_ENTRIES
+from .versioning import DEFAULT_UPDATE_CHANNEL, is_newer_version, manifest_url_for, normalize_channel
 
 
-DEFAULT_MANIFEST_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/gateway-latest.json"
+# The stable channel's manifest; beta reads gateway-beta.json (versioning.py).
+DEFAULT_MANIFEST_URL = manifest_url_for(DEFAULT_UPDATE_CHANNEL)
 DEFAULT_AUTO_CHECK_INTERVAL_SEC = 600
 # Keep the runtime bundle contract explicit for release/static checks.
 # It must continue to ship "pyproject.toml" inside every slot payload.
 ALLOWED_UPDATE_ENTRIES = RUNTIME_SLOT_ENTRIES
 
 
-def _version_key(value: str) -> tuple[int, ...]:
-    parts = tuple(int(part) for part in re.findall(r"\d+", str(value or "")))
-    return parts or (0,)
-
-
 def _is_newer_version(candidate: str, current: str) -> bool:
-    left = _version_key(candidate)
-    right = _version_key(current)
-    width = max(len(left), len(right))
-    return left + (0,) * (width - len(left)) > right + (0,) * (width - len(right))
+    # Prerelease-aware: the old digit-tuple compare read v0.7.0-beta.1 as
+    # (0, 7, 0, 1) and so *newer* than v0.7.0.
+    return is_newer_version(candidate, current)
 
 
 class GatewayUpdateManager:
@@ -44,12 +39,15 @@ class GatewayUpdateManager:
         app_root: str | Path | None = None,
         staging_root: str | Path | None = None,
         manifest_url: str | None = None,
+        channel: str = DEFAULT_UPDATE_CHANNEL,
     ) -> None:
         self.app_root = Path(app_root or os.getenv("NEWHORIZONS_GATEWAY_APP_ROOT") or Path(__file__).resolve().parents[1])
         self.runtime_root = Path(staging_root or os.getenv("NEWHORIZONS_GATEWAY_RUNTIME_ROOT") or self.app_root / ".run")
         self.downloads_root = self.runtime_root / "downloads"
         self.slots_root = self.runtime_root / "slots"
-        self.manifest_url = manifest_url or os.getenv("NEWHORIZONS_GATEWAY_UPDATE_MANIFEST") or DEFAULT_MANIFEST_URL
+        # An explicit manifest (argument or env) overrides the channel.
+        self._manifest_override = manifest_url or os.getenv("NEWHORIZONS_GATEWAY_UPDATE_MANIFEST") or ""
+        self.update_channel = normalize_channel(channel)
         self.latest_manifest: dict[str, Any] = {}
         self.downloaded_zip = self.downloads_root / "gateway-update.zip"
         self.downloaded_sha256 = ""
@@ -76,6 +74,27 @@ class GatewayUpdateManager:
         self.boot_state = GatewayBootStateStore(self.runtime_root / "boot_state.json")
         self.health_store = GatewayHealthStore(self.runtime_root / "health.json")
 
+    @property
+    def manifest_url(self) -> str:
+        return self._manifest_override or manifest_url_for(self.update_channel)
+
+    def set_channel(self, channel: str) -> dict[str, Any]:
+        """Switches the update channel. What the old channel said is dropped:
+        a beta "required update" must not survive a switch back to stable.
+        Leaving beta never downgrades -- an older stable is just not newer."""
+        normalized = normalize_channel(channel)
+        with self._lock:
+            if normalized != self.update_channel:
+                self.update_channel = normalized
+                if not self.busy:
+                    self.latest_manifest = {}
+                    self.latest_gateway_version = ""
+                    self.update_signal_source = ""
+                    self.required_update = False
+                    self.notes_markdown = ""
+                    self._last_manifest_check_monotonic = 0.0
+        return self.state()
+
     def set_restart_callback(self, callback: Callable[[], None]) -> None:
         self._restart_callback = callback
 
@@ -97,6 +116,7 @@ class GatewayUpdateManager:
                 "required_update": self.required_update,
                 "update_available": bool(self.required_update or (latest_version and _is_newer_version(latest_version, __version__))),
                 "manifest_url": self.manifest_url,
+                "update_channel": self.update_channel,
                 "zip_url": str(self.latest_manifest.get("zip_url") or ""),
                 "notes_url": str(self.latest_manifest.get("notes_url") or ""),
                 "notes_markdown": self.notes_markdown,

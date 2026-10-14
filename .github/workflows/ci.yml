@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: New-Horizons-Gateway
+      # Packet fixtures and the shared version vectors live in the device
+      # firmware repo; the tests that read them skip without it.
+      - uses: actions/checkout@v4
+        with:
+          repository: wenzi7777/New-Horizons-OS
+          path: NewHorizonsOS-OTA
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: New-Horizons-Gateway
+        run: pip install -r requirements.txt
+      - name: Tests
+        working-directory: New-Horizons-Gateway
+        run: python -m unittest discover -s tests
