@@ -1,0 +1,42 @@
+name: release
+
+# Every pushed version tag gets a GitHub Release, so the Releases page never
+# falls behind the tags. The body is releases/notes/<tag>.md (the tag's
+# annotation when there is none); this version's build artifacts are attached.
+# A vX.Y.Z-beta.N tag is a prerelease and never becomes "Latest".
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRODUCT: New Horizons Gateway
+        run: |
+          notes="releases/notes/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            git tag -l --format='%(contents)' "$TAG" > /tmp/notes.md
+            notes=/tmp/notes.md
+          fi
+          shopt -s nullglob
+          assets=(releases/artifacts/*-"${TAG}".bin releases/artifacts/*-"${TAG}".zip)
+          flags=(--latest)
+          case "$TAG" in *-*) flags=(--prerelease --latest=false) ;; esac
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$PRODUCT $TAG" --notes-file "$notes"
+            if [ ${#assets[@]} -gt 0 ]; then gh release upload "$TAG" "${assets[@]}" --clobber; fi
+          else
+            gh release create "$TAG" --verify-tag --title "$PRODUCT $TAG" --notes-file "$notes" "${flags[@]}" "${assets[@]}"
+          fi
