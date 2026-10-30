@@ -156,6 +156,62 @@ class GatewayStateTest(unittest.TestCase):
         self.assertFalse(nearby["AAAAAAAAAAAA"]["serving"])
         self.assertTrue(nearby["AAAAAAAAAAAA"]["denied"])
 
+    def _status_reply(self, findme_gateway_id: str, findme_state: str = "attached") -> dict:
+        return {
+            "device_uid": "3CDC7545CCD0",
+            "ok": True,
+            "cmd": "status",
+            "data": {"findme": {"state": findme_state, "gateway_id": findme_gateway_id}},
+        }
+
+    def test_reply_to_our_command_does_not_claim_a_device_attached_elsewhere(self):
+        # Two Gateways on one LAN: the device streams to gw-a, but answers a
+        # status poll the Desktop routed through gw-b. gw-b must not report it
+        # as attached -- that was the endless gw-a/gw-b flip.
+        state = GatewayState(now=lambda: 1000.0)
+        state.record_control(
+            "3CDC7545CCD0", "result", self._status_reply("gw-a"),
+            ("192.168.1.152", 54321), connected=True, gateway_id="gw-b",
+        )
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+        device = state.snapshot([])["devices"][0]
+        self.assertFalse(device["connected"])
+        self.assertEqual("disconnected", device["findme_state"])
+
+    def test_status_reply_naming_us_attaches(self):
+        state = GatewayState(now=lambda: 1000.0)
+        state.record_control(
+            "3CDC7545CCD0", "result", self._status_reply("gw-a"),
+            ("192.168.1.152", 54321), connected=True, gateway_id="gw-a",
+        )
+        self.assertTrue(state.is_serving("3CDC7545CCD0"))
+
+    def test_status_reply_releases_a_stale_attachment(self):
+        # gw-b served the device earlier; it has since moved to gw-a.
+        state = GatewayState(now=lambda: 1000.0)
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+        state.record_control(
+            "3CDC7545CCD0", "result", self._status_reply("gw-a"),
+            ("192.168.1.152", 54321), connected=True, gateway_id="gw-b",
+        )
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+
+    def test_result_without_findme_is_not_liveness(self):
+        clock = {"t": 1000.0}
+        state = GatewayState(now=lambda: clock["t"], control_stale_sec=16.0)
+        reply = {"device_uid": "3CDC7545CCD0", "ok": True, "cmd": "ping", "data": {}}
+        state.record_control("3CDC7545CCD0", "result", reply, ("192.168.1.152", 54321), connected=True, gateway_id="gw-b")
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+
+        # Attached by heartbeat, then only command replies: goes stale like
+        # any device that stopped heartbeating to this Gateway.
+        state.record_heartbeat("3CDC7545CCD0", {}, ("192.168.1.152", 12345))
+        clock["t"] = 1010.0
+        state.record_control("3CDC7545CCD0", "result", reply, ("192.168.1.152", 54321), connected=True, gateway_id="gw-b")
+        self.assertTrue(state.is_serving("3CDC7545CCD0"))
+        clock["t"] = 1017.0
+        self.assertFalse(state.is_serving("3CDC7545CCD0"))
+
     def test_stale_control_session_is_not_serving(self):
         now = 1000.0
         state = GatewayState(now=lambda: now, control_stale_sec=1.0)

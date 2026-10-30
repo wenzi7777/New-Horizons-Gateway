@@ -79,7 +79,15 @@ class GatewayState:
                     "findme_state": "offered" if accepted else "rejected",
                 })
 
-    def record_control(self, device_uid: str, msg_type: str, payload: dict[str, Any], peer: tuple[str, int], connected: bool = True) -> None:
+    def record_control(
+        self,
+        device_uid: str,
+        msg_type: str,
+        payload: dict[str, Any],
+        peer: tuple[str, int],
+        connected: bool = True,
+        gateway_id: str = "",
+    ) -> None:
         uid = str(device_uid).strip().upper()
         if not uid:
             return
@@ -112,9 +120,26 @@ class GatewayState:
                 or data.get("firmware_version")
                 or device.get("firmware_version", "")
             )
+            # A command result is a reply to whichever Gateway sent the
+            # command -- the device answers anyone, but streams and
+            # heartbeats only to the Gateway its FindMe picked. With two
+            # Gateways on a LAN, taking a result as "attached here" let the
+            # other one claim the device for its 16 s window; the Desktop then
+            # routed the next status poll through it, the reply renewed the
+            # claim, and the device's Gateway flipped between the two forever.
+            # So a result only says where the device is attached when it
+            # carries the device's own FindMe block (a status reply), and is
+            # never liveness by itself.
+            keep_connection = switch_started
+            attachment: bool | None = None
+            if msg_type == "result" and connected and not switch_started:
+                attachment = self._reply_attachment(data, gateway_id)
+                if attachment is None:
+                    keep_connection = True
+                else:
+                    connected = attachment
             update = {
                 "last_seen": now,
-                "last_seen_monotonic": self._now(),
                 "last_control_type": msg_type,
                 "device_name": payload.get("device_name") or device.get("device_name", ""),
                 "mode": mode,
@@ -123,15 +148,25 @@ class GatewayState:
                 "hardware_model": payload.get("hardware_model") or nested.get("hardware_model") or data.get("hardware_model") or device.get("hardware_model", ""),
                 "transport_path": payload.get("transport_path") or nested.get("transport_path") or data.get("transport_path") or device.get("transport_path", ""),
             }
-            if not switch_started:
+            if msg_type != "result" or attachment:
+                update["last_seen_monotonic"] = self._now()
+            if not keep_connection:
                 update.update({
                     "connected": connected,
                     "peer": "{}:{}".format(peer[0], peer[1]),
                     "findme_state": "attached" if connected else "disconnected",
                 })
             device.update(update)
-            if connected and not switch_started:
+            if connected and not keep_connection:
                 self._attach_active_claim_locked(uid, device, now)
+
+    @staticmethod
+    def _reply_attachment(data: dict[str, Any], gateway_id: str) -> bool | None:
+        findme = data.get("findme") if isinstance(data.get("findme"), dict) else None
+        reported = str((findme or {}).get("gateway_id") or "")
+        if not gateway_id or not reported:
+            return None
+        return reported == gateway_id and str(findme.get("state") or "") == "attached"
 
     def record_heartbeat(self, device_uid: str, payload: dict[str, Any], peer: tuple[str, int]) -> None:
         uid = str(device_uid).strip().upper()

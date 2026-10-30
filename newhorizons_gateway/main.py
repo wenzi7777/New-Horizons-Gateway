@@ -170,7 +170,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     data["status"] = "ok" if data.get("ok") else "error"
                 data.setdefault("transport_path", "arduino_udp")
                 udp_commands.handle_result(device_uid, data)
-            state.record_control(device_uid, message_type, data, addr, connected=True)
+            state.record_control(device_uid, message_type, data, addr, connected=True, gateway_id=upstream.gateway_id)
             upstream.send_device_message(message_type, data)
 
     def on_udp_packet(payload: bytes, addr: tuple[str, int]) -> None:
