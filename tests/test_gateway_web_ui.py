@@ -19,7 +19,7 @@ def webui(name):
 
 
 def webui_source():
-    return "\n".join(webui(name) for name in ("index.html", "app.css", "app.js", "i18n.js", "theme.js"))
+    return "\n".join(webui(name) for name in ("index.html", "app.css", "app.js", "i18n.js", "theme.js", "select.js"))
 
 
 def function_body(source, signature):
@@ -545,6 +545,42 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertIn(PRODUCTION_URL, app)
             self.assertEqual(client.get("/assets/web.py").status_code, 404)
             self.assertEqual(client.get("/assets/..%2Fweb.py").status_code, 404)
+
+    def test_top_bar_has_no_status_pill(self):
+        # The overview's status card already says online/offline.
+        page = webui("index.html")
+        app = webui("app.js")
+        self.assertNotIn("topbar-status", page)
+        self.assertNotIn("topbar-status", app)
+        self.assertNotIn("topbar-center", webui("app.css"))
+        self.assertIn('setText("card-status", tr(STATUS_TEXT.unreachable));', app)
+
+    def test_theme_toggle_matches_the_desktop(self):
+        app = webui("app.js")
+        # lucide SunMoon / Moon as the Desktop's ThemeToggle draws them.
+        self.assertIn('stroke-width="1.8"', app)
+        self.assertIn("M14.837 16.385a6 6 0 1 1-7.223-7.222", app)
+        self.assertIn("M20.985 12.486a9 9 0 1 1-9.473-9.472", app)
+        self.assertIn('`${tr("themeLabel")}: ${modeLabel}', app)
+        self.assertIn("nextChange: () =>", webui("theme.js"))
+        i18n = webui("i18n.js")
+        for key in ("themeLabel", "themeNextDark", "themeNextLight"):
+            self.assertEqual(i18n.count(f"{key}:"), 3, key)
+
+    def test_dropdowns_are_the_desktop_select(self):
+        page = webui("index.html")
+        select = webui("select.js")
+        self.assertIn('<script src="/assets/select.js?v=__VERSION__"></script>', page)
+        self.assertLess(page.index("/assets/select.js"), page.index("/assets/app.js"))
+        self.assertIn("window.NHGSelect.enhanceAll();", webui("app.js"))
+        # The native select stays the source of truth for app.js.
+        self.assertIn('select.dispatchEvent(new Event("change", { bubbles: true }));', select)
+        self.assertIn('Object.defineProperty(select, "value"', select)
+        css = webui("app.css")
+        for rule in (".nh-select-native { display: none; }", ".nh-select-menu {", ".nh-select-option.active"):
+            self.assertIn(rule, css)
+        # Checkboxes: the native box in the accent colour, no custom size.
+        self.assertIn(".switch-row input { grid-row: span 2; margin: 3px 0 0; accent-color: var(--accent); cursor: pointer; }", css)
 
 if __name__ == "__main__":
     unittest.main()

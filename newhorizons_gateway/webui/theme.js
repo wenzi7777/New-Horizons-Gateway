@@ -52,11 +52,20 @@
     return new Date(when);
   }
 
-  function isDaytime(now) {
+  // Whether it is daytime at `now`, and when that next changes -- the
+  // Desktop's daylightAt() (sunTimes.ts).
+  function daylightAt(now) {
     const sunrise = sunEvent(now, true);
     const sunset = sunEvent(now, false);
-    if (!sunrise || !sunset) return true;
-    return now >= sunrise && now < sunset;
+    if (!sunrise || !sunset) return { day: true, nextChange: null };
+    if (now < sunrise) return { day: false, nextChange: sunrise };
+    if (now < sunset) return { day: true, nextChange: sunset };
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return { day: false, nextChange: sunEvent(tomorrow, true) };
+  }
+
+  function isDaytime(now) {
+    return daylightAt(now).day;
   }
 
   function readMode() {
@@ -115,6 +124,9 @@
     },
     cycle,
     mode: () => mode,
+    theme: resolvedTheme,
+    // When Auto next switches, or null outside Auto.
+    nextChange: () => (mode === "auto" ? daylightAt(new Date()).nextChange : null),
     sunEvent,
   };
 })();
