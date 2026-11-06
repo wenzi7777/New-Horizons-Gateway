@@ -35,6 +35,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Self-update channel: "stable" (gateway-latest.json) or "beta"
     # (gateway-beta.json). See versioning.py.
     "update_channel": "stable",
+    # Accept gateway_command from the Desktop (its Relays page "Manage").
+    # Only the local WebUI can change it; off, every remote command is
+    # refused with "remote_management_disabled".
+    "remote_management": True,
 }
 
 
@@ -107,6 +111,7 @@ class GatewayConfigStore:
             config[key] = int(config[key])
         config["enabled"] = parse_bool(config.get("enabled"), default=False)
         config["discovery_enabled"] = parse_bool(config.get("discovery_enabled"), default=True)
+        config["remote_management"] = parse_bool(config.get("remote_management"), default=True)
         config["gateway_id"] = str(config.get("gateway_id") or "").strip()
         if config["gateway_id"] and not GATEWAY_ID_PATTERN.fullmatch(config["gateway_id"]):
             config["gateway_id"] = ""

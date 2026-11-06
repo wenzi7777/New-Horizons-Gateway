@@ -60,7 +60,7 @@ class GatewayReleaseStaticTest(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("The Gateway is host-only.", readme)
-        self.assertIn("Update Center", readme)
+        self.assertIn("Software update", readme)
         self.assertIn("mandatory", readme)
         self.assertIn("python scripts/start.py", readme)
         self.assertIn("python scripts/stop.py", readme)

@@ -384,6 +384,8 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     "udp_control": udp_commands.snapshot(),
                     "state": state.snapshot(current_config.get("denied_devices", [])),
                     "update": update_block(),
+                    # Off: the Desktop shows the Gateway read-only.
+                    "remote_management": bool(current_config.get("remote_management", True)),
                 })
                 publish_console_status(current_config)
             check_interval = max(60, update_manager.auto_check_interval_sec)

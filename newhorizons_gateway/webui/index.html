@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>NHOS Gateway</title>
+  <script>
+    // The theme last shown, before first paint, so a night visit does not
+    // flash white (theme.js takes over once loaded).
+    (function () {
+      var theme = "light";
+      try { theme = localStorage.getItem("nh-theme-last") === "dark" ? "dark" : "light"; } catch (error) {}
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="/assets/app.css?v=__VERSION__">
+</head>
+<body>
+  <header class="topbar" id="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-title">NHOS Gateway</span>
+      <span class="app-version" id="app-version">__VERSION__</span>
+    </div>
+    <div class="topbar-center">
+      <span class="status-pill" id="topbar-status"><span class="status-dot" id="topbar-status-dot"></span><span id="topbar-status-text">…</span></span>
+    </div>
+    <div class="topbar-session">
+      <button class="icon-button" type="button" id="theme-toggle"></button>
+      <select class="select-compact" id="language-select" data-i18n-aria="language">
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="zh-CN">简体中文</option>
+      </select>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <!-- ── First run: three steps, shown while no Gateway ID is saved ── -->
+    <section class="wizard" id="setup-wizard" hidden>
+      <div class="wizard-head">
+        <h2 data-i18n="wizardTitle">Set up this Gateway</h2>
+        <p data-i18n="wizardCopy">Three steps, then it starts relaying devices on this network.</p>
+      </div>
+      <ol class="wizard-steps">
+        <li id="wiz-pip0" data-i18n="wizStepId">ID</li>
+        <li id="wiz-pip1" data-i18n="wizStepServer">Server</li>
+        <li id="wiz-pip2" data-i18n="wizStepStart">Start</li>
+      </ol>
+
+      <div class="wizard-step" id="wiz-step-0">
+        <h3 data-i18n="w0title">Name this Gateway</h3>
+        <p data-i18n="w0sub">A unique ID tells this Gateway apart from the others on the server.</p>
+        <div class="field">
+          <label for="setup-gateway-id-input" data-i18n="gatewayIdLabel">Gateway ID</label>
+          <div class="field-row">
+            <input id="setup-gateway-id-input" maxlength="64" placeholder="nh-gateway-xxxxxx" autocomplete="off" spellcheck="false">
+            <button class="button" type="button" id="setup-auto-gateway-id" data-i18n="autoGenerate">Generate</button>
+          </div>
+          <span class="field-note" data-i18n="gatewayIdHint">Letters, digits, dot, dash and underscore; up to 64.</span>
+          <span class="field-error" id="setup-message" hidden></span>
+        </div>
+        <div class="wizard-actions">
+          <button class="button primary" type="button" id="wiz-next-0" data-i18n="next">Continue</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" id="wiz-step-1" hidden>
+        <h3 data-i18n="w1title">Choose the server</h3>
+        <p data-i18n="w1sub">Where this Gateway sends device data.</p>
+        <div class="segmented-control" id="wiz-target-mode" role="radiogroup">
+          <button type="button" data-mode="production" data-i18n="targetProduction">Production</button>
+          <button type="button" data-mode="local" data-i18n="targetLocal">Local</button>
+          <button type="button" data-mode="manual" data-i18n="targetManual">Manual</button>
+        </div>
+        <div class="field" id="wiz-manual-wrap" hidden>
+          <label for="wiz-manual-url" data-i18n="manualUrlLabel">Server address</label>
+          <input id="wiz-manual-url" placeholder="ws://192.168.1.10:5051/newhorizons/gateway/ws" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <span class="field-label" data-i18n="effectiveServer">Connects to</span>
+          <div class="url-preview mono" id="wiz-url-preview"></div>
+          <span class="field-error" id="wiz-msg-1" hidden></span>
+        </div>
+        <div class="wizard-actions">
+          <button class="button" type="button" id="wiz-back-1" data-i18n="back">Back</button>
+          <button class="button primary" type="button" id="wiz-next-1" data-i18n="next">Continue</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" id="wiz-step-2" hidden>
+        <h3 data-i18n="w2title">Start the Gateway</h3>
+        <p data-i18n="w2sub">Check the settings. You can change them later under Connection.</p>
+        <div class="facts">
+          <div><span data-i18n="gatewayIdLabel">Gateway ID</span><strong class="mono" id="wiz-confirm-id">-</strong></div>
+          <div><span data-i18n="targetLabel">Server</span><strong id="wiz-confirm-mode">-</strong></div>
+        </div>
+        <div class="url-preview mono" id="wiz-confirm-url"></div>
+        <span class="field-error" id="wiz-msg-2" hidden></span>
+        <div class="wizard-actions">
+          <button class="button" type="button" id="wiz-back-2" data-i18n="back">Back</button>
+          <button class="button primary" type="button" id="setup-save-id" data-i18n="enableAndStart">Enable &amp; start</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Dashboard ── -->
+    <div class="settings-stack" id="dashboard" hidden>
+      <section class="settings-overview" aria-live="polite">
+        <button class="settings-overview-card" type="button" data-goto="overview">
+          <span data-i18n="cardStatus">Status</span>
+          <strong><span class="status-dot" id="card-status-dot"></span><span id="card-status">-</span></strong>
+          <small id="card-status-sub">-</small>
+        </button>
+        <button class="settings-overview-card" type="button" data-goto="update">
+          <span data-i18n="cardVersion">Version</span>
+          <strong id="card-version">-</strong>
+          <small id="card-version-sub">-</small>
+        </button>
+        <button class="settings-overview-card" type="button" data-goto="connection">
+          <span data-i18n="cardTarget">Server</span>
+          <strong id="card-target">-</strong>
+          <small id="card-target-sub">-</small>
+        </button>
+        <button class="settings-overview-card" type="button" data-goto="devices">
+          <span data-i18n="cardServing">Serving devices</span>
+          <strong id="card-serving">-</strong>
+          <small id="card-serving-sub">-</small>
+        </button>
+      </section>
+
+      <section class="settings-shell">
+        <nav class="settings-sidebar" id="section-nav" data-i18n-aria="sections">
+          <button type="button" data-section="overview"><span data-i18n="navOverview">Overview</span></button>
+          <button type="button" data-section="devices"><span data-i18n="navDevices">LAN devices</span><span class="nav-badge" id="nav-devices-badge" hidden></span></button>
+          <button type="button" data-section="connection"><span data-i18n="navConnection">Connection</span><span class="nav-dot warning" id="nav-connection-dot" hidden></span></button>
+          <button type="button" data-section="update"><span data-i18n="navUpdate">Software update</span><span class="nav-dot" id="nav-update-dot" hidden></span></button>
+        </nav>
+
+        <article class="panel settings-detail">
+          <!-- Overview -->
+          <div class="settings-stack section-panel" data-section-panel="overview">
+            <div class="settings-detail-header">
+              <div>
+                <h3 data-i18n="navOverview">Overview</h3>
+                <p data-i18n="overviewCopy">This Gateway relays the devices on its network to a New Horizons server.</p>
+              </div>
+            </div>
+            <div class="notice warning" id="overview-disabled" hidden>
+              <span data-i18n="disabledNotice">The Gateway is disabled and relays nothing.</span>
+              <button class="button tiny" type="button" data-goto="connection" data-i18n="openConnection">Open Connection</button>
+            </div>
+            <p class="notice error" id="overview-upstream-error" hidden></p>
+            <div class="settings-card">
+              <div class="facts">
+                <div><span data-i18n="gatewayIdLabel">Gateway ID</span><strong class="mono" id="fact-gateway-id">-</strong></div>
+                <div><span data-i18n="factServer">Server</span><strong class="mono" id="fact-server">-</strong></div>
+                <div><span data-i18n="factPorts">Local ports</span><strong id="fact-ports">-</strong></div>
+                <div><span data-i18n="factTraffic">Traffic</span><strong id="fact-traffic">-</strong></div>
+                <div><span data-i18n="factQueueDropped">Queue dropped</span><strong id="fact-queue-dropped">-</strong></div>
+                <div><span data-i18n="factRemote">Remote management</span><strong id="fact-remote">-</strong></div>
+              </div>
+            </div>
+            <div class="settings-card">
+              <div class="settings-detail-header">
+                <h4 data-i18n="servingTitle">Serving devices</h4>
+                <button class="button tiny" type="button" data-goto="devices" data-i18n="manageDevices">Manage devices</button>
+              </div>
+              <div class="chip-list" id="overview-serving"></div>
+              <p class="empty" id="overview-serving-empty" data-i18n="noServing">No device is relayed by this Gateway yet.</p>
+            </div>
+          </div>
+
+          <!-- LAN devices -->
+          <div class="settings-stack section-panel" data-section-panel="devices" hidden>
+            <div class="settings-detail-header">
+              <div>
+                <h3 data-i18n="navDevices">LAN devices</h3>
+                <p data-i18n="devicesCopy">Devices on this network: the ones relayed here, the ones that announced themselves, and the ones refused.</p>
+              </div>
+              <button class="button" type="button" id="discover-nearby" data-i18n="discover">Discover</button>
+            </div>
+            <p class="notice warning" id="devices-locked" data-i18n="lockedNotice" hidden>Locked until the Gateway is updated.</p>
+            <p class="notice warning" id="devices-offline" data-i18n="upstreamOfflineNotice" hidden>Not connected to the server: nearby devices can be taken over once it is back.</p>
+            <div class="settings-card">
+              <h4 data-i18n="servingTitle">Serving devices</h4>
+              <ul class="device-list" id="serving-list"></ul>
+              <p class="empty" id="serving-empty" data-i18n="noServing">No device is relayed by this Gateway yet.</p>
+            </div>
+            <div class="settings-card">
+              <div class="settings-detail-header">
+                <div>
+                  <h4 data-i18n="nearbyTitle">Nearby devices</h4>
+                  <p data-i18n="nearbyCopy">Devices that announced themselves (FindMe) to this Gateway but are not relayed by it.</p>
+                </div>
+              </div>
+              <ul class="device-list" id="nearby-list"></ul>
+              <p class="empty" id="nearby-empty" data-i18n="noNearby">No other devices nearby. Press Discover to ask again.</p>
+            </div>
+            <div class="settings-card">
+              <h4 data-i18n="deniedTitle">Refused devices</h4>
+              <ul class="device-list" id="denied-list"></ul>
+              <p class="empty" id="denied-empty" data-i18n="noDenied">No devices are refused.</p>
+            </div>
+            <details class="disclosure">
+              <summary data-i18n="techDetails">Technical details</summary>
+              <div class="disclosure-body">
+                <h4 data-i18n="claimsTitle">Take-over requests</h4>
+                <div class="table-wrap">
+                  <table class="data-table">
+                    <thead><tr>
+                      <th data-i18n="colTime">Time</th><th data-i18n="colDevice">Device</th><th data-i18n="colClaim">Request ID</th><th data-i18n="colState">State</th><th data-i18n="colError">Error</th>
+                    </tr></thead>
+                    <tbody id="claim-body"></tbody>
+                  </table>
+                </div>
+                <p class="empty" id="claims-empty" data-i18n="noClaims">No take-over requests.</p>
+              </div>
+            </details>
+          </div>
+
+          <!-- Connection -->
+          <div class="settings-stack section-panel" data-section-panel="connection" hidden>
+            <div class="settings-detail-header">
+              <div>
+                <h3 data-i18n="navConnection">Connection</h3>
+                <p data-i18n="connectionCopy">Which server this Gateway relays to, and what it accepts.</p>
+              </div>
+            </div>
+            <form class="settings-card" id="connection-form" novalidate>
+              <div class="field">
+                <label for="gateway-id-input" data-i18n="gatewayIdLabel">Gateway ID</label>
+                <div class="field-row">
+                  <input id="gateway-id-input" maxlength="64" placeholder="nh-gateway-xxxxxx" autocomplete="off" spellcheck="false">
+                  <button class="button" type="button" id="auto-gateway-id" data-i18n="autoGenerate">Generate</button>
+                </div>
+                <span class="field-error" id="gateway-id-error" hidden></span>
+              </div>
+              <div class="field">
+                <span class="field-label" data-i18n="targetLabel">Server</span>
+                <div class="segmented-control" id="target-mode" role="radiogroup">
+                  <button type="button" data-mode="production" data-i18n="targetProduction">Production</button>
+                  <button type="button" data-mode="local" data-i18n="targetLocal">Local</button>
+                  <button type="button" data-mode="manual" data-i18n="targetManual">Manual</button>
+                </div>
+              </div>
+              <div class="field" id="manual-url-field" hidden>
+                <label for="manual-url" data-i18n="manualUrlLabel">Server address</label>
+                <input id="manual-url" placeholder="ws://192.168.1.10:5051/newhorizons/gateway/ws" autocomplete="off" spellcheck="false">
+                <span class="field-error" id="manual-url-error" hidden></span>
+              </div>
+              <div class="field">
+                <span class="field-label" data-i18n="effectiveServer">Connects to</span>
+                <div class="url-preview mono" id="effective-server"></div>
+              </div>
+              <label class="switch-row">
+                <input type="checkbox" id="gateway-enabled">
+                <strong data-i18n="enabledTitle">Enable Gateway</strong>
+                <small data-i18n="enabledCopy">Start the server connection, UDP and FindMe.</small>
+              </label>
+              <label class="switch-row">
+                <input type="checkbox" id="remote-management">
+                <strong data-i18n="remoteTitle">Accept remote management</strong>
+                <small data-i18n="remoteCopy">Let the Desktop app change settings, update this Gateway and manage its devices.</small>
+              </label>
+              <p class="notice error" id="settings-message" hidden></p>
+              <div class="form-footer">
+                <span class="dirty-indicator" id="settings-dirty" data-i18n="unsavedChanges" hidden>Unsaved changes</span>
+                <button class="button ghost" type="button" id="revert-settings" data-i18n="revert" hidden>Revert</button>
+                <button class="button primary" type="submit" id="save-settings" data-i18n="save">Save</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Software update -->
+          <div class="settings-stack section-panel" data-section-panel="update" hidden>
+            <div class="settings-detail-header">
+              <div>
+                <h3 data-i18n="navUpdate">Software update</h3>
+                <p data-i18n="updateCopy">Checks the Gateway's release on GitHub. Updating downloads the new version and restarts the Gateway; its devices reconnect on their own.</p>
+              </div>
+            </div>
+            <div class="settings-card update-status update-center" id="update-center">
+              <div class="settings-detail-header">
+                <div class="metric-row">
+                  <div class="metric"><div class="metric-label" data-i18n="currentVersion">Current version</div><div class="metric-value" id="current-version-label">-</div></div>
+                  <div class="metric"><div class="metric-label" data-i18n="latestVersion">Latest version</div><div class="metric-value" id="latest-version-label">-</div></div>
+                </div>
+                <div class="actions">
+                  <button class="button" type="button" id="check-update" data-i18n="checkUpdate">Check for update</button>
+                  <button class="button" type="button" id="start-update" data-i18n="updateNow">Update now</button>
+                </div>
+              </div>
+              <p class="update-status-line" id="update-banner"></p>
+              <div class="progress" id="update-progress-wrap" hidden>
+                <div class="progress-head"><span id="update-progress-phase"></span><span id="update-progress-label">0%</span></div>
+                <div class="progress-track"><div class="progress-fill" id="update-progress"></div></div>
+              </div>
+              <div class="notice success" id="restart-row" hidden>
+                <span data-i18n="restartRequiredCopy">The new version is installed. Restart to switch to it.</span>
+                <button class="button tiny primary" type="button" id="restart-gateway" data-i18n="restart">Restart</button>
+              </div>
+              <div class="field">
+                <label for="update-channel" data-i18n="updateChannel">Update channel</label>
+                <select id="update-channel">
+                  <option value="stable" data-i18n="channelStable">Stable</option>
+                  <option value="beta" data-i18n="channelBeta">Beta (experimental)</option>
+                </select>
+                <span class="field-note" id="channel-hint"></span>
+              </div>
+            </div>
+            <details class="disclosure">
+              <summary data-i18n="releaseNotes">Release notes</summary>
+              <div class="disclosure-body"><pre class="notes" id="update-notes"></pre></div>
+            </details>
+            <details class="disclosure">
+              <summary data-i18n="techDetails">Technical details</summary>
+              <div class="disclosure-body">
+                <div class="facts">
+                  <div><span data-i18n="techServerLatest">Server latest</span><strong id="server-latest-version">-</strong></div>
+                  <div><span data-i18n="techManifestLatest">Manifest latest</span><strong id="manifest-latest-version">-</strong></div>
+                  <div><span data-i18n="techSource">Update signal</span><strong id="update-source">-</strong></div>
+                  <div><span data-i18n="techPhase">Phase</span><strong id="update-phase">-</strong></div>
+                  <div><span data-i18n="techActiveSlot">Active slot</span><strong id="active-slot-version">-</strong></div>
+                  <div><span data-i18n="techPendingSlot">Pending slot</span><strong id="pending-slot-version">-</strong></div>
+                  <div><span data-i18n="techBootPhase">Boot phase</span><strong id="boot-phase-label">-</strong></div>
+                  <div><span data-i18n="techLastCheck">Last check</span><strong id="last-update-check">-</strong></div>
+                  <div><span data-i18n="techAutoCheck">Auto check</span><strong id="auto-check-interval">-</strong></div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </article>
+      </section>
+    </div>
+  </main>
+
+  <!-- ── Required update: blocks the page until installed ── -->
+  <div class="modal-backdrop" id="update-required-overlay" hidden>
+    <div class="modal-panel update-required-panel" role="alertdialog" aria-modal="true" aria-labelledby="overlay-title">
+      <div class="modal-icon" data-icon="alert"></div>
+      <h2 id="overlay-title" data-i18n="overlayTitle">Update this Gateway to continue</h2>
+      <p data-i18n="overlayCopy">The server requires a newer Gateway.</p>
+      <div class="version-jump"><span id="overlay-current-version">-</span><span class="arrow">→</span><span class="to" id="overlay-server-latest">-</span></div>
+      <p class="notice" id="overlay-update-banner"></p>
+      <div class="progress" id="overlay-progress-wrap" hidden>
+        <div class="progress-head"><span id="overlay-update-progress-phase"></span><span id="overlay-update-progress-label">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="overlay-update-progress"></div></div>
+      </div>
+      <div class="actions">
+        <button class="button primary" type="button" id="overlay-start-update" data-i18n="updateNow">Update now</button>
+        <button class="button" type="button" id="overlay-check-update" data-i18n="checkUpdate">Check for update</button>
+        <button class="button" type="button" id="overlay-restart-gateway" data-i18n="restart" hidden>Restart</button>
+      </div>
+      <details class="disclosure">
+        <summary data-i18n="releaseNotes">Release notes</summary>
+        <div class="disclosure-body"><pre class="notes" id="overlay-update-notes"></pre></div>
+      </details>
+    </div>
+  </div>
+
+  <script src="/assets/i18n.js?v=__VERSION__"></script>
+  <script src="/assets/theme.js?v=__VERSION__"></script>
+  <script src="/assets/app.js?v=__VERSION__"></script>
+</body>
+</html>

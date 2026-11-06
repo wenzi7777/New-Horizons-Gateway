@@ -109,10 +109,13 @@ class HelloChannelTest(unittest.TestCase):
 class WebChannelStaticTest(unittest.TestCase):
     def test_web_ui_offers_the_channel_switch(self):
         web = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
-        self.assertIn('<select id="update-channel">', web)
+        page = (ROOT / "newhorizons_gateway" / "webui" / "index.html").read_text(encoding="utf-8")
+        strings = (ROOT / "newhorizons_gateway" / "webui" / "i18n.js").read_text(encoding="utf-8")
+        self.assertIn('<select id="update-channel">', page)
         self.assertIn('@app.post("/api/update/channel")', web)
-        for key in ("updateChannel:", "channelStable:", "channelBeta:", "channelHint:", "channelBetaConfirm:"):
-            self.assertEqual(web.count(key), 3, key)  # en, ja, zh-CN
+        for key in ("updateChannel:", "channelStable:", "channelBeta:", "channelHint:",
+                    "channelBetaConfirmTitle:", "channelBetaConfirmMessage:"):
+            self.assertEqual(strings.count(f"    {key}"), 3, key)  # en, ja, zh-CN
 
 
 if __name__ == "__main__":

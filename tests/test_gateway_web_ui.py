@@ -1,3 +1,4 @@
+import re
 import unittest
 import tempfile
 from pathlib import Path
@@ -9,6 +10,40 @@ from newhorizons_gateway.web import GatewayWebServer
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+WEBUI = ROOT / "newhorizons_gateway" / "webui"
+
+
+def webui(name):
+    return (WEBUI / name).read_text(encoding="utf-8")
+
+
+def webui_source():
+    return "\n".join(webui(name) for name in ("index.html", "app.css", "app.js", "i18n.js", "theme.js"))
+
+
+def function_body(source, signature):
+    """The text between `signature`'s opening brace and its matching close."""
+    start = source.index(signature) + len(signature)
+    depth = 1
+    for index in range(start, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start:index]
+    raise AssertionError(f"unbalanced {signature}")
+
+
+def i18n_tables():
+    """{language: set(keys)} parsed from webui/i18n.js."""
+    text = webui("i18n.js")
+    tables = {}
+    for match in re.finditer(r'^  ("?)([A-Za-z-]+)\1: \{\n(.*?)^  \},', text, re.M | re.S):
+        keys = re.findall(r'^    (?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*)):', match.group(3), re.M)
+        tables[match.group(2)] = {quoted or plain for quoted, plain in keys}
+    return tables
 
 
 class FakeUpstream:
@@ -89,22 +124,22 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertNotIn("NEWHORIZONS_GATEWAY_TOKEN", host_script)
 
     def test_target_server_form_is_not_overwritten_while_dirty(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        app = webui("app.js")
 
-        self.assertIn("let targetSettingsDirty = false", web_source)
-        self.assertIn("if (targetSettingsDirty) return;", web_source)
-        self.assertIn('"target-mode").addEventListener("change"', web_source)
-        self.assertIn("targetSettingsDirty = false;", web_source)
+        self.assertIn("let targetSettingsDirty = false", app)
+        self.assertIn("if (targetSettingsDirty) return;", function_body(app, "function syncTargetSettings(config) {"))
+        self.assertIn('$(id).addEventListener("input", markDirty)', app)
+        self.assertIn("targetSettingsDirty = false;", app)
 
     def test_target_server_preview_updates_from_selected_mode(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        app = webui("app.js")
 
-        self.assertIn("const PRODUCTION_URL = \"__PRODUCTION_URL__\";", web_source)
-        self.assertIn("const LOCAL_URL = \"__LOCAL_URL__\";", web_source)
-        self.assertIn("function resolveTargetServerUrl()", web_source)
-        self.assertIn("function updateTargetServerSummary()", web_source)
-        self.assertIn('text("effective-server", resolveTargetServerUrl());', web_source)
-        self.assertIn("updateTargetServerSummary();", web_source)
+        self.assertIn("const PRODUCTION_URL = \"__PRODUCTION_URL__\";", app)
+        self.assertIn("const LOCAL_URL = \"__LOCAL_URL__\";", app)
+        self.assertIn("function resolveTargetServerUrl()", app)
+        self.assertIn("function updateTargetServerSummary()", app)
+        self.assertIn('setText("effective-server", resolveTargetServerUrl());', app)
+        self.assertIn("updateTargetServerSummary();", app)
 
     def test_local_target_uses_host_backend_address(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -239,7 +274,7 @@ class GatewayWebUiTest(unittest.TestCase):
         # data (kUdpStreamPort=13250), so sessions must target addr not CONTROL_PORT.
         main_source = (ROOT / "newhorizons_gateway" / "main.py").read_text(encoding="utf-8")
         local_device_source = (ROOT / "newhorizons_gateway" / "local_device.py").read_text(encoding="utf-8")
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        web_source = webui_source()
 
         self.assertNotIn("LocalTCPControlServer", main_source)
         self.assertNotIn("LocalTCPControlServer", local_device_source)
@@ -268,56 +303,48 @@ class GatewayWebUiTest(unittest.TestCase):
         self.assertIn("arduino_hosts", main_source)
         self.assertNotIn("arduino_sessions", main_source)
 
-    def test_gateway_web_ui_removes_os_eyebrow_and_keeps_update_controls(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+    def test_gateway_web_ui_keeps_settings_and_update_controls(self):
+        page = webui("index.html")
 
-        self.assertNotIn('<div class="eyebrow">New Horizons OS</div>', web_source)
-        self.assertIn('id="gateway-id-input"', web_source)
-        self.assertIn('id="setup-wizard"', web_source)
-        self.assertIn('id="setup-gateway-id-input"', web_source)
-        self.assertIn('id="gateway-enabled"', web_source)
-        self.assertIn('id="auto-gateway-id"', web_source)
-        self.assertIn('id="check-update"', web_source)
-        self.assertIn('id="start-update"', web_source)
-        self.assertIn('id="restart-gateway"', web_source)
-        self.assertIn('id="update-progress"', web_source)
-        self.assertIn('id="overlay-update-progress"', web_source)
-        self.assertNotIn('id="download-progress"', web_source)
-        self.assertNotIn('id="apply-progress"', web_source)
-        self.assertIn('id="refresh-now"', web_source)
-        self.assertIn('id="discover-nearby"', web_source)
-        self.assertIn('id="nearby-toggle"', web_source)
-        self.assertIn('data-i18n="operations"', web_source)
-        self.assertNotIn('id="toggle-nearby"', web_source)
+        self.assertNotIn('<div class="eyebrow">New Horizons OS</div>', page)
+        for node_id in (
+            "gateway-id-input", "setup-wizard", "setup-gateway-id-input", "gateway-enabled", "remote-management",
+            "auto-gateway-id", "target-mode", "manual-url", "save-settings", "revert-settings",
+            "check-update", "start-update", "restart-gateway", "update-progress", "overlay-update-progress",
+            "discover-nearby", "serving-list", "nearby-list", "denied-list", "claim-body",
+            "theme-toggle", "language-select",
+        ):
+            self.assertIn(f'id="{node_id}"', page, node_id)
+        self.assertNotIn('id="download-progress"', page)
+        self.assertNotIn('id="apply-progress"', page)
 
     def test_gateway_web_ui_has_force_update_overlay_and_changelog_panel(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        page = webui("index.html")
+        app = webui("app.js")
 
-        self.assertIn('id="update-required-overlay"', web_source)
-        self.assertIn('id="update-center"', web_source)
-        self.assertIn('id="active-slot-version"', web_source)
-        self.assertIn('id="pending-slot-version"', web_source)
-        self.assertIn('id="server-latest-version"', web_source)
-        self.assertIn('id="manifest-latest-version"', web_source)
-        self.assertIn('id="last-update-check"', web_source)
-        self.assertIn('id="update-notes"', web_source)
-        self.assertIn("required_update", web_source)
-        self.assertIn("notes_markdown", web_source)
-        self.assertIn('data-i18n="updateCenter"', web_source)
-        self.assertIn('updateCenter:"更新センター"', web_source)
-        self.assertIn('updateCenter:"更新中心"', web_source)
-        self.assertIn("function localizePhaseCode", web_source)
-        self.assertIn("function localizeSource", web_source)
+        for node_id in (
+            "update-required-overlay", "update-center", "active-slot-version", "pending-slot-version",
+            "server-latest-version", "manifest-latest-version", "last-update-check", "update-notes",
+            "overlay-update-notes", "overlay-start-update",
+        ):
+            self.assertIn(f'id="{node_id}"', page, node_id)
+        self.assertIn("required_update", app)
+        self.assertIn("notes_markdown", app)
+        self.assertIn("function localizePhaseCode", app)
+        self.assertIn("function localizeSource", app)
+        # The required update locks the page: the dialog is modal and the rest inert.
+        self.assertIn('role="alertdialog"', page)
+        self.assertIn("function setGatewayLock(locked)", app)
 
     def test_gateway_update_center_has_green_healthy_state(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        app = webui("app.js")
 
-        self.assertIn(".update-center.ok", web_source)
-        self.assertIn("healthyUpdateCenter", web_source)
-        self.assertIn('updateCenter.className = `panel span-12 update-center${healthyUpdateCenter ? " ok" : ""}`', web_source)
+        self.assertIn(".update-center.ok", webui("app.css"))
+        self.assertIn("healthyUpdateCenter", app)
+        self.assertIn('setClass("update-center", `settings-card update-status update-center${healthyUpdateCenter ? " ok" : ""}`);', app)
 
     def test_gateway_setup_wizard_prefetches_id_once_without_overwriting_input(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+        web_source = webui("app.js")
 
         self.assertIn("let setupGatewayIdSuggested = false", web_source)
         self.assertIn("if (!hasGatewayId && !setupGatewayIdSuggested)", web_source)
@@ -367,6 +394,32 @@ class GatewayWebUiTest(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(seen[-1]["gateway_id"], "nh-gateway-test")
             self.assertTrue(seen[-1]["enabled"])
+
+    def test_gateway_settings_save_remote_management_only_when_sent(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            server = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream())
+            client = server.app.test_client()
+
+            client.post("/api/settings", json={"gateway_id": "nh-gateway-test", "remote_management": False})
+            self.assertFalse(store.snapshot()["remote_management"])
+            # The setup wizard leaves the key out: the saved value stays.
+            client.post("/api/settings", json={"gateway_id": "nh-gateway-test", "enabled": True})
+            self.assertFalse(store.snapshot()["remote_management"])
+
+    def test_gateway_web_ui_poll_does_not_reset_i18n_placeholders(self):
+        page = webui("index.html")
+        app = webui("app.js")
+        # applyI18n() rewrites every [data-i18n] node: from the 2 s poll it
+        # made the update overlay and panel flash.
+        self.assertNotIn("applyI18n()", function_body(app, "async function refresh() {"))
+        self.assertNotIn("applyI18n()", function_body(app, "function render(data) {"))
+        for node_id in ("update-banner", "update-notes", "update-progress-phase", "latest-version-label",
+                        "overlay-update-banner", "overlay-update-notes", "overlay-update-progress-phase"):
+            self.assertNotRegex(page, r'id="%s"[^>]*data-i18n=' % node_id)
+        # Lists are kept row by row instead of rebuilt with innerHTML.
+        self.assertIn("function syncList(", app)
+        self.assertNotIn(".innerHTML = `", app)
 
     def test_gateway_settings_enabled_save_does_not_require_token_flow(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -439,20 +492,59 @@ class GatewayWebUiTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 409)
                 self.assertEqual(response.get_json(), {"ok": False, "error": "update_required"})
 
-    def test_gateway_web_ui_moves_update_last_and_removes_token_controls(self):
-        web_source = (ROOT / "newhorizons_gateway" / "web.py").read_text(encoding="utf-8")
+    def test_gateway_web_ui_sections_follow_the_desktop_dialog(self):
+        page = webui("index.html")
 
-        operations_index = web_source.index('data-i18n="operations"')
-        claims_index = web_source.index('data-i18n="claims"')
-        update_index = web_source.rindex('id="update-center"')
+        order = [page.index(f'data-section-panel="{name}"') for name in ("overview", "devices", "connection", "update")]
+        self.assertEqual(order, sorted(order))
+        for name in ("overview", "devices", "connection", "update"):
+            self.assertIn(f'data-section="{name}"', page)
+        self.assertNotIn('id="gateway-token-input"', page)
+        self.assertNotIn('id="clear-gateway-token"', page)
+        self.assertNotIn("auth_token_configured", webui_source())
+        self.assertNotIn("clear_auth_token", webui_source())
 
-        self.assertLess(operations_index, claims_index)
-        self.assertGreater(update_index, claims_index)
-        self.assertNotIn('id="gateway-token-input"', web_source)
-        self.assertNotIn('id="clear-gateway-token"', web_source)
-        self.assertNotIn("auth_token_configured", web_source)
-        self.assertNotIn("clear_auth_token", web_source)
+    def test_webui_strings_exist_in_every_language(self):
+        tables = i18n_tables()
+        self.assertEqual(set(tables), {"en", "ja", "zh-CN"})
+        self.assertEqual(tables["en"], tables["ja"], tables["en"] ^ tables["ja"])
+        self.assertEqual(tables["en"], tables["zh-CN"], tables["en"] ^ tables["zh-CN"])
 
+        page = webui("index.html")
+        app = webui("app.js")
+        used = set(re.findall(r'data-i18n(?:-aria)?="([^"]+)"', page))
+        used |= set(re.findall(r'\b(?:tr|fmt)\("([^"]+)"', app))
+        used |= set(re.findall(r'label: "([A-Za-z]+)"', app))
+        used |= set(re.findall(r': "((?:phase|progress|boot|claimState|status|source|theme)[A-Z][A-Za-z]*)"', app))
+        missing = sorted(key for key in used if key not in tables["en"])
+        self.assertEqual(missing, [])
+
+    def test_webui_files_are_served_without_cache(self):
+        from newhorizons_gateway import __version__
+        from newhorizons_gateway.config_store import PRODUCTION_URL
+        from newhorizons_gateway.web import WEBUI_ASSETS
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GatewayConfigStore(str(Path(tmpdir) / "gateway_config.json"))
+            client = GatewayWebServer("127.0.0.1", 0, store, GatewayState(), FakeUpstream()).app.test_client()
+
+            index = client.get("/")
+            self.assertEqual(index.status_code, 200)
+            self.assertEqual(index.headers["Cache-Control"], "no-cache")
+            html = index.get_data(as_text=True)
+            self.assertNotIn("__VERSION__", html)
+            self.assertIn(f"/assets/app.js?v={__version__}", html)
+            for name in re.findall(r'/assets/([\w.]+)\?v=', html):
+                self.assertIn(name, WEBUI_ASSETS)
+                response = client.get(f"/assets/{name}")
+                self.assertEqual(response.status_code, 200, name)
+                self.assertEqual(response.headers["Cache-Control"], "no-cache")
+
+            app = client.get("/assets/app.js").get_data(as_text=True)
+            self.assertNotIn("__PRODUCTION_URL__", app)
+            self.assertIn(PRODUCTION_URL, app)
+            self.assertEqual(client.get("/assets/web.py").status_code, 404)
+            self.assertEqual(client.get("/assets/..%2Fweb.py").status_code, 404)
 
 if __name__ == "__main__":
     unittest.main()

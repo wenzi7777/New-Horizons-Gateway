@@ -87,10 +87,12 @@ class GatewayOperations:
     # -- settings ----------------------------------------------------------
 
     def save_settings(self, body: dict[str, Any], *, allow_enable_change: bool = True) -> OpResult:
-        """`target_mode`, `manual_url`, `gateway_id`, `enabled`. Keys missing
-        from `body` keep their current value. With allow_enable_change=False
-        (the remote path) `enabled` is never touched: a Desktop that disabled
-        the Gateway could never reach it again."""
+        """`target_mode`, `manual_url`, `gateway_id`, `enabled`,
+        `remote_management`. Keys missing from `body` keep their current
+        value. With allow_enable_change=False (the remote path) `enabled` and
+        `remote_management` are never touched: a Desktop that disabled the
+        Gateway could never reach it again, and one must not be able to turn
+        its own access back on."""
         locked = self._locked()
         if locked is not None:
             return locked
@@ -107,6 +109,9 @@ class GatewayOperations:
             return OpResult.fail("invalid_manual_url")
         if allow_enable_change:
             patch["enabled"] = bool(body.get("enabled", current.get("enabled", False)))
+            # Local only too: a Desktop must not be able to grant itself access.
+            if "remote_management" in body:
+                patch["remote_management"] = bool(body.get("remote_management"))
         try:
             if patch.get("enabled", current.get("enabled")):
                 validate_gateway_id(patch["gateway_id"])

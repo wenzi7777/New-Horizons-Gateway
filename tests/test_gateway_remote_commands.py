@@ -108,6 +108,27 @@ class RemoteCommandTest(unittest.TestCase):
         self.assertTrue(config["enabled"])  # remote never disables
         self.assertEqual(len(self.saved), 1)
 
+    def test_remote_management_defaults_on(self):
+        self.assertTrue(self.store.snapshot()["remote_management"])
+
+    def test_remote_management_off_refuses_every_command(self):
+        self.store.save({"remote_management": False})
+        for command in GATEWAY_COMMANDS:
+            result = self.run_cmd(command, gateway_id="gw-b", channel="beta", device_uid="AA")
+            self.assertFalse(result["ok"], command)
+            self.assertEqual(result["message"], "remote_management_disabled")
+        self.assertEqual(self.store.snapshot()["gateway_id"], "gw-a")
+        self.assertEqual(self.restarts, [])
+        self.assertEqual(self.saved, [])
+
+    def test_remote_cannot_change_remote_management(self):
+        self.store.save({"remote_management": False})
+        ops = GatewayOperations(self.store, self.state, self.upstream, None, update_manager=self.manager)
+        ops.save_settings({"remote_management": True}, allow_enable_change=False)
+        self.assertFalse(self.store.snapshot()["remote_management"])
+        ops.save_settings({"remote_management": True})
+        self.assertTrue(self.store.snapshot()["remote_management"])
+
     def test_set_config_rejects_bad_values_without_saving(self):
         for args, message in (
             ({"gateway_id": "bad id!"}, "gateway_id_invalid"),

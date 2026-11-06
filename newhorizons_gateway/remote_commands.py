@@ -83,6 +83,8 @@ class GatewayCommandHandler:
         try:
             if command not in GATEWAY_COMMANDS:
                 result = {"ok": False, "message": "unknown_command"}
+            elif not self._remote_management_enabled():
+                result = {"ok": False, "message": "remote_management_disabled"}
             else:
                 result, deferred = getattr(self, "_cmd_" + command)(payload)
         except Exception as exc:  # never leave the Desktop waiting
@@ -101,6 +103,9 @@ class GatewayCommandHandler:
                 self._after_command()
             except Exception:
                 pass
+
+    def _remote_management_enabled(self) -> bool:
+        return bool(self._operations().config_store.snapshot().get("remote_management", True))
 
     @staticmethod
     def _from_op(result: OpResult, ok_message: str) -> dict[str, Any]:

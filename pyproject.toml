@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "newhorizons-gateway"
-version = "1.0.0"
+version = "1.1.0"
 requires-python = ">=3.9"
 dependencies = [
     "Flask==3.0.3",
@@ -15,3 +15,7 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["newhorizons_gateway*"]
+
+# The WebUI is plain files beside the code (web.py serves them).
+[tool.setuptools.package-data]
+newhorizons_gateway = ["webui/*"]
