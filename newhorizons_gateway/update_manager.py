@@ -71,6 +71,10 @@ class GatewayUpdateManager:
         self._worker: threading.Thread | None = None
         self._last_manifest_check_monotonic = 0.0
         self._restart_callback: Callable[[], None] | None = None
+        # Set by restart() when no slot switch is staged: the runtime then
+        # re-runs main.run() in-process instead of exiting (an exit with
+        # nothing staged makes the bootloader stop -- it never relaunches).
+        self.soft_restart_requested = False
         self.boot_state = GatewayBootStateStore(self.runtime_root / "boot_state.json")
         self.health_store = GatewayHealthStore(self.runtime_root / "health.json")
 
@@ -145,6 +149,31 @@ class GatewayUpdateManager:
                 "active_slot_version": __version__ if active_slot else "",
                 "pending_slot_version": str(boot.get("target_version") or ""),
             }
+
+    def update_block(self, auto_apply: str = "") -> dict[str, Any]:
+        """The `update` block a Gateway reports upstream in gateway_status and
+        command results. Field names follow the Hub's (hubUpdateJson) so the
+        Desktop reads both the same way; `version` is the *available* one."""
+        st = self.state()
+        available_version = st["latest_version"] or st["latest_gateway_version"]
+        return {
+            "channel": st["update_channel"],
+            "resolved_manifest_url": st["manifest_url"],
+            "required_update": bool(st["required_update"]),
+            "latest_gateway_version": st["latest_gateway_version"],
+            "auto_apply": auto_apply if st["required_update"] else "",
+            "phase": st["phase"],
+            "operation": st["progress_label"],
+            "available": bool(st["update_available"]),
+            "version": available_version,
+            "current_version": st["current_version"],
+            "changelog_url": st["notes_url"],
+            "notes_url": st["notes_url"],
+            "progress_pct": int(st["progress_pct"]),
+            "busy": bool(st["busy"]),
+            "error": st["last_error"],
+            "checked_at": st["last_checked_at"],
+        }
 
     def slot_root(self, slot_name: str) -> Path:
         return self.slots_root / str(slot_name)
@@ -324,10 +353,13 @@ class GatewayUpdateManager:
                 self.restart_required = True
                 self.manual_update_required = True
             return self.state()
+        switch_staged = str(self.boot_state.load().get("boot_phase") or "") == "pending_switch"
         try:
+            with self._lock:
+                self.soft_restart_requested = not switch_staged
             self._restart_callback()
             with self._lock:
-                self.phase = "switch_pending"
+                self.phase = "switch_pending" if switch_staged else "restarting"
                 self.restart_required = False
                 self.manual_update_required = False
                 self.last_error = ""
@@ -433,6 +465,8 @@ class GatewayUpdateManager:
             return "Staging inactive slot"
         if self.phase == "switch_pending":
             return "Switching slots"
+        if self.phase == "restarting":
+            return "Restarting"
         if self.phase == "error":
             return "Update failed"
         return "Waiting"

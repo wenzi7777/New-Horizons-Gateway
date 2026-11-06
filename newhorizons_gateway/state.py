@@ -233,6 +233,12 @@ class GatewayState:
             self._mark_stale_control_locked()
             return bool(self.devices.get(uid, {}).get("connected"))
 
+    def serving_count(self) -> int:
+        """Devices this Gateway is serving right now (stale ones excluded)."""
+        with self._lock:
+            self._mark_stale_control_locked()
+            return sum(1 for device in self.devices.values() if device.get("connected"))
+
     def findme_allows_stream(self, device_uid: str, peer: tuple[str, int]) -> bool:
         uid = str(device_uid).strip().upper()
         host = str(peer[0] if peer else "")

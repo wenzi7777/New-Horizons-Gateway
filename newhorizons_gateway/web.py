@@ -13,14 +13,12 @@ from werkzeug.serving import make_server
 
 from . import __version__
 from .config_store import GatewayConfigStore, LOCAL_URL, PRODUCTION_URL, validate_gateway_id
+from .operations import GatewayOperations, OpResult
 from .state import GatewayState
 from .update_manager import GatewayUpdateManager
-from .versioning import UPDATE_CHANNELS
 
 
 ConfigCallback = Callable[[dict[str, Any]], None]
-
-_DEVICE_CONTROL_PORT = 13250
 
 
 PAGE = """<!doctype html>
@@ -1239,16 +1237,21 @@ class GatewayWebServer:
         self._server: Any = None
         self._thread: threading.Thread | None = None
 
+    def operations(self) -> GatewayOperations:
+        # Built per call from the current attributes (tests and main.py may
+        # swap discovery/udp_control after construction).
+        return GatewayOperations(
+            self.config_store,
+            self.state,
+            self.upstream,
+            self.udp_control,
+            discovery=self.discovery,
+            update_manager=self.update_manager,
+            on_config_saved=self.on_config_saved,
+        )
+
     def _make_app(self) -> Flask:
         app = Flask(__name__)
-
-        def update_required_response() -> Any:
-            return jsonify({"ok": False, "error": "update_required"}), 409
-
-        def ensure_not_locked() -> Any | None:
-            if self.update_manager.state().get("required_update"):
-                return update_required_response()
-            return None
 
         @app.get("/")
         def index() -> str:
@@ -1267,30 +1270,24 @@ class GatewayWebServer:
                 "update_state": update_state,
             })
 
+        def reply(result: OpResult, *, include_config: bool = False) -> Any:
+            if not result.ok:
+                return jsonify({"ok": False, "error": result.error}), result.status
+            body: dict[str, Any] = {"ok": True}
+            body.update(result.data)
+            if "config" in body:
+                body["config"] = self._public_config(body["config"])
+            return jsonify(body)
+
         @app.post("/api/settings")
         def settings() -> Any:
-            locked = ensure_not_locked()
-            if locked is not None:
-                return locked
             body = request.get_json(silent=True) or {}
-            try:
-                patch = {
-                    "target_mode": body.get("target_mode", "production"),
-                    "manual_url": body.get("manual_url", ""),
-                    "gateway_id": body.get("gateway_id", ""),
-                    "enabled": bool(body.get("enabled", False)),
-                }
-                if patch["enabled"]:
-                    validate_gateway_id(patch["gateway_id"])
-                config = self.config_store.save(patch)
-            except ValueError as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 400
-            if self.on_config_saved is not None:
-                self.on_config_saved(config)
-            else:
-                self.upstream.gateway_id = str(config.get("gateway_id") or "")
-                self.upstream.update_server(str(config["server_url"]), "")
-            return jsonify({"ok": True, "config": self._public_config(config)})
+            return reply(self.operations().save_settings({
+                "target_mode": body.get("target_mode", "production"),
+                "manual_url": body.get("manual_url", ""),
+                "gateway_id": body.get("gateway_id", ""),
+                "enabled": bool(body.get("enabled", False)),
+            }))
 
         @app.post("/api/gateway-id/suggest")
         def suggest_gateway_id() -> Any:
@@ -1317,19 +1314,10 @@ class GatewayWebServer:
 
         @app.post("/api/update/channel")
         def update_channel() -> Any:
-            # Deliberately not behind ensure_not_locked(): switching back to
-            # stable is how an operator gets out of a beta-required update.
+            # Deliberately not locked: switching back to stable is how an
+            # operator gets out of a beta-required update.
             body = request.get_json(silent=True) or {}
-            channel = str(body.get("channel") or "").strip().lower()
-            if channel not in UPDATE_CHANNELS:
-                return jsonify({"ok": False, "error": "invalid_update_channel"}), 400
-            config = self.config_store.save({"update_channel": channel})
-            if self.on_config_saved is not None:
-                self.on_config_saved(config)
-            else:
-                self.update_manager.set_channel(channel)
-                self.upstream.set_update_channel(channel)
-            return jsonify({"ok": True, "config": self._public_config(config), "update_state": self.update_manager.state()})
+            return reply(self.operations().set_update_channel(body.get("channel")))
 
         @app.post("/api/update/restart")
         def update_restart() -> Any:
@@ -1337,54 +1325,19 @@ class GatewayWebServer:
 
         @app.post("/api/discover")
         def discover() -> Any:
-            locked = ensure_not_locked()
-            if locked is not None:
-                return locked
-            if self.discovery is not None:
-                self.discovery.send_probe()
-            return jsonify({"ok": True})
+            return reply(self.operations().discover())
 
         @app.post("/api/devices/<device_uid>/reject")
         def reject(device_uid: str) -> Any:
-            locked = ensure_not_locked()
-            if locked is not None:
-                return locked
-            config = self.config_store.deny(device_uid)
-            return jsonify({"ok": True, "denied_devices": config.get("denied_devices", [])})
+            return reply(self.operations().deny(device_uid))
 
         @app.post("/api/devices/<device_uid>/allow")
         def allow(device_uid: str) -> Any:
-            locked = ensure_not_locked()
-            if locked is not None:
-                return locked
-            config = self.config_store.allow(device_uid)
-            return jsonify({"ok": True, "denied_devices": config.get("denied_devices", [])})
+            return reply(self.operations().allow(device_uid))
 
         @app.post("/api/devices/<device_uid>/serve")
         def serve(device_uid: str) -> Any:
-            locked = ensure_not_locked()
-            if locked is not None:
-                return locked
-            if self.config_store.is_denied(device_uid):
-                return jsonify({"ok": False, "error": "device_denied"}), 409
-            if not self.upstream.is_connected():
-                return jsonify({"ok": False, "error": "upstream_offline"}), 503
-            claim = self.state.create_claim(device_uid)
-            self.state.update_claim(claim["claim_id"], state="sent")
-            self.upstream.send_claim_request(claim["device_uid"], claim["claim_id"], int(claim["ttl_ms"]))
-            updated = self.state.update_claim(claim["claim_id"], state="requested")
-            device_ip = self.state.last_findme_addr(device_uid)
-            if device_ip and self.udp_control is not None:
-                gw_id = str(self.config_store.snapshot().get("gateway_id") or "")
-                self.udp_control.send_command_to(device_uid, (device_ip, _DEVICE_CONTROL_PORT), {
-                    "command": "findme_switch_gateway",
-                    "request_id": "findme-claim-{}".format(claim["claim_id"]),
-                    "preferred_gateway_id": gw_id,
-                    "claim_id": claim["claim_id"],
-                    "ttl_ms": int(claim["ttl_ms"]),
-                    "expires_at_ms": int(claim["expires_at_ms"]),
-                })
-            return jsonify({"ok": True, "claim": updated or claim})
+            return reply(self.operations().serve(device_uid))
 
         return app
 

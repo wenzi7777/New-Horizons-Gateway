@@ -16,6 +16,7 @@ except Exception:  # pragma: no cover
 
 from .queueing import DropOldestQueue
 from . import __version__
+from .remote_commands import CAPABILITIES
 
 
 CommandCallback = Callable[[str, dict[str, Any]], None]
@@ -107,6 +108,14 @@ class UpstreamWSSClient:
         }
         self._put_control(message, coalesce_type="gateway_status")
 
+    def send_gateway_command_result(self, request_id: str, result: dict[str, Any]) -> None:
+        self._put_control({
+            "type": "gateway_command_result",
+            "gateway_id": self.gateway_id,
+            "request_id": str(request_id or ""),
+            "result": dict(result),
+        })
+
     def send_claim_request(self, device_uid: str, claim_id: str, ttl_ms: int) -> None:
         self._put_control(
             {
@@ -154,6 +163,10 @@ class UpstreamWSSClient:
             "gateway_id": self.gateway_id,
             "version": __version__,
             "update_channel": self.update_channel,
+            # Tells the Backend this relay is a Gateway (a Hub sends "hub")
+            # and that it takes Desktop management commands.
+            "client_type": "gateway",
+            "capabilities": list(CAPABILITIES),
             "connected_at": datetime.now(timezone.utc).isoformat(),
         }
 

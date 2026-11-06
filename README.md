@@ -108,6 +108,10 @@ The Gateway WebUI has an `Update Center`:
 
 If the backend reports a newer Gateway version, the Gateway enters a mandatory
 update overlay and blocks normal operations until the update is applied.
+Since v1.0.0 it also applies that update by itself, like a Hub: after 60 s
+from start-up, once no device has been served for 60 s. An attempt that
+leaves the Gateway running (download error, manifest not newer yet) waits
+30 min before the next try (`auto_apply`: `waiting_for_idle` / `retry_later`).
 
 ### Update channels
 
@@ -127,6 +131,27 @@ If you launched the Gateway through `python scripts/start.py`, slot switching
 and rollback are already wired up by the bootloader. The bootloader itself is
 not updated by daily OTA; the first bootloader-capable release must be
 installed manually.
+
+## Remote Management (Desktop)
+
+Since v1.0.0 the Desktop app manages a Gateway the way it manages a Hub
+(Relays page → `Manage` on the Gateway card). The Gateway's `hello` carries
+`client_type: "gateway"` and `capabilities: ["gateway_command", "auto_update"]`;
+the Desktop sends `gateway_command` over the same upstream WebSocket and the
+Gateway answers with `gateway_command_result` (`newhorizons_gateway/remote_commands.py`).
+
+| Command | Args | Notes |
+|---|---|---|
+| `set_config` | `gateway_id`, `target_mode`, `manual_url` | Locked by a required update; replies, then reconnects. `enabled` is never changed remotely |
+| `check_update` | | `update_available` / `up_to_date` / `update_check_failed` |
+| `apply_update` | | Same as `Update now` |
+| `set_update_channel` | `channel` | Never locked |
+| `restart` | | Restarts in-process (no slot switch) |
+| `factory_reset` | | First-run settings (disabled, no ID; ports kept) -- the Gateway goes offline until set up in its WebUI again |
+| `discover`, `device_reject`, `device_allow`, `device_serve` | `device_uid` | Same as the WebUI device actions; locked by a required update |
+
+The WebUI and the Desktop go through the same code (`operations.py`).
+`gateway_status` carries an `update` block (field names as the Hub's).
 
 ## Run On Another Computer
 

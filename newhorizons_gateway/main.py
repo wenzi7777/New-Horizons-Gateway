@@ -19,6 +19,8 @@ from .result_chunks import RESULT_CHUNK_TYPE, ResultChunkReassembler
 from .state import GatewayState
 from .time_service import build_time_response, is_time_request, now_epoch_us
 from .udp_control import UDPCommandDispatcher, normalize_device_uid
+from .auto_update import RequiredUpdateAutoApplier
+from .remote_commands import GatewayCommandHandler
 from .update_manager import GatewayUpdateManager
 from .upstream_wss import UpstreamWSSClient
 from .web import GatewayWebServer
@@ -31,7 +33,12 @@ def _install_signal_handlers(stop_handler: Any) -> None:
     signal.signal(signal.SIGTERM, stop_handler)
 
 
-def run(config_path: str | None = None, stop_event: threading.Event | None = None) -> None:
+RESTART = "restart"
+
+
+def run(config_path: str | None = None, stop_event: threading.Event | None = None) -> str | None:
+    """Runs the Gateway until stopped. Returns RESTART when a restart was asked
+    for with no slot switch staged: the caller runs it again in-process."""
     config_store = GatewayConfigStore(config_path)
     config = config_store.snapshot()
     health_store = GatewayHealthStore(
@@ -113,6 +120,8 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         )
 
     def on_upstream_message(message: dict[str, Any]) -> None:
+        if command_handler.handle_message(message):
+            return
         if message.get("type") == "gateway_hello_ack":
             update_manager.set_server_latest_version(str(message.get("latest_gateway_version") or ""))
         if message.get("type") == "gateway_claim_update":
@@ -293,8 +302,14 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         publish_console_status(current_config)
 
     update_manager = GatewayUpdateManager(channel=str(config.get("update_channel") or "stable"))
-    if stop_event is not None:
-        update_manager.set_restart_callback(stop_event.set)
+    restart_event = threading.Event()
+
+    def request_stop_for_restart() -> None:
+        # Ends this run(); stop_event stays the console's "really quit" flag.
+        restart_event.set()
+
+    update_manager.set_restart_callback(request_stop_for_restart)
+    auto_applier = RequiredUpdateAutoApplier(update_manager, is_idle=lambda: state.serving_count() == 0)
     web_server = GatewayWebServer(
         str(config["listen_web_host"]),
         int(config["listen_web_port"]),
@@ -305,6 +320,23 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         discovery=discovery,
         on_config_saved=apply_runtime_config,
         update_manager=update_manager,
+    )
+
+    last_gateway_status = 0.0
+
+    def update_block() -> dict[str, Any]:
+        return update_manager.update_block(auto_applier.status())
+
+    def push_status_soon() -> None:
+        nonlocal last_gateway_status
+        last_gateway_status = 0.0
+
+    command_handler = GatewayCommandHandler(
+        web_server.operations,
+        upstream.send_gateway_command_result,
+        restart=update_manager.restart,
+        update_block=update_block,
+        after_command=push_status_soon,
     )
 
     web_server.start()
@@ -327,11 +359,10 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
             config["server_url"],
         )
     )
-    last_gateway_status = 0.0
     last_update_check = 0.0
     try:
         while running:
-            if stop_event is not None and stop_event.is_set():
+            if restart_event.is_set() or (stop_event is not None and stop_event.is_set()):
                 running = False
                 continue
             time.sleep(0.5)
@@ -352,6 +383,7 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     "upstream": upstream.status(),
                     "udp_control": udp_commands.snapshot(),
                     "state": state.snapshot(current_config.get("denied_devices", [])),
+                    "update": update_block(),
                 })
                 publish_console_status(current_config)
             check_interval = max(60, update_manager.auto_check_interval_sec)
@@ -361,6 +393,10 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
                     update_manager.check(force=True)
                 except Exception:
                     pass
+            try:
+                auto_applier.service()
+            except Exception:
+                pass
             udp_commands.service()
             result_chunks.purge()
     finally:
@@ -376,13 +412,17 @@ def run(config_path: str | None = None, stop_event: threading.Event | None = Non
         web_server.stop()
         udp_server.stop()
         upstream.stop()
+    if restart_event.is_set() and update_manager.soft_restart_requested:
+        return RESTART
+    return None
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="New Horizons local UDP/JSON to WSS gateway")
     parser.add_argument("--config", help="Path to host gateway config", default=None)
     args = parser.parse_args()
-    run(config_path=args.config)
+    while run(config_path=args.config) == RESTART:
+        print("Gateway restarting")
 
 
 if __name__ == "__main__":

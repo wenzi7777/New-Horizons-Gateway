@@ -103,7 +103,14 @@ def main() -> int:
             stream.write("Closing this window stops Gateway.\n")
             stream.write("Status polls are summarized in the header.\n")
             try:
-                gateway_main_module.run(config_path=str(CONFIG_FILE), stop_event=stop_event)
+                # run() returns RESTART for a restart with no slot switch
+                # staged (Desktop "restart"): run it again in this process.
+                # A staged switch returns None and exits, so the bootloader
+                # can launch the other slot.
+                while gateway_main_module.run(config_path=str(CONFIG_FILE), stop_event=stop_event) == gateway_main_module.RESTART:
+                    if stop_event.is_set():
+                        break
+                    stream.write("Gateway restarting.\n")
             except SystemExit as exc:
                 code = exc.code if isinstance(exc.code, int) else 0
                 result["exit_code"] = code
