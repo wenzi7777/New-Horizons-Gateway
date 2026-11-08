@@ -1,4 +1,4 @@
-// NHOS Gateway local WebUI.
+// NH Gateway local WebUI.
 //
 // Laid out like the Desktop app's Gateway dialog (GatewayManageModal):
 // overview cards on top, sections in a sidebar (Overview / LAN devices /

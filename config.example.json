@@ -1,6 +1,6 @@
 {
   "enabled": false,
-  "gateway_name": "New Horizons Gateway",
+  "gateway_name": "NH Gateway",
   "gateway_id": "",
   "target_mode": "production",
   "manual_url": "",

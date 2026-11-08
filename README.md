@@ -217,7 +217,7 @@ Gateway offer:
 {
   "type": "findme_offer",
   "device_uid": "3CDC7545CCD0",
-  "gateway_name": "New Horizons Gateway",
+  "gateway_name": "NH Gateway",
   "gateway_id": "nh-gateway-xxxxxx",
   "udp_port": 13250,
   "priority": 100,
