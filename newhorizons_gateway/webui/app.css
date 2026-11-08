@@ -634,19 +634,42 @@ table.data-table tr:last-child td { border-bottom: 0; }
 .progress-track { height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--text) 10%, transparent); }
 .progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 400ms var(--ease-out); }
 
-pre.notes {
+.notes {
   max-height: 320px;
   margin: 0;
-  padding: 12px;
+  padding: 4px 14px 12px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--panel-solid);
   color: var(--text);
-  font: 12px/1.55 "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
+.notes .markdown > :first-child { margin-top: 8px; }
+.notes h3, .notes h4, .notes h5 { margin: 14px 0 6px; font-size: 13px; font-weight: 650; }
+.notes h3 { font-size: 15px; }
+.notes p { margin: 6px 0; }
+.notes ul, .notes ol { margin: 6px 0; padding-left: 20px; }
+.notes li { margin: 3px 0; }
+.notes li.md-nested { margin-left: 18px; }
+.notes code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  font: 12px "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+}
+.notes pre {
+  margin: 8px 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+.notes pre code { padding: 0; background: none; white-space: pre; }
+.notes a { color: var(--accent); }
+.notes-empty { margin: 8px 0 0; color: var(--text-dim); }
 
 /* ── Modals ── */
 .modal-backdrop {

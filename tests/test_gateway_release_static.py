@@ -33,6 +33,12 @@ class GatewayReleaseStaticTest(unittest.TestCase):
         self.assertIn(f"{version}.md", mirror_manifest["notes_url"])
         self.assertTrue(release_note.exists())
         self.assertTrue(mirror_release_note.exists())
+        # From v1.1.2 every release ships Japanese and English beside the
+        # Traditional Chinese original.
+        for language in ("ja", "en"):
+            translated = ROOT / "releases" / "notes" / f"{version}.{language}.md"
+            self.assertTrue(translated.exists(), translated.name)
+            self.assertTrue(translated.read_text(encoding="utf-8").startswith(f"# {version}\n"))
         self.assertTrue(artifact.exists())
         self.assertTrue(mirror_artifact.exists())
         self.assertEqual(manifest["sha256"], hashlib.sha256(artifact.read_bytes()).hexdigest())

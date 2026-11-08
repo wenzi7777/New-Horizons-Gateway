@@ -71,6 +71,36 @@ class GatewayUpdateManagerTest(unittest.TestCase):
             self.assertEqual(state["notes_markdown"], "# Changes\n\n- Force OTA update\n")
             self.assertEqual(state["update_signal_source"], "server_ws")
 
+    def test_translated_notes_are_fetched_beside_the_original(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            (tmp_path / "v9.9.9.md").write_text("# 中文", encoding="utf-8")
+            (tmp_path / "v9.9.9.ja.md").write_text("# 日本語", encoding="utf-8")
+            manifest = tmp_path / "gateway-latest.json"
+            manifest.write_text(json.dumps({
+                "version": "v9.9.9",
+                "zip_url": "https://example.com/newhorizons-gateway-v9.9.9.zip",
+                "sha256": "abc123",
+                "notes_url": (tmp_path / "v9.9.9.md").as_uri(),
+            }), encoding="utf-8")
+            manager = GatewayUpdateManager(app_root=tmpdir, staging_root=tmp_path / "updates",
+                                           manifest_url=manifest.as_uri())
+
+            state = manager.check(force=True)
+
+            self.assertEqual(state["notes_markdown"], "# 中文")
+            # No English file: not an error, the WebUI falls back.
+            self.assertEqual(state["notes_markdown_i18n"], {"ja": "# 日本語"})
+            self.assertEqual(state["last_error"], "")
+
+    def test_localized_notes_url(self):
+        from newhorizons_gateway.update_manager import localized_notes_url
+        base = "https://raw.githubusercontent.com/x/y/v1.1.2/releases/notes/v1.1.2.md"
+        self.assertEqual(localized_notes_url(base, "en"), base[:-3] + ".en.md")
+        self.assertEqual(localized_notes_url("https://x/v1.0.0-beta.1.md", "ja"), "https://x/v1.0.0-beta.1.ja.md")
+        self.assertEqual(localized_notes_url("https://x/v1.0.0.ja.md", "en"), "")
+        self.assertEqual(localized_notes_url("", "en"), "")
+
     def test_manifest_failure_keeps_required_update_and_shows_empty_notes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = GatewayUpdateManager(

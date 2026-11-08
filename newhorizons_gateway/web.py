@@ -22,7 +22,7 @@ from .update_manager import GatewayUpdateManager
 ConfigCallback = Callable[[dict[str, Any]], None]
 
 
-# The page lives in webui/ (index.html + app.css/app.js/i18n.js/theme.js/select.js),
+# The page lives in webui/ (index.html + app.css/app.js/i18n.js/theme.js/select.js/markdown.js),
 # served as is: no build step. Files are read per request, so they are never
 # stale after an update swaps the slot, and every response says no-cache.
 WEBUI_DIR = Path(__file__).resolve().parent / "webui"
@@ -30,6 +30,7 @@ WEBUI_ASSETS = {
     "app.css": "text/css; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "i18n.js": "text/javascript; charset=utf-8",
+    "markdown.js": "text/javascript; charset=utf-8",
     "select.js": "text/javascript; charset=utf-8",
     "theme.js": "text/javascript; charset=utf-8",
 }

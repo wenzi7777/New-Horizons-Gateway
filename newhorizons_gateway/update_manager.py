@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -25,6 +26,19 @@ DEFAULT_AUTO_CHECK_INTERVAL_SEC = 600
 # Keep the runtime bundle contract explicit for release/static checks.
 # It must continue to ship "pyproject.toml" inside every slot payload.
 ALLOWED_UPDATE_ENTRIES = RUNTIME_SLOT_ENTRIES
+
+
+# Release notes: vX.Y.Z.md is the original (Traditional Chinese, the URL every
+# manifest carries); vX.Y.Z.ja.md / vX.Y.Z.en.md sit beside it when the
+# release was translated. Older releases have only the original.
+NOTES_TRANSLATIONS = ("ja", "en")
+
+
+def localized_notes_url(notes_url: str, language: str) -> str:
+    match = re.match(r"^(.*/v[^/?#]+?)\.md([?#].*)?$", str(notes_url or "").strip())
+    if not match or re.search(r"\.(ja|en)$", match.group(1)):
+        return ""
+    return f"{match.group(1)}.{language}.md{match.group(2) or ''}"
 
 
 def _is_newer_version(candidate: str, current: str) -> bool:
@@ -59,6 +73,7 @@ class GatewayUpdateManager:
         self.update_signal_source = ""
         self.required_update = False
         self.notes_markdown = ""
+        self.notes_translations: dict[str, str] = {}
         self.last_checked_at = ""
         self.auto_check_interval_sec = max(
             60,
@@ -96,6 +111,7 @@ class GatewayUpdateManager:
                     self.update_signal_source = ""
                     self.required_update = False
                     self.notes_markdown = ""
+                    self.notes_translations = {}
                     self._last_manifest_check_monotonic = 0.0
         return self.state()
 
@@ -124,6 +140,7 @@ class GatewayUpdateManager:
                 "zip_url": str(self.latest_manifest.get("zip_url") or ""),
                 "notes_url": str(self.latest_manifest.get("notes_url") or ""),
                 "notes_markdown": self.notes_markdown,
+                "notes_markdown_i18n": dict(self.notes_translations),
                 "sha256": str(self.latest_manifest.get("sha256") or ""),
                 "downloaded": self.downloaded_zip.exists(),
                 "downloaded_sha256": self.downloaded_sha256,
@@ -220,6 +237,7 @@ class GatewayUpdateManager:
             if not self.update_signal_source:
                 self.update_signal_source = "manifest"
             self.notes_markdown = self._download_notes(str(manifest.get("notes_url") or ""))
+            self.notes_translations = self._download_translations(str(manifest.get("notes_url") or ""))
             self.phase = "checked"
             if not self.notes_markdown and str(manifest.get("notes_url") or "").strip():
                 self.last_error = self.last_error or "notes_unavailable"
@@ -246,6 +264,23 @@ class GatewayUpdateManager:
         except Exception as exc:
             self.last_error = f"notes_unavailable: {exc}"
             return ""
+
+    def _download_translations(self, notes_url: str) -> dict[str, str]:
+        # A missing translation is normal (older releases), so failures here
+        # are silent: the WebUI falls back to the original.
+        found: dict[str, str] = {}
+        for language in NOTES_TRANSLATIONS:
+            url = localized_notes_url(notes_url, language)
+            if not url:
+                continue
+            try:
+                with urllib.request.urlopen(url, timeout=12) as response:
+                    text = response.read().decode("utf-8")
+            except Exception:
+                continue
+            if text.strip():
+                found[language] = text
+        return found
 
     def download(self) -> dict[str, Any]:
         if not self.latest_manifest:

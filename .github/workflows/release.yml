@@ -2,7 +2,8 @@ name: release
 
 # Every pushed version tag gets a GitHub Release, so the Releases page never
 # falls behind the tags. The body is releases/notes/<tag>.md (the tag's
-# annotation when there is none); this version's build artifacts are attached.
+# annotation when there is none), with its .en.md/.ja.md translations folded
+# in below; this version's build artifacts are attached.
 # A vX.Y.Z-beta.N tag is a prerelease and never becomes "Latest".
 
 on:
@@ -30,13 +31,29 @@ jobs:
             git tag -l --format='%(contents)' "$TAG" > /tmp/notes.md
             notes=/tmp/notes.md
           fi
+          # Translations (<tag>.en.md / <tag>.ja.md beside the original) go
+          # under the Traditional Chinese original, each folded away.
+          body=/tmp/release-body.md
+          cp "$notes" "$body"
+          case "$notes" in
+            */"${TAG}.md")
+              for pair in "en:English" "ja:日本語"; do
+                translated="${notes%.md}.${pair%%:*}.md"
+                if [ -f "$translated" ]; then
+                  printf '\n\n<details>\n<summary>%s</summary>\n\n' "${pair#*:}" >> "$body"
+                  cat "$translated" >> "$body"
+                  printf '\n\n</details>\n' >> "$body"
+                fi
+              done
+              ;;
+          esac
           shopt -s nullglob
           assets=(releases/artifacts/*-"${TAG}".bin releases/artifacts/*-"${TAG}".zip)
           flags=(--latest)
           case "$TAG" in *-*) flags=(--prerelease --latest=false) ;; esac
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release edit "$TAG" --title "$PRODUCT $TAG" --notes-file "$notes"
+            gh release edit "$TAG" --title "$PRODUCT $TAG" --notes-file "$body"
             if [ ${#assets[@]} -gt 0 ]; then gh release upload "$TAG" "${assets[@]}" --clobber; fi
           else
-            gh release create "$TAG" --verify-tag --title "$PRODUCT $TAG" --notes-file "$notes" "${flags[@]}" "${assets[@]}"
+            gh release create "$TAG" --verify-tag --title "$PRODUCT $TAG" --notes-file "$body" "${flags[@]}" "${assets[@]}"
           fi

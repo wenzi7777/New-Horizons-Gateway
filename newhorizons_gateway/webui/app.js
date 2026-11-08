@@ -328,6 +328,33 @@
     }
   }
 
+  // Release notes in the UI language (the Gateway downloads the .ja/.en
+  // translations beside the original), else the Traditional Chinese
+  // original, rendered as Markdown. Re-rendered only when the text changes.
+  function notesFor(st) {
+    const translations = st.notes_markdown_i18n || {};
+    const key = language === "ja" ? "ja" : language === "en" ? "en" : "";
+    return (key && translations[key]) || st.notes_markdown || "";
+  }
+
+  function renderNotes(id, st) {
+    const node = $(id);
+    if (!node) return;
+    const source = notesFor(st);
+    if (node.dataset.source === source && node.dataset.lang === language) return;
+    node.dataset.source = source;
+    node.dataset.lang = language;
+    node.replaceChildren();
+    if (!source) {
+      const empty = document.createElement("p");
+      empty.className = "notes-empty";
+      empty.textContent = tr("noReleaseNotes");
+      node.appendChild(empty);
+      return;
+    }
+    node.appendChild(window.renderMarkdown(source));
+  }
+
   function showFieldError(id, message) {
     setText(id, message, "");
     show(id, Boolean(message));
@@ -765,9 +792,8 @@
     if (document.activeElement !== channel && !channel.dataset.busy) channel.value = st.update_channel === "beta" ? "beta" : "stable";
     setText("channel-hint", tr(st.update_channel === "beta" ? "channelBetaActive" : "channelHint"));
 
-    const notes = st.notes_markdown || tr("noReleaseNotes");
-    setText("update-notes", notes);
-    setText("overlay-update-notes", notes);
+    renderNotes("update-notes", st);
+    renderNotes("overlay-update-notes", st);
 
     setText("server-latest-version", serverLatest);
     setText("manifest-latest-version", manifestLatest);

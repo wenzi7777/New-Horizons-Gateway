@@ -19,7 +19,7 @@ def webui(name):
 
 
 def webui_source():
-    return "\n".join(webui(name) for name in ("index.html", "app.css", "app.js", "i18n.js", "theme.js", "select.js"))
+    return "\n".join(webui(name) for name in ("index.html", "app.css", "app.js", "i18n.js", "theme.js", "select.js", "markdown.js"))
 
 
 def function_body(source, signature):
@@ -420,6 +420,18 @@ class GatewayWebUiTest(unittest.TestCase):
         # Lists are kept row by row instead of rebuilt with innerHTML.
         self.assertIn("function syncList(", app)
         self.assertNotIn(".innerHTML = `", app)
+
+    def test_release_notes_render_as_markdown_in_the_ui_language(self):
+        page = webui("index.html")
+        app = webui("app.js")
+        markdown = webui("markdown.js")
+        self.assertIn('/assets/markdown.js?v=__VERSION__', page)
+        self.assertNotIn('<pre class="notes"', page)
+        self.assertIn("window.renderMarkdown(source)", app)
+        self.assertIn("st.notes_markdown_i18n", app)
+        # Notes come from the network: DOM nodes and textContent only.
+        self.assertNotIn("innerHTML", markdown)
+        self.assertIn("/^https?:\\/\\//i.test(link[2])", markdown)
 
     def test_gateway_settings_enabled_save_does_not_require_token_flow(self):
         with tempfile.TemporaryDirectory() as tmpdir:
