@@ -1,0 +1,11 @@
+{
+  "name": "@nhgw/ui-tokens",
+  "version": "2.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "Design tokens, theme (auto/light/dark by sunrise/sunset) and UI strings shared by the Gateway's web, terminal and Android UIs. Tokens are generated from the Desktop app's styles.css (scripts/gen-tokens.ts).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens.css": "./src/tokens.css"
+  }
+}

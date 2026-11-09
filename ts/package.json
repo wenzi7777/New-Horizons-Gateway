@@ -1,0 +1,22 @@
+{
+  "name": "newhorizons-gateway-ts",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "gen:tokens": "node packages/ui-tokens/scripts/gen-tokens.ts",
+    "check:tokens": "node packages/ui-tokens/scripts/gen-tokens.ts --check",
+    "build:sea": "node packages/node/scripts/build-sea.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

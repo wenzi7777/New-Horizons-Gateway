@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "NH Gateway Spike",
+    "slug": "nh-gateway-spike",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "jp.ac.uaizu.newhorizons.gatewayspike"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "jp.ac.uaizu.newhorizons.gatewayspike"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "04bc5466-6d43-4055-8289-7bd4e2e1f84a"
+      }
+    },
+    "owner": "nickhsu"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@nhgw/core",
+  "version": "2.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "Platform-independent New Horizons Gateway core: protocol, state, upstream, updates. All I/O is injected (src/ports.ts).",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
