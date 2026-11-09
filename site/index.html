@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Download NH Gateway for macOS, Windows, Linux and Android.">
+  <title>Download NH Gateway</title>
+  <script>
+    // The theme last shown, before first paint, so a night visit does not
+    // flash white (theme.js takes over once loaded). Same as the web UI.
+    (function () {
+      var theme = "light";
+      try { theme = localStorage.getItem("nh-theme-last") === "dark" ? "dark" : "light"; } catch (error) {}
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+  <link rel="stylesheet" href="tokens.css?v=__BUILD__">
+  <link rel="stylesheet" href="app.css?v=__BUILD__">
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="heroTitle">Download NH Gateway</a>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-title">NH Gateway</span>
+      <span class="app-version" data-i18n="brandSub">Download</span>
+    </div>
+    <div class="topbar-session">
+      <button class="icon-button topbar-icon-button" type="button" id="theme-toggle"></button>
+      <span class="select-wrap">
+        <select class="select-compact" id="language-select" data-i18n-aria="language">
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="zh-CN">简体中文</option>
+        </select>
+        <svg class="select-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+      </span>
+    </div>
+  </header>
+
+  <main class="page-shell" id="main" tabindex="-1">
+    <section class="hero">
+      <div class="hero-text">
+        <h1 data-i18n="heroTitle">Download NH Gateway</h1>
+        <p class="dim" data-i18n="heroCopy"></p>
+      </div>
+      <div class="channel">
+        <span class="field-label" id="channel-label" data-i18n="channelLabel">Update channel</span>
+        <div class="segmented-control" id="channel-control" role="radiogroup" aria-labelledby="channel-label">
+          <button type="button" role="radio" data-channel="stable" data-i18n="channelStable">Stable</button>
+          <button type="button" role="radio" data-channel="beta" data-i18n="channelBeta">Beta</button>
+        </div>
+        <span class="field-note" id="channel-hint" data-i18n="channelBetaHint" hidden></span>
+      </div>
+    </section>
+
+    <!-- Loading / error / offline. Polite live region: the result is announced. -->
+    <div id="status" role="status" aria-live="polite">
+      <div class="panel state" id="state-loading">
+        <span class="spinner" aria-hidden="true"></span>
+        <span data-i18n="loading">Checking the latest release…</span>
+      </div>
+      <div class="notice error state" id="state-error" hidden>
+        <span><strong id="state-error-title" data-i18n="errorTitle"></strong> <span class="mono" id="state-error-detail"></span></span>
+        <button class="button tiny" type="button" id="retry" data-i18n="retry">Try again</button>
+      </div>
+      <div class="notice warning state" id="state-offline" hidden>
+        <span data-i18n="offline"></span>
+        <button class="button tiny" type="button" id="retry-offline" data-i18n="retry">Try again</button>
+      </div>
+    </div>
+
+    <!-- ── Single executables (gateway-bin-*.json) ── -->
+    <section class="view" id="bin-view" hidden>
+      <div class="panel hero-card">
+        <div class="hero-card-head">
+          <h2 data-i18n="recommended">For this device</h2>
+          <p class="meta" id="bin-meta"></p>
+        </div>
+        <p class="field-note" id="primary-notice" hidden></p>
+        <div class="actions" id="primary-actions"></div>
+        <a class="link" id="bin-notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="allDownloads">All downloads</h2>
+        <ul class="asset-list" id="asset-list"></ul>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="installTitle">Install and start</h2>
+        <p class="dim" data-i18n="installCopy"></p>
+        <div class="disclosures">
+          <details class="disclosure" data-os="mac">
+            <summary data-i18n="osMac">macOS</summary>
+            <ol class="steps disclosure-body">
+              <li><span data-i18n="macStep1"></span><div class="command" data-cmd="mac-chmod"></div></li>
+              <li><span data-i18n="macStep2"></span><div class="command" data-cmd="mac-xattr"></div><p class="field-note" data-i18n="macStep2Alt"></p></li>
+              <li><span data-i18n="macStep3"></span><div class="command" data-cmd="mac-run"></div></li>
+            </ol>
+          </details>
+          <details class="disclosure" data-os="windows">
+            <summary data-i18n="osWindows">Windows</summary>
+            <ol class="steps disclosure-body">
+              <li data-i18n="winStep1"></li>
+              <li data-i18n="winStep2"></li>
+              <li data-i18n="winStep3"></li>
+            </ol>
+          </details>
+          <details class="disclosure" data-os="linux">
+            <summary data-i18n="osLinux">Linux</summary>
+            <ol class="steps disclosure-body">
+              <li><span data-i18n="linuxStep1"></span><div class="command" data-cmd="linux-run"></div></li>
+              <li data-i18n="linuxStep2"></li>
+            </ol>
+          </details>
+          <details class="disclosure" data-os="android">
+            <summary data-i18n="osAndroid">Android</summary>
+            <ol class="steps disclosure-body">
+              <li data-i18n="androidStep1"></li>
+              <li data-i18n="androidStep2"></li>
+              <li data-i18n="androidStep3"></li>
+              <li data-i18n="androidStep4"></li>
+            </ol>
+          </details>
+        </div>
+      </div>
+
+      <div class="panel" id="migrate-panel">
+        <h2 data-i18n="migrateTitle">Coming from the Python Gateway</h2>
+        <p class="dim" data-i18n="migrateCopy"></p>
+        <ol class="steps">
+          <li data-i18n="migrateStep1"></li>
+          <li><span data-i18n="migrateStep2"></span><div class="command" data-cmd="py-stop"></div><p class="field-note" data-i18n="migrateStep2Win"></p></li>
+          <li data-i18n="migrateStep3"></li>
+          <li data-i18n="migrateStep4"></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ── Python release (gateway-*.json), until the executables ship ── -->
+    <section class="view" id="python-view" hidden>
+      <div class="notice coming">
+        <span><strong data-i18n="pyComingTitle"></strong> <span data-i18n="pyComingCopy"></span></span>
+      </div>
+
+      <div class="panel hero-card">
+        <div class="hero-card-head">
+          <h2 data-i18n="pyTitle">NH Gateway for Python</h2>
+          <p class="meta" id="py-meta"></p>
+        </div>
+        <p class="field-note" data-i18n="pyRequires"></p>
+        <div class="actions">
+          <a class="button primary large" id="py-download" data-i18n="pyDownload">Download .zip</a>
+          <a class="button large" id="py-notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
+        </div>
+        <div class="sha-row" id="py-sha"></div>
+      </div>
+
+      <div class="panel">
+        <h2 data-i18n="pyStepsTitle">Start it</h2>
+        <ol class="steps">
+          <li data-i18n="pyStep1"></li>
+          <li><span data-i18n="pyStep2"></span><div class="command" data-cmd="py-start"></div></li>
+          <li data-i18n="pyStep3"></li>
+        </ol>
+        <p class="field-note"><span data-i18n="pyStop"></span></p>
+        <div class="command" data-cmd="py-stop"></div>
+        <p class="field-note" data-i18n="pyWindowsNote"></p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <a class="link" href="https://github.com/wenzi7777/New-Horizons-Gateway" target="_blank" rel="noopener" data-i18n="footerSource">Source on GitHub</a>
+      <a class="link" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="footerReleases">All releases</a>
+    </footer>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="theme.js?v=__BUILD__"></script>
+  <script type="module" src="app.js?v=__BUILD__"></script>
+</body>
+</html>
