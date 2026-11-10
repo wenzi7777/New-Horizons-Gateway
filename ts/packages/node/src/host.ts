@@ -35,7 +35,6 @@ import {
   platformKey,
   type RuntimePaths,
 } from './hostApi';
-import { relayToken } from './appToken';
 import { importLegacyConfig, type LegacyImportRecord, readLegacyImportRecord } from './legacyImport';
 import { consoleStatusFile, resolveRuntimePaths } from './paths';
 import { CONFIG_FLOAT_KEYS } from './pyJson';
@@ -254,10 +253,8 @@ export async function runGateway(options: RunGatewayOptions = {}): Promise<NodeG
         ...params,
         version,
         platform: platformKey(),
-        // NH Studio (headless): the Desktop lists it with the Studio relays.
-        clientType: 'studio',
-        // Read at every connection attempt: follows a token or server change.
-        authToken: () => relayToken(configStore.snapshot() as unknown as Record<string, unknown>),
+        // NH Studio headless: a relay like the Hub (no sign-in, no recording).
+        clientType: 'relay',
         connector,
         clock,
         callbacks,

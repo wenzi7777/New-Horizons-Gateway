@@ -1,19 +1,13 @@
 # @nhgw/node
 
-**NH Studio (headless)** -- `nh-studio`, for machines without a screen (the
-lab hosts that ran the Python Gateway). It relays like the Studio app and the
-Desktop lists it under NH Studio / NH Pocket (`client_type: "studio"`).
+**NH Studio headless** -- `nh-studio`, for machines without a screen (the
+lab hosts that ran the Python Gateway). It has the Hub's standing: it relays
+devices to the server (`client_type: "relay"`), needs no sign-in and records
+nothing; recording on a computer or phone is NH Studio's / NH Pocket's.
 
 - Dropped into the old Gateway folder (or started beside it) it takes the
   Python Gateway's config over, `gateway_id` included, so the server sees the
   same relay (`src/legacyImport.ts`).
-- Server account: `nh-studio --login` (asks for a Desktop user name and
-  password; only the key the server returns is kept), `--logout`; or
-  `nh-studio --set-token`
-  reads it from stdin (`--clear-token`, `--token-status`), or the web UI's
-  Connection page from this machine (127.0.0.1 only). It is stored with the
-  server it was entered for and sent only there; `/api/status` shows it
-  masked.
 - Web UI on port 5052, terminal UI on a TTY, `--plain` for log lines.
 
 The desktop host for the Gateway core: Node UDP/WebSocket/HTTP/files, the web

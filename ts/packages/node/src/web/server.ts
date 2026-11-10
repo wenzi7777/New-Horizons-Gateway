@@ -10,7 +10,6 @@ import type { AddressInfo } from 'node:net';
 import { LOCAL_URL, PRODUCTION_URL, validateGatewayId, type GatewayRuntime, type Json, type Logger, type OpResult, silentLogger } from '@nhgw/core';
 
 import { PortInUseError } from '../adapters/udp';
-import { appTokenStatus, clearAppToken, loginAppToken, logoutAppToken, saveAppToken, withoutSecrets } from '../appToken';
 import { readAsset, TOKENS_CSS } from '../assets';
 import { pyJsonDumps } from '../pyJson';
 
@@ -60,8 +59,10 @@ export function flaskJson(value: unknown): string {
 
 /** web.py _public_config: currently the whole config. */
 export function publicConfig(config: unknown): Json {
-  // The NH Studio app token stays in the config file (status has app_token: masked).
-  return withoutSecrets({ ...(config as Json) });
+  // A key an earlier version stored for signing in never leaves this process.
+  const copy: Json = { ...(config as Json) };
+  delete copy.sync_app_token;
+  return copy;
 }
 
 /** Python bool(): what `bool(body.get("enabled", False))` makes of a JSON value. */
@@ -188,15 +189,6 @@ export class GatewayWebServer {
       { method: 'GET', pattern: /^\/assets\/([^/]+)$/ },
       { method: 'GET', pattern: /^\/api\/status$/, json: () => this.status() },
       post('/api/settings', (body) => this.saveSettings(body)),
-      { ...post('/api/app-token', (body) => this.setAppToken(typeof body.token === 'string' ? body.token : '')), loopbackOnly: true },
-      { ...post('/api/app-token/clear', () => this.setAppToken(null)), loopbackOnly: true },
-      {
-        ...post('/api/app-token/login', (body) =>
-          this.changeAppToken('login', (store) => loginAppToken(store, typeof body.username === 'string' ? body.username : '', typeof body.password === 'string' ? body.password : '')),
-        ),
-        loopbackOnly: true,
-      },
-      { ...post('/api/app-token/logout', () => this.changeAppToken('logout', (store) => logoutAppToken(store))), loopbackOnly: true },
       post('/api/gateway-id/suggest', () => {
         try {
           return [200, { gateway_id: validateGatewayId(`nh-studio-${randomBytes(3).toString('hex')}`) }];
@@ -325,39 +317,9 @@ export class GatewayWebServer {
         udp_control: runtime.udpCommands.snapshot(),
         state: runtime.state.snapshot(config.denied_devices ?? []),
         update_state: updateState,
-        app_token: appTokenStatus(config as unknown as Record<string, unknown>) as unknown as Json,
         ...this.extraStatus(),
       },
     ];
-  }
-
-  /** Signs in / out, then reconnects so the relay link uses the new key (the password is neither logged nor kept). */
-  private async changeAppToken(what: 'login' | 'logout', run: (store: GatewayRuntime['configStore']) => Promise<ReturnType<typeof appTokenStatus>>): Promise<[number, unknown]> {
-    const runtime = this.getRuntime();
-    let status;
-    try {
-      status = await run(runtime.configStore);
-    } catch (error) {
-      const code = error instanceof Error ? error.message : String(error);
-      return [code === 'invalid_credentials' ? 401 : code === 'network' ? 502 : 400, { ok: false, error: code }];
-    }
-    runtime.upstream.updateServer(String(runtime.configStore.snapshot().server_url ?? ''));
-    this.logger.info(what === 'login' ? `signed in as ${status.account}` : 'signed out');
-    return [200, { ok: true, app_token: status }];
-  }
-
-  /** Stores (or with null clears) the app token, then reconnects so the relay link uses it. */
-  private async setAppToken(token: string | null): Promise<[number, unknown]> {
-    const runtime = this.getRuntime();
-    let status;
-    try {
-      status = token === null ? await clearAppToken(runtime.configStore) : await saveAppToken(runtime.configStore, token);
-    } catch (error) {
-      return [400, { ok: false, error: error instanceof Error ? error.message : String(error) }];
-    }
-    runtime.upstream.updateServer(String(runtime.configStore.snapshot().server_url ?? ''));
-    this.logger.info(token === null ? 'app token cleared' : `app token set (${status.masked})`);
-    return [200, { ok: true, app_token: status }];
   }
 
   private async saveSettings(body: Json): Promise<[number, unknown]> {
