@@ -20,7 +20,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "jp.ac.uaizu.newhorizons.pocket",
-      "versionCode": 2
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -28,7 +28,15 @@
     "owner": "nickhsu",
     "plugins": [
       "expo-router",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "extra": {
       "router": {
