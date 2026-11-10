@@ -423,6 +423,16 @@ function shellQuote(name) {
 
 // ── Events ────────────────────────────────────────────────────────────────
 
+function updateChannelControl() {
+  document.querySelectorAll("#channel-control button[data-channel]").forEach((button) => {
+    const active = button.dataset.channel === channel;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
+  });
+  $("channel-hint").hidden = channel !== "beta";
+}
+
 function setChannel(next) {
   next = normalizeChannel(next);
   if (next === channel) return;
