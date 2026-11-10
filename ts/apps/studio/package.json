@@ -12,7 +12,8 @@
     "build:main": "node scripts/build-main.mjs",
     "start": "electron .",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
-    "dist:win": "npm run build && electron-builder --win --publish never"
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never"
   },
   "build": {
     "appId": "jp.ac.uaizu.newhorizons.studio",
@@ -78,14 +79,21 @@
       "shortcutName": "NH Studio",
       "uninstallDisplayName": "New Horizons Studio"
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "wenzi7777",
-        "repo": "New-Horizons-Gateway",
-        "releaseType": "draft"
-      }
-    ]
+    "publish": null,
+    "linux": {
+      "icon": "../../../brand/png/nh-studio-1024.png",
+      "category": "Development",
+      "executableName": "nh-studio-app",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "synopsis": "New Horizons Studio"
+    }
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.4",

@@ -1,0 +1,130 @@
+name: studio-release
+
+# A pushed studio-vX.Y.Z tag builds NH Studio for every platform and makes
+# one GitHub Release "New Horizons Studio vX.Y.Z" with:
+#   - the Studio app: macOS dmg/zip (arm64, x64), Windows installer, Linux AppImage
+#   - NH Studio headless (nh-studio, single executable) for five platform keys
+#   (NH Pocket's APK comes from EAS and is uploaded to the same release by hand)
+#   - build.json per headless binary (platformKey, sha256, size)
+# The update manifests (releases/studio-*.json, gateway-bin-*.json,
+# pocket-*.json) are written from the published assets afterwards and
+# committed to main, so an app only sees a release once every file is there.
+# Unsigned builds: see ts/packages/node/README.md ("Signing caveats").
+
+on:
+  push:
+    tags: ["studio-v*"]
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "22.22.0"
+
+jobs:
+  app:
+    name: Studio app (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: mac, runner: macos-14 }
+          - { target: win, runner: windows-latest }
+          - { target: linux, runner: ubuntu-latest }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - run: npm run dist:${{ matrix.target }} -w apps/studio
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: studio-${{ matrix.target }}
+          path: |
+            ts/apps/studio/release/*.dmg
+            ts/apps/studio/release/*.zip
+            ts/apps/studio/release/*.exe
+            ts/apps/studio/release/*.AppImage
+          if-no-files-found: error
+
+  headless:
+    name: headless (${{ matrix.key }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { key: darwin-arm64, runner: macos-14 }
+          - { key: darwin-x64, runner: macos-15-intel }
+          - { key: win32-x64, runner: windows-latest }
+          - { key: linux-x64, runner: ubuntu-latest }
+          - { key: linux-arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: ts
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - name: Build the single executable
+        run: |
+          npm run --silent build:sea -- --json > build.json
+          cat build.json
+          mkdir -p out
+          ext=""; [ "${{ matrix.key }}" = "win32-x64" ] && ext=".exe"
+          cp "dist/${{ matrix.key }}/nh-studio${ext}" "out/nh-studio-headless-${{ matrix.key }}${ext}"
+          cp build.json "out/build-${{ matrix.key }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: headless-${{ matrix.key }}
+          path: ts/out/*
+          if-no-files-found: error
+
+  release:
+    needs: [app, headless]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#studio-}"
+          ls -la assets
+          notes="releases/notes/${TAG}.md"
+          body="$(mktemp)"
+          if [ -f "$notes" ]; then
+            cat "$notes" > "$body"
+            for lang in en ja; do
+              if [ -f "releases/notes/${TAG}.${lang}.md" ]; then
+                printf '\n\n<details><summary>%s</summary>\n\n' "$lang" >> "$body"
+                cat "releases/notes/${TAG}.${lang}.md" >> "$body"
+                printf '\n\n</details>\n' >> "$body"
+              fi
+            done
+          else
+            echo "New Horizons Studio ${version}" > "$body"
+          fi
+          prerelease=""
+          case "$version" in *-beta.*) prerelease="--prerelease --latest=false" ;; esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" assets/* --title "New Horizons Studio ${version}" --notes-file "$body" $prerelease
+          fi
