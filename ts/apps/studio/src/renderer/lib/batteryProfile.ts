@@ -11,6 +11,8 @@ export type BatteryProfileStatus = {
   battery_profile_required?: unknown;
   profile_resolved?: unknown;
   profile_source?: unknown;
+  /** v2.0.F: the ID resistor read once at boot. */
+  battery_id?: unknown;
   capacity_mah?: unknown;
   max_charge_current_ma?: unknown;
   temperature_monitoring?: unknown;
@@ -20,12 +22,21 @@ export type BatteryProfileStatus = {
   gauge_sync_count?: unknown;
 };
 
+/** What the BAT_ID pin showed at boot (v2.0.F). `kind` is none / known / reserved / invalid. */
+export type BatteryIdViewModel = {
+  readOk: boolean | null;
+  kind: string | null;
+  mv: number | null;
+  ohm: number | null;
+};
+
 export type BatteryStatusViewModel = {
   socPercent: number | null;
   vbatMv: number | null;
   ratePercentPerHour: number | null;
   batteryPresent: boolean | null;
   profileSource: string | null;
+  batteryId: BatteryIdViewModel | null;
   profileResolved: boolean | null;
   profileRequired: boolean | null;
   capacityMah: number | null;
@@ -81,6 +92,22 @@ export function batteryIndicatorState(
   };
 }
 
+function normalizeBatteryId(value: unknown): BatteryIdViewModel | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const record = value as Record<string, unknown>;
+  return {
+    readOk: optionalBoolean(record.read_ok),
+    kind: optionalString(record.kind),
+    mv: finiteNumber(record.mv),
+    ohm: finiteNumber(record.ohm),
+  };
+}
+
+/** Battery recognised from its ID resistor, so the capacity is not the operator's setting. */
+export function batteryRecognisedFromId(battery: BatteryStatusViewModel): boolean {
+  return battery.profileSource === 'auto';
+}
+
 export function normalizeBatteryStatus(status: BatteryProfileStatus): BatteryStatusViewModel {
   const socCentiPercent = finiteNumber(status.soc_centi_percent);
   const thermalMonitoring = optionalString(status.temperature_monitoring);
@@ -95,6 +122,7 @@ export function normalizeBatteryStatus(status: BatteryProfileStatus): BatterySta
     ratePercentPerHour: measurementsValid && rate !== null ? rate / 100 : null,
     batteryPresent: optionalBoolean(status.battery_present) ?? optionalBoolean(status.present),
     profileSource: optionalString(status.profile_source),
+    batteryId: normalizeBatteryId(status.battery_id),
     profileResolved: optionalBoolean(status.profile_resolved),
     profileRequired: optionalBoolean(status.profile_required) ?? optionalBoolean(status.battery_profile_required),
     capacityMah: finiteNumber(status.capacity_mah),

@@ -175,3 +175,21 @@
 .device-settings-nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .device-settings-nav .chip-refresh { margin-top: 10px; }
 @media (max-width: 860px) { .device-settings-layout { grid-template-columns: 1fr; } .device-settings-nav { position: static; grid-auto-flow: column; overflow-x: auto; } }
+
+/* v2.0.F Vref cards */
+.vref-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.vref-table th,
+.vref-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.vref-table th {
+  color: var(--text-muted, inherit);
+  font-weight: 600;
+}

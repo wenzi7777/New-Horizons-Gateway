@@ -69,6 +69,8 @@ export const STREAM_PORT = 13250;
 export const DISCOVERY_PORT = 22346;
 /** How long run() waits for the device's reply (the command TTL is 15 s, resends included). */
 export const COMMAND_RESULT_TIMEOUT_MS = 20_000;
+/** Commands that legitimately take longer than the usual reply (v2.0.F Rfb measurement and Vref sweep). */
+const LONG_COMMAND_TIMEOUT_MS: Record<string, number> = { rfb_measure: 30_000, vref_sweep: 90_000 };
 /** Recordings, addresses and storage are re-read this often (and on every recording change). */
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
@@ -901,7 +903,7 @@ export class AppHost implements HostStore {
     if (early) resolveResult(early);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), COMMAND_RESULT_TIMEOUT_MS);
+      timer = setTimeout(() => resolve(null), LONG_COMMAND_TIMEOUT_MS[str(payload.command)] ?? COMMAND_RESULT_TIMEOUT_MS);
     });
     try {
       const reply = await Promise.race([result, timeout]);

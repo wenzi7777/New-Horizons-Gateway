@@ -24,6 +24,8 @@ export const DEVICE_COMMAND_ALLOWLIST: ReadonlySet<string> = new Set([
   'findme_discover', 'findme_switch_gateway',
   'set_matrix_layout', 'set_scan_timing', 'set_stream_buffer', 'set_charge_profile',
   'set_battery_profile', 'resync_battery_gauge', 'power_set_state', 'set_action_button',
+  // v2.0.F: the Vref DAC, the calibration switch, range and the Vref sweep.
+  'set_vref', 'calibration_switch', 'set_range', 'rfb_measure', 'vref_sweep', 'i2c_scan',
   'set_log', 'set_ota_config', 'set_indicators', 'set_imu', 'set_filter', 'set_raw_adc',
   'file_list', 'file_read_begin', 'file_read_chunk', 'file_write_begin', 'file_write_chunk',
   'file_write_finish', 'file_delete', 'log_tail', 'log_clear',
@@ -49,6 +51,7 @@ export const NORMAL_COMMANDS: ReadonlySet<string> = new Set([
   ...SHARED_COMMANDS,
   'enter_maintenance', 'set_matrix_layout', 'set_scan_timing', 'set_stream_buffer',
   'set_charge_profile', 'set_battery_profile', 'resync_battery_gauge', 'power_set_state',
+  'set_vref', 'calibration_switch', 'set_range', 'rfb_measure', 'vref_sweep', 'i2c_scan',
   'set_action_button', 'set_indicators', 'set_imu', 'set_filter', 'set_raw_adc',
   'calibration_status', 'calibration_enable', 'calibration_disable', 'calibration_dump_tare',
   'calibration_dump_level', 'calibration_dump_fit', 'calibration_tare_capture',

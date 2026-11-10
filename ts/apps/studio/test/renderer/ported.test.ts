@@ -47,6 +47,7 @@ describe('batteryProfile (tests/batteryProfile.test.mjs)', () => {
       ratePercentPerHour: -2.08,
       batteryPresent: true,
       profileSource: 'manual',
+      batteryId: null,
       profileResolved: false,
       profileRequired: true,
       capacityMah: 400,

@@ -13,6 +13,7 @@ import {
   batteryCapacityChoiceFor,
   batteryProfileValidationError,
   durationLabel,
+  batteryRecognisedFromId,
   estimateBatteryTime,
   type BatteryCapacityChoice,
 } from '../../lib/batteryProfile';
@@ -54,6 +55,7 @@ import { formatMicros, scanRateLow } from '../../lib/scanHealth';
 import { formatBytes } from '../../lib/format';
 import { progressOf, updateTransferProgress } from '../../lib/updateProgress';
 import { useStudio } from '../../state/studio';
+import { VrefCards } from './VrefCards';
 import { ActionButtonCard, BatteryLedCard, ConnectionCard, LightsCard, PinsCard, RamCard, RestartCard, useDeviceSettingsT } from './DeviceHardware';
 
 /** A draft that follows the device's value until the user edits it. */
@@ -120,6 +122,7 @@ export function DeviceSettings({ device }: { device: DeviceView }) {
         <PinsCard {...cardProps} />
         <PowerSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
         <BatteryLedCard {...cardProps} />
+        <VrefCards status={status} disabled={disabled} busy={busy} send={send} />
         <ActionButtonCard {...cardProps} />
         <LightsCard {...cardProps} />
       </>
@@ -381,6 +384,8 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
     capacity: seeded === 'custom' && battery.capacityMah !== null ? String(battery.capacityMah) : '',
     current: String(battery.maxChargeCurrentMa ?? 100),
   });
+  const ds = useDeviceSettingsT();
+  const recognised = batteryRecognisedFromId(battery);
   const packError = batteryProfileValidationError(pack.choice, pack.capacity, pack.current);
   const estimate = estimateBatteryTime(battery, view.power.chargeState);
   const estimateText =
@@ -404,6 +409,9 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
             [t('batteryVoltage'), battery.vbatMv === null ? t('batteryUnknown') : `${(battery.vbatMv / 1000).toFixed(2)} V`],
             [t('chargeState'), view.power.chargeState],
             [t('batteryEstimate'), estimateText],
+            ...(battery.batteryId
+              ? [[ds('batteryId'), battery.batteryId.readOk === false ? t('batteryUnknown') : `${battery.batteryId.kind ?? '-'}${battery.batteryId.ohm ? ` · ${(battery.batteryId.ohm / 1000).toFixed(1)} kΩ` : ''}`] as [string, string]]
+              : []),
           ]}
         />
       </Card>
@@ -420,6 +428,11 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
         </div>
       </Card>
       <Card title={t('batterySetup')} copy={t('batterySetupCopy')}>
+        {recognised ? (
+          <Notice>{`${ds('batteryProfileAutoNotice')}: ${battery.capacityMah} mAh · ${battery.maxChargeCurrentMa} mA`}</Notice>
+        ) : null}
+        {recognised ? null : (
+          <>
         <div className="field-grid three">
           <Field label={t('batteryCapacity')}>
             {(id) => (
@@ -458,6 +471,8 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
             {busy === 'set_battery_profile' ? t('running') : t('saveBatteryProfile')}
           </button>
         </div>
+          </>
+        )}
       </Card>
       <Card
         title={t('powerState')}
