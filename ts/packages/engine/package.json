@@ -1,0 +1,13 @@
+{
+  "name": "@nhgw/engine",
+  "version": "2.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "The NH Studio / NH Pocket engine: a TypeScript port of the Desktop backend's device service (packet parsing, device table, command routing, recording) on top of @nhgw/core. Platform-independent; hosts inject I/O.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@nhgw/core": "*"
+  }
+}
