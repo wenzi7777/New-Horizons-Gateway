@@ -340,6 +340,11 @@ function main(): void {
   }
 
   app.whenReady().then(async () => {
+    // Unpackaged (npm start) the Dock shows Electron's own icon; packaged builds get it from the .icns.
+    if (!app.isPackaged && process.platform === 'darwin') {
+      const devIcon = nativeImage.createFromPath(join(__dirname, '..', '..', '..', '..', '..', 'brand', 'macos', 'nh-studio-1024.png'));
+      if (!devIcon.isEmpty()) app.dock?.setIcon(devIcon);
+    }
     const userData = app.getPath('userData');
     logger = new HostLogger({
       file: join(userData, 'logs', 'studio.log'),
