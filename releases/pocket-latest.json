@@ -1,12 +1,12 @@
 {
-  "version": "v2.1.3",
+  "version": "v2.2.0",
   "notes_url": "",
-  "released_at": "2026-11-10T21:33:02.629Z",
+  "released_at": "2026-11-10T22:15:47.614Z",
   "assets": {
     "android": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.1.3/nh-pocket-v2.1.3.apk",
-      "sha256": "759deba59c0241988f76b5a033ddf50dd64deb7387e4e03598dd2414a67e7765",
-      "size": 99496368
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-pocket-v2.2.0.apk",
+      "sha256": "6ad4ebd3459f7e7c541fd736a33f987b5dbfc85c7f8f8aadf133c23c34e3c160",
+      "size": 99495904
     }
   }
 }
