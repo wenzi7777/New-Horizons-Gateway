@@ -1,0 +1,15 @@
+{
+  "name": "@nhgw/host",
+  "version": "2.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "The app host shared by NH Studio and NH Pocket: the engine (DeviceService on core's GatewayRuntime) wired to a platform's UDP, files and .nhraw capture (HostNative), the server link and the recordings folder, behind the HostStore interface the UIs use. Platform-independent; Studio supplies a Node HostNative, Pocket the Android module.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@nhgw/core": "*",
+    "@nhgw/engine": "*",
+    "@nhgw/ui-tokens": "*"
+  }
+}
