@@ -14,7 +14,7 @@ import { RESULT_CHUNK_TYPE, ResultChunkReassembler } from '../resultChunks';
 import { parseJsonKeepFloats } from '../floatJson';
 import { buildTimeResponse, isTimeRequest } from '../time';
 import { PROTOCOL } from '../wire';
-import { DiscoveryResponder } from './discovery';
+import { DiscoveryResponder, NON_OWNER_OFFER_DELAY_MS } from './discovery';
 import { GatewayOperations } from './operations';
 import { type Dict, dictOr, looksLikeJson, pyGet, pyOr, setDefault, strOr } from './pyCompat';
 import { GatewayCommandHandler } from './remoteCommands';
@@ -127,6 +127,8 @@ export interface GatewayRuntimeOptions {
   observer?: GatewayRuntimeObserver;
   /** How long a partial chunked result is kept (default 10 s, the Gateway's; the Desktop Backend used 30 s). */
   resultChunkTtlMs?: number;
+  /** FindMe: how much later a host the device does not stream to answers (default NON_OWNER_OFFER_DELAY_MS; 0 = at once). */
+  findmeNonOwnerDelayMs?: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -221,6 +223,9 @@ export class GatewayRuntime {
           offerPolicy: () => this.configStore.offerPolicy(),
           isManaged: (uid) => this.configStore.isManaged(uid),
           isReleased: (uid) => this.configStore.isReleased(uid),
+          // The host the device streams to answers first and keeps it (see NON_OWNER_OFFER_DELAY_MS).
+          isServing: (uid) => this.state.isServing(uid),
+          nonOwnerDelayMs: options.findmeNonOwnerDelayMs ?? NON_OWNER_OFFER_DELAY_MS,
         })
       : null;
 

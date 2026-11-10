@@ -21,6 +21,16 @@ export const CLAIM_PRIORITY_BOOST = 10000;
 export const DENIED_COOLDOWN_MS = 30000;
 export const OFFER_TTL_MS = 10000;
 /**
+ * A device takes the FIRST offer of each discover round (every 3 s, read
+ * window 600 ms; firmware FindMeClient.cpp). With two hosts offering the same
+ * device -- a Studio and a Pocket that both manage it -- it would hop to
+ * whichever answered first, round after round. So a host that is not the one
+ * the device streams to now answers this much later: the current host always
+ * wins the round, another one only takes over when the current one is silent
+ * (gone) or through a claim (adopt), which is answered at once.
+ */
+export const NON_OWNER_OFFER_DELAY_MS = 250;
+/**
  * Under offer_policy "managed", the floor for a managed device's offer: above
  * the Desktop server's own FindMe responder (100), so the App that manages a
  * device wins it over the server. A claim adds CLAIM_PRIORITY_BOOST on top.
@@ -158,6 +168,12 @@ export interface DiscoveryResponderOptions {
   offerPolicy?: () => OfferPolicy;
   isManaged?: (deviceUid: string) => boolean;
   isReleased?: (deviceUid: string) => boolean;
+  /** Whether the device streams to this host now; one that does not gets its offer `nonOwnerDelayMs` later. */
+  isServing?: (deviceUid: string) => boolean;
+  /** Default 0 (answer at once); the runtime uses NON_OWNER_OFFER_DELAY_MS. */
+  nonOwnerDelayMs?: number;
+  /** How a delayed offer is sent later. Default setTimeout. */
+  defer?: (run: () => void, ms: number) => void;
 }
 
 /** discovery.DiscoveryResponder without the socket thread. */
@@ -180,6 +196,9 @@ export class DiscoveryResponder {
   private readonly offerPolicy: () => OfferPolicy;
   private readonly isManaged: (deviceUid: string) => boolean;
   private readonly isReleased: (deviceUid: string) => boolean;
+  private readonly isServing: ((deviceUid: string) => boolean) | undefined;
+  private readonly nonOwnerDelayMs: number;
+  private readonly defer: (run: () => void, ms: number) => void;
 
   constructor(options: DiscoveryResponderOptions) {
     this.socket = options.socket;
@@ -196,6 +215,9 @@ export class DiscoveryResponder {
     this.offerPolicy = options.offerPolicy ?? (() => 'all');
     this.isManaged = options.isManaged ?? (() => false);
     this.isReleased = options.isReleased ?? (() => false);
+    this.isServing = options.isServing;
+    this.nonOwnerDelayMs = Math.max(0, options.nonOwnerDelayMs ?? 0);
+    this.defer = options.defer ?? ((run, ms) => void setTimeout(run, ms));
   }
 
   private currentUdpPort(): number {
@@ -227,11 +249,20 @@ export class DiscoveryResponder {
       this.onRequest(request, from, decision.record.accepted, decision.record.reason);
     }
     if (decision.reply !== null) {
-      try {
-        this.socket.send(utf8Encode(pyJsonDumpsCompact(decision.reply)), from);
-      } catch (error) {
-        this.lastError = error instanceof Error ? error.message : String(error);
-      }
+      const packet = utf8Encode(pyJsonDumpsCompact(decision.reply));
+      const send = () => {
+        try {
+          this.socket.send(packet, from);
+        } catch (error) {
+          this.lastError = error instanceof Error ? error.message : String(error);
+        }
+      };
+      const reply = decision.reply;
+      const uid = strOr(reply.device_uid);
+      const contested =
+        this.nonOwnerDelayMs > 0 && this.isServing !== undefined && reply.accept === true && !strOr(reply.claim_id) && uid !== '' && !this.isServing(uid);
+      if (contested) this.defer(send, this.nonOwnerDelayMs);
+      else send();
     }
     return decision;
   }

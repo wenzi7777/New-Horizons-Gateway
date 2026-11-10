@@ -182,3 +182,38 @@ describe('DiscoveryResponder (TS additions)', () => {
     expect(r.lastError).toBe('EHOSTUNREACH');
   });
 });
+
+describe('DiscoveryResponder: two hosts offering the same device', () => {
+  function contest(serving: boolean, payload: Json = { device_uid: UID }) {
+    const deferred: { ms: number; run: () => void }[] = [];
+    const { socket, r } = responder({
+      gatewayId: 'studio-a',
+      isServing: () => serving,
+      nonOwnerDelayMs: 250,
+      defer: (run, ms) => void deferred.push({ run, ms }),
+      activeClaim: (uid) => (payload.claim === 'mine' && uid === UID ? { claim_id: 'c-1' } : null),
+    });
+    r.handleDatagram(discover(payload), DEVICE);
+    return { socket, deferred };
+  }
+
+  it('the host the device streams to answers at once and keeps it', () => {
+    const { socket, deferred } = contest(true);
+    expect(socket.sent).toHaveLength(1);
+    expect(deferred).toHaveLength(0);
+  });
+
+  it('another host answers later, so it only takes over when the current one is silent', () => {
+    const { socket, deferred } = contest(false);
+    expect(socket.sent).toHaveLength(0);
+    expect(deferred.map((d) => d.ms)).toEqual([250]);
+    deferred[0]!.run();
+    expect(socket.json(0)).toMatchObject({ type: 'findme_offer', accept: true, gateway_id: 'studio-a' });
+  });
+
+  it('a claim (adopt) is answered at once', () => {
+    const { socket, deferred } = contest(false, { device_uid: UID, claim: 'mine' });
+    expect(deferred).toHaveLength(0);
+    expect(socket.json(0)).toMatchObject({ accept: true, claim_id: 'c-1' });
+  });
+});

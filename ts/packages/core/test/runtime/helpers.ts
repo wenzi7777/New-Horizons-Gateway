@@ -276,6 +276,7 @@ export async function makeRuntime(
   let claimSeq = 0;
   const harness = {} as Harness;
   const runtime = new GatewayRuntime({
+    findmeNonOwnerDelayMs: 0,
     configStore: store,
     clock,
     streamSocket: stream,

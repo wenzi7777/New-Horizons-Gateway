@@ -59,6 +59,7 @@ async function harness() {
     installer,
   });
   const runtime = new GatewayRuntime({
+    findmeNonOwnerDelayMs: 0,
     configStore: store,
     clock,
     streamSocket: stream,
