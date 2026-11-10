@@ -1,0 +1,191 @@
+/* The start-up splash: tokens only (theme follows data-theme on <html>). */
+html,
+body.splash-body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  user-select: none;
+  /* The frameless window moves by its body; controls opt out. */
+  -webkit-app-region: drag;
+}
+
+#splash-root {
+  height: 100%;
+}
+
+.splash {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 28px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.splash-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.splash-brand h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.splash-brand p {
+  margin: 4px 0 0;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.small {
+  font-size: 11px;
+}
+
+.mono {
+  font-family: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+  word-break: break-word;
+}
+
+.ok {
+  color: var(--success);
+}
+
+.warn {
+  color: var(--warning);
+}
+
+.splash-progress {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.splash-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.splash-steps li {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.splash-bar {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.splash-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-med) var(--ease-out);
+}
+
+.splash-status {
+  margin: 0;
+  min-height: 2.6em;
+  color: var(--text-dim);
+}
+
+.splash-prompt {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.splash-prompt h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.splash-prompt p {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.splash-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.splash-button {
+  -webkit-app-region: no-drag;
+  font: inherit;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel-solid);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.splash-button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.splash-button.primary:hover {
+  background: var(--accent-hover);
+}
+
+.splash-button:focus-visible,
+.splash-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.splash-link {
+  -webkit-app-region: no-drag;
+  margin-right: auto;
+  color: var(--accent);
+}
+
+.spin {
+  color: var(--accent);
+  animation: splash-spin 0.9s linear infinite;
+}
+
+@keyframes splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+  .splash-bar span {
+    transition: none;
+  }
+}

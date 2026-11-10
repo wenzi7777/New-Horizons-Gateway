@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>NH Studio</title>
+    <link rel="icon" type="image/svg+xml" href="./src/renderer/assets/nh-studio-rounded.svg" />
+    <!-- The theme last shown, applied before first paint so a night launch does
+         not flash white. External (public/theme-boot.js): the app's CSP allows
+         no inline scripts. src/renderer/state/studio.tsx takes over once loaded. -->
+    <script src="./theme-boot.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/renderer/main.tsx"></script>
+  </body>
+</html>

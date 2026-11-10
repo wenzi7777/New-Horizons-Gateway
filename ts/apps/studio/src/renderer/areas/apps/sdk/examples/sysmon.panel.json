@@ -1,0 +1,119 @@
+{
+  "nhapp": 1,
+  "kind": "panel",
+  "manifest": {
+    "id": "sysmon",
+    "name": "System Monitor",
+    "version": "2.0.0",
+    "author": "wenzi7777",
+    "summary": "Task manager: end or start tasks, services and apps until reboot, set task rates, watch CPU, heap and threads.",
+    "category": "diagnostics",
+    "min_os": "v1.19.0",
+    "icon": "activity",
+    "permissions": ["task_control", "service_control", "app_control"]
+  },
+  "panel": {
+    "refresh_ms": 1000,
+    "sources": [
+      {"id": "s", "command": "sysmon"},
+      {"id": "tasks", "command": "sysmon", "path": "scheduler.tasks"},
+      {"id": "svcs", "command": "sysmon", "path": "services.services"},
+      {"id": "apps", "command": "sysmon", "path": "apps.apps"},
+      {"id": "thr", "command": "sysmon", "path": "threads.threads"}
+    ],
+    "actions": [
+      {"id": "t_stop", "label": "End task", "command": "task_stop", "args": {"name": "$row.name"},
+       "when": {"field": "state", "ne": "stopped"}, "hidden_when": {"field": "protected", "eq": true},
+       "confirm": {"destructive": true}},
+      {"id": "t_start", "label": "Start", "command": "task_start", "args": {"name": "$row.name"},
+       "when": {"field": "state", "eq": "stopped"}},
+      {"id": "t_rate", "label": "Set rate", "command": "task_set_period",
+       "args": {"name": "$row.name", "period_us": "$input.period_us"},
+       "hidden_when": [{"field": "protected", "eq": true}, {"field": "fixed_period", "eq": true}],
+       "input": {"field": "period_us", "min": 0, "max": 10000000, "default": "$row.period_us"}},
+      {"id": "t_reset", "label": "Default rate", "command": "task_set_period",
+       "args": {"name": "$row.name", "period_us": "default"},
+       "hidden_when": [{"field": "protected", "eq": true}, {"field": "fixed_period", "eq": true}]},
+      {"id": "s_stop", "label": "Stop", "command": "service_stop", "args": {"name": "$row.name"},
+       "when": {"field": "state", "ne": "stopped"}, "hidden_when": {"field": "stoppable", "eq": false},
+       "confirm": {"destructive": true}},
+      {"id": "s_start", "label": "Start", "command": "service_start", "args": {"name": "$row.name"},
+       "when": {"field": "operator_stopped", "eq": true}},
+      {"id": "s_restart", "label": "Restart", "command": "service_restart", "args": {"name": "$row.name"},
+       "when": {"field": "operator_stopped", "eq": false}, "confirm": {}},
+      {"id": "a_stop", "label": "Stop", "command": "app_stop", "args": {"name": "$row.name"},
+       "when": {"field": "state", "eq": "running"}, "confirm": {"destructive": true}},
+      {"id": "a_start", "label": "Start", "command": "app_start", "args": {"name": "$row.name"},
+       "when": {"field": "state", "eq": "stopped"}},
+      {"id": "a_revive", "label": "Revive", "command": "app_revive", "args": {"name": "$row.name"},
+       "when": [{"field": "state", "ne": "running"}, {"field": "state", "ne": "stopped"}]}
+    ],
+    "sections": [
+      {"kind": "run", "title": "Run", "candidates": [
+        {"source": "tasks", "field": "name", "action": "t_start"},
+        {"source": "svcs", "field": "name", "action": "s_start"},
+        {"source": "apps", "field": "name", "action": "a_start"}
+      ]},
+      {"kind": "tabs", "title": "Monitor", "tabs": [
+        {"title": "Performance", "sections": [
+          {"kind": "stats", "title": "Now", "items": [
+            {"label": "Loop", "source": "s", "field": "loop_busy_permille", "format": "permille"},
+            {"label": "Heap free", "source": "s", "field": "memory.heap_free", "format": "bytes"},
+            {"label": "Largest block", "source": "s", "field": "memory.heap_largest_free_block", "format": "bytes"},
+            {"label": "Heap low-water", "source": "s", "field": "memory.heap_min_free", "format": "bytes"},
+            {"label": "Scan fps", "source": "s", "field": "scan.actual_scan_fps", "format": "int"},
+            {"label": "Missed frames", "source": "s", "field": "scan.overrun_frames", "format": "int"}
+          ]},
+          {"kind": "chart", "title": "CPU", "source": "s", "points": 120, "min": 0, "max": 1000, "series": [
+            {"label": "Loop", "field": "loop_busy_permille"},
+            {"label": "Core 0", "field": "threads.cores.0.busy_permille"},
+            {"label": "Core 1", "field": "threads.cores.1.busy_permille"}
+          ]},
+          {"kind": "chart", "title": "Heap", "source": "s", "points": 120, "min": 0, "series": [
+            {"label": "Free", "field": "memory.heap_free"}
+          ]},
+          {"kind": "chart", "title": "Scan fps", "source": "s", "points": 120, "min": 0, "series": [
+            {"label": "fps", "field": "scan.actual_scan_fps"}
+          ]}
+        ]},
+        {"title": "Tasks", "sections": [
+          {"kind": "table", "title": "Tasks", "source": "tasks", "sort": {"field": "cpu_permille", "desc": true},
+           "row_actions": ["t_stop", "t_start", "t_rate", "t_reset"], "columns": [
+            {"label": "Task", "field": "name"},
+            {"label": "State", "field": "state"},
+            {"label": "CPU", "field": "cpu_permille", "format": "permille", "bar": true, "bar_max": 1000},
+            {"label": "Period", "field": "period_us", "format": "micros"},
+            {"label": "Last", "field": "last_us", "format": "micros"},
+            {"label": "Peak", "field": "max_us", "format": "micros"}
+          ]}
+        ]},
+        {"title": "Services", "sections": [
+          {"kind": "table", "title": "Services", "source": "svcs", "row_actions": ["s_stop", "s_start", "s_restart"], "columns": [
+            {"label": "Service", "field": "name"},
+            {"label": "State", "field": "state"},
+            {"label": "Restarts", "field": "restarts", "format": "int"},
+            {"label": "Health failures", "field": "health_failures", "format": "int"}
+          ]}
+        ]},
+        {"title": "Apps", "sections": [
+          {"kind": "table", "title": "Apps", "source": "apps", "row_actions": ["a_stop", "a_start", "a_revive"], "columns": [
+            {"label": "Slot", "field": "name"},
+            {"label": "State", "field": "state"},
+            {"label": "Last", "field": "last_us", "format": "micros"},
+            {"label": "Overruns", "field": "overruns", "format": "int"}
+          ]}
+        ]},
+        {"title": "Threads", "sections": [
+          {"kind": "table", "title": "System threads", "source": "thr", "sort": {"field": "cpu_permille", "desc": true}, "columns": [
+            {"label": "Thread", "field": "name"},
+            {"label": "State", "field": "state"},
+            {"label": "CPU", "field": "cpu_permille", "format": "permille", "bar": true, "bar_max": 1000},
+            {"label": "Prio", "field": "priority", "format": "int"},
+            {"label": "Core", "field": "core", "format": "int"},
+            {"label": "Stack free", "field": "stack_free_min", "format": "bytes"}
+          ]}
+        ]}
+      ]}
+    ]
+  }
+}

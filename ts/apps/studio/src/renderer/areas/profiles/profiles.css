@@ -1,0 +1,74 @@
+/* The profiles area (list, editor, stage). Tokens only. */
+.profiles-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.profiles-head h1 { font-size: 20px; }
+.profiles-create { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.profiles-create .field { min-width: 220px; }
+.profiles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.profiles-item { display: grid; gap: 4px; width: 100%; text-align: left; cursor: pointer; transition: border-color var(--dur-fast) var(--ease-out); }
+.profiles-item:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.profiles-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profiles-item .tag { justify-self: start; }
+
+.profiles-editor-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.profiles-editor-head .spacer { flex: 1; }
+.profiles-title { display: flex; align-items: center; gap: 8px; font-size: 18px; }
+.profiles-actions, .profiles-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.profiles-row-actions { margin-bottom: 10px; }
+.profiles-rename { display: flex; align-items: flex-end; gap: 8px; }
+.profiles-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 16px; align-items: start; }
+@media (max-width: 980px) { .profiles-editor { grid-template-columns: minmax(0, 1fr); } }
+.profiles-stage-col, .profiles-side { display: grid; gap: 14px; min-width: 0; }
+.profiles-fields { display: grid; gap: 10px; }
+.profiles-fields.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.profiles-fields textarea { resize: vertical; }
+.profiles-device-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.profiles-channels { display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow: auto; }
+.profiles-channels .chip { display: inline-flex; gap: 6px; cursor: pointer; }
+.profiles-channels .chip:disabled { cursor: not-allowed; opacity: 0.6; }
+.profiles-channels .chip.taken { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.profiles-channels .chip.current { background: var(--accent-soft); color: var(--accent); }
+
+.profile-stage-wrap { display: grid; gap: 8px; min-width: 0; }
+.profile-stage-tools { display: flex; align-items: center; gap: 4px; }
+.profile-stage-tools .spacer { flex: 1; }
+.profile-stage-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
+.profile-stage-zoom { min-width: 44px; text-align: center; font-size: 12px; }
+.profile-stage-cursor { font-size: 12px; }
+.profile-stage {
+  position: relative;
+  height: min(64vh, 640px);
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+.profile-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-stage.tool-select { cursor: default; }
+.profile-stage.tool-pan { cursor: grab; }
+.profile-stage.tool-pan:active { cursor: grabbing; }
+.profile-scene { position: absolute; transform-origin: 0 0; }
+.profile-scene-image, .profile-scene-blank { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.profile-scene-blank { border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); background: var(--panel-solid); }
+.profile-marker {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--panel-solid);
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+.profile-marker.live { color: var(--text); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg); }
+.profile-marker.disabled { opacity: 0.4; background: var(--text-muted); }
+.profile-marker.selected { outline: 2px solid var(--text); outline-offset: 2px; }
+.profile-stage-help { font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .profiles-item { transition: none; } }
