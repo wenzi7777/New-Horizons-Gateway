@@ -98,6 +98,7 @@ export class MockPocketStore implements PocketStore {
       addresses: [{ name: 'wlan0', address: '192.168.10.37' }],
       batteryOptimizationIgnored: false,
       findmeRequests: 0,
+      authRejected: false,
       isolationSuspected: false,
       storage: { freeBytes: 41.7e9, recordingsBytes: 0 },
     };

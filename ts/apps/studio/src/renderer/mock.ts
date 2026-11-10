@@ -210,6 +210,7 @@ export class MockStudioApi implements StudioApi {
       addresses: [{ name: 'en0', address: '192.168.10.23' }],
       batteryOptimizationIgnored: null,
       findmeRequests: 12,
+      authRejected: false,
       isolationSuspected: false,
       storage: { freeBytes: 312e9, recordingsBytes: 0 },
     };

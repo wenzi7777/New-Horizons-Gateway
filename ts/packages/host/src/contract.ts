@@ -101,6 +101,8 @@ export interface HostStatus {
   /** Why the UDP service is not serving although started (e.g. a port held by another Gateway/Studio/Desktop); '' when fine. */
   serviceError: string;
   upstream: ConnectionState;
+  /** The server refused this app's token (revoked, or the server was reset): sign in again. */
+  authRejected: boolean;
   serverUrl: string;
   /** IPv4 addresses of this phone / computer, for the device setup hint. */
   addresses: { name: string; address: string }[];

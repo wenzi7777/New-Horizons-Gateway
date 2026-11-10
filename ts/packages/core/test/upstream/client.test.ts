@@ -295,11 +295,34 @@ describe('connection and sending', () => {
     expect(client.isConnected()).toBe(true);
     expect(client.status().last_error).toBe('');
     const before = connector.connectTimes.length;
+    tick(6000, 100); // a healthy connection: the next reconnect starts from 1 s again
     const droppedAt = (connector as unknown as { clock: FakeClock }).clock.mono;
     connector.last.handlers.onClose('bye');
     expect(client.status().last_error).toBe('bye');
     tick(3000, 100);
     expect(connector.connectTimes[before]! - droppedAt).toBe(1000);
+  });
+
+  it('a server that accepts and drops at once keeps the backoff growing; a refused token is flagged until a new one', () => {
+    const { client, connector, tick, open } = setup();
+    let rejected = '';
+    (client as unknown as { callbacks: { onAuthRejected?: (c: string) => void } }).callbacks.onAuthRejected = (c) => (rejected = c);
+    client.start();
+    const ws = open();
+    ws.handlers.onMessage('{"type":"error","code":"unauthorized","message":"unauthorized"}');
+    ws.handlers.onClose('closed');
+    expect(rejected).toBe('unauthorized');
+    expect(client.authRejected).toBe(true);
+    tick(1000, 100);
+    connector.last.handlers.onOpen();
+    connector.last.handlers.onClose('closed');
+    const before = connector.connectTimes.length;
+    tick(1500, 100);
+    expect(connector.connectTimes.length).toBe(before); // 2 s now, not 1 s
+    tick(1000, 100);
+    expect(connector.connectTimes.length).toBe(before + 1);
+    client.updateServer('ws://x.invalid', 'nhapp_new');
+    expect(client.authRejected).toBe(false);
   });
 
   it('a handshake that never completes times out after 10 s', () => {
@@ -496,7 +519,7 @@ describe('connect failure logging', () => {
     connector.last.handlers.onOpen();
     connector.last.handlers.onError('ECONNRESET');
     connector.last.handlers.onClose('closed');
-    tick(1000);
+    tick(10_000);
     connector.last.handlers.onError('ECONNREFUSED');
     connector.last.handlers.onClose('closed');
     expect(warnings.filter((w) => w.includes('connect failed: ECONNREFUSED'))).toHaveLength(2);

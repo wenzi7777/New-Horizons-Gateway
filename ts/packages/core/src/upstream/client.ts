@@ -39,6 +39,8 @@ export const DEFAULT_DATA_QUEUE_SIZE = 32;
 export const DEFAULT_CONTROL_QUEUE_SIZE = 512;
 export const RECONNECT_BACKOFF_INITIAL_MS = 1_000;
 export const RECONNECT_BACKOFF_MAX_MS = 10_000;
+/** A connection that lasted this long counts as healthy: the next reconnect starts from the initial backoff. */
+const STABLE_CONNECTION_MS = 5_000;
 /** websocket.create_connection(timeout=10): a handshake that never finishes counts as a failure. */
 export const CONNECT_TIMEOUT_MS = 10_000;
 export const DEFAULT_MAX_BUFFERED_BYTES = 1024 * 1024;
@@ -86,6 +88,7 @@ interface Attempt {
   opened: boolean;
   /** onOpen fired synchronously inside connect(), before `ws` was known. */
   openPending: boolean;
+  openedAtMs?: number;
 }
 
 export class UpstreamClient implements UpstreamLink {
@@ -95,6 +98,8 @@ export class UpstreamClient implements UpstreamLink {
   /** Sent in hello so the Backend answers with this channel's latest version (gateway_hello_ack). */
   updateChannel: string;
   lastError = '';
+  /** The server refused our app token (error unauthorized / app_token_required); cleared by a new token or any normal message. */
+  authRejected = false;
   private loggedConnectError = '';
   lastConnectedAt = '';
 
@@ -186,6 +191,7 @@ export class UpstreamClient implements UpstreamLink {
   updateServer(serverUrl: string, authToken?: string): void {
     this.serverUrl = serverUrl;
     if (authToken !== undefined) this.authTokenSource = () => authToken;
+    this.authRejected = false;
     this.disconnectCurrent();
   }
 
@@ -378,7 +384,7 @@ export class UpstreamClient implements UpstreamLink {
     this.lastError = '';
     this.loggedConnectError = '';
     this.lastConnectedAt = pyIsoUtcFromEpochUs(this.clock.nowEpochUs());
-    this.backoffMs = RECONNECT_BACKOFF_INITIAL_MS;
+    attempt.openedAtMs = this.clock.monotonicMs();
     try {
       this.sendJson(this.helloPayload());
     } catch (exc) {
@@ -399,6 +405,20 @@ export class UpstreamClient implements UpstreamLink {
       return;
     }
     if (!isPlainObject(message)) return;
+    if (message.type === 'error' && (message.code === 'unauthorized' || message.code === 'app_token_required')) {
+      this.logger.warn(`upstream refused the app token (${String(message.code)}); sign in again`);
+      this.lastError = String(message.code);
+      if (!this.authRejected) {
+        this.authRejected = true;
+        try {
+          this.callbacks.onAuthRejected?.(String(message.code));
+        } catch (exc) {
+          this.logger.error(`upstream auth callback failed: ${errorText(exc)}`);
+        }
+      }
+    } else if (this.authRejected && message.type !== 'pong') {
+      this.authRejected = false;
+    }
     try {
       if (message.type === 'command') {
         const payload = isPlainObject(message.payload) ? message.payload : {};
@@ -429,6 +449,8 @@ export class UpstreamClient implements UpstreamLink {
     this.connected = false;
     if (error !== null) this.lastError = error;
     if (attempt?.ws) safeClose(attempt.ws);
+    // A server that accepts and drops us at once (a refused token) must not reset the backoff.
+    if (attempt?.openedAtMs !== undefined && this.clock.monotonicMs() - attempt.openedAtMs >= STABLE_CONNECTION_MS) this.backoffMs = RECONNECT_BACKOFF_INITIAL_MS;
     if (attempt && this.running) {
       this.reconnectAtMs = this.clock.monotonicMs() + this.backoffMs;
       this.backoffMs = Math.min(this.backoffMs * 2, RECONNECT_BACKOFF_MAX_MS);

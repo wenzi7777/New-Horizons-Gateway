@@ -43,6 +43,8 @@ export interface UpstreamCallbacks {
   /** Every other JSON message: gateway_command, gateway_hello_ack, gateway_claim_update, error, pong, … */
   onMessage(message: Json): void;
   onConnectionChange?(connected: boolean): void;
+  /** The Backend refused this client's app token (unauthorized / app_token_required): the user must sign in again. */
+  onAuthRejected?(code: string): void;
 }
 
 /** update_manager.GatewayUpdateManager as the runtime uses it. Long operations are async here (Python ran them on a worker thread). */

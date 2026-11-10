@@ -393,6 +393,7 @@ export class AppHost implements HostStore {
       serviceRunning,
       serviceError,
       upstream: this.connection(),
+      authRejected: this.run_?.upstream()?.authRejected === true,
       serverUrl: str(this.configStore?.snapshot().server_url),
       addresses: this.addresses.map((item) => ({ name: item.name, address: item.address })),
       batteryOptimizationIgnored: this.batteryIgnored,
@@ -519,6 +520,10 @@ export class AppHost implements HostStore {
               ...callbacks,
               onConnectionChange: (connected) => {
                 callbacks.onConnectionChange?.(connected);
+                this.changed();
+              },
+              onAuthRejected: (code) => {
+                callbacks.onAuthRejected?.(code);
                 this.changed();
               },
             },

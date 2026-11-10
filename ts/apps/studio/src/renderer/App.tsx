@@ -4,6 +4,7 @@
 
 import { TitleBarControls } from './components/TitleBarControls';
 import { Onboarding } from './components/Onboarding';
+import ReauthDialog from './areas/sync/ReauthDialog';
 import { appApi } from './areas/app/api';
 import { syncBaseUrl } from '../../../../packages/host/src/sync/config';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
@@ -86,6 +87,11 @@ export function App() {
   const [logOpen, setLogOpen] = useState(false);
   // The first-run guide: shown until finished or skipped; Settings can bring it back.
   const [onboarding, setOnboarding] = useState(false);
+  const [reauthLater, setReauthLater] = useState(false);
+  const authRejected = snapshot?.status.authRejected === true;
+  useEffect(() => {
+    if (!authRejected) setReauthLater(false);
+  }, [authRejected]);
   useEffect(() => {
     const app = appApi(api);
     void app.getPrefs().then((prefs) => setOnboarding(!prefs.onboardingDone), () => undefined);
@@ -249,6 +255,7 @@ export function App() {
       </div>
       <Toasts />
       {onboarding ? <Onboarding onDone={() => setOnboarding(false)} /> : null}
+      {snapshot?.status.authRejected && !onboarding && !reauthLater ? <ReauthDialog onLater={() => setReauthLater(true)} /> : null}
     </div>
   );
 }
