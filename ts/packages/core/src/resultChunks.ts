@@ -20,16 +20,20 @@ export type ResultChunkReassemblerOptions = {
   ttlMs?: number;
   /** Monotonic ms (Clock.monotonicMs). */
   nowMs: () => number;
+  /** Reads the joined result text (default JSON.parse; the runtime keeps floats). */
+  parse?: (text: string) => unknown;
 };
 
 export class ResultChunkReassembler {
   private readonly ttlMs: number;
   private readonly nowMs: () => number;
+  private readonly parse: (text: string) => unknown;
   private readonly buffers = new Map<string, ChunkBuffer>();
 
   constructor(options: ResultChunkReassemblerOptions) {
     this.ttlMs = Math.max(1000, options.ttlMs ?? 10_000);
     this.nowMs = options.nowMs;
+    this.parse = options.parse ?? JSON.parse;
   }
 
   pendingCount(): number {
@@ -78,7 +82,7 @@ export class ResultChunkReassembler {
     try {
       let assembled = '';
       for (let i = 0; i < buf.total; i++) assembled += buf.parts.get(i)!;
-      payload = JSON.parse(assembled);
+      payload = this.parse(assembled);
     } catch {
       return null;
     }

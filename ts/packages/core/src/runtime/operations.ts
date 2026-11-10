@@ -7,7 +7,7 @@ import { DEFAULT_CONFIG, type GatewayConfig, type GatewayConfigStore, validateGa
 import type { Json, UpdateControl, UpstreamLink } from '../contracts';
 import { pyInt, pyStr, pyStrip, pyTruthy } from '../py';
 import { UPDATE_CHANNELS } from '../versioning';
-import { pyGet, strOr, upperUid } from './pyCompat';
+import { pyGet, randomHex32, strOr, upperUid } from './pyCompat';
 import type { GatewayState } from './state';
 import type { UdpCommandDispatcher } from './udpCommands';
 
@@ -50,7 +50,8 @@ export interface GatewayOperationsOptions {
   configStore: GatewayConfigStore;
   state: GatewayState;
   upstream: UpstreamLink;
-  udpControl?: Pick<UdpCommandDispatcher, 'sendCommandTo'> | null;
+  /** sendCommand (the device's session) is optional: release() falls back to the last FindMe address. */
+  udpControl?: (Pick<UdpCommandDispatcher, 'sendCommandTo'> & Partial<Pick<UdpCommandDispatcher, 'sendCommand'>>) | null;
   discovery?: ProbeSender | null;
   updateControl: UpdateControl;
   onConfigSaved?: ConfigCallback;
@@ -64,7 +65,7 @@ export class GatewayOperations {
   readonly configStore: GatewayConfigStore;
   readonly state: GatewayState;
   readonly upstream: UpstreamLink;
-  readonly udpControl: Pick<UdpCommandDispatcher, 'sendCommandTo'> | null;
+  readonly udpControl: (Pick<UdpCommandDispatcher, 'sendCommandTo'> & Partial<Pick<UdpCommandDispatcher, 'sendCommand'>>) | null;
   readonly discovery: ProbeSender | null;
   readonly updateControl: UpdateControl;
   private readonly onConfigSaved: ConfigCallback | undefined;
@@ -202,14 +203,25 @@ export class GatewayOperations {
     if (!uid) return opFail('device_uid_required');
     if (this.configStore.isDenied(uid)) return opFail('device_denied', 409);
     if (!this.upstream.isConnected()) return opFail('upstream_offline', 503);
+    const { claim } = this.claimAndSwitch(uid);
+    return opOk({ claim });
+  }
+
+  /**
+   * A claim (gateway_claim_request when the Backend is reachable) plus
+   * findme_switch_gateway to the address the device's last FindMe came from.
+   * switchSent is false when that address is unknown.
+   */
+  private claimAndSwitch(uid: string): { claim: Json; switchSent: boolean } {
     const claim = this.state.createClaim(uid);
     this.state.updateClaim(claim.claim_id, { state: 'sent' });
-    this.upstream.sendClaimRequest(claim.device_uid, claim.claim_id, pyInt(claim.ttl_ms));
+    if (this.upstream.isConnected()) this.upstream.sendClaimRequest(claim.device_uid, claim.claim_id, pyInt(claim.ttl_ms));
     const updated = this.state.updateClaim(claim.claim_id, { state: 'requested' });
     const deviceIp = this.state.lastFindmeAddr(uid);
+    let switchSent = false;
     if (deviceIp && this.udpControl !== null) {
       const gwId = strOr(this.configStore.snapshot().gateway_id);
-      this.udpControl.sendCommandTo(uid, { ip: deviceIp, port: DEVICE_CONTROL_PORT }, {
+      switchSent = this.udpControl.sendCommandTo(uid, { ip: deviceIp, port: DEVICE_CONTROL_PORT }, {
         command: 'findme_switch_gateway',
         request_id: `findme-claim-${claim.claim_id}`,
         preferred_gateway_id: gwId,
@@ -218,7 +230,67 @@ export class GatewayOperations {
         expires_at_ms: pyInt(claim.expires_at_ms),
       });
     }
-    return opOk({ claim: updated ?? claim });
+    return { claim: updated ?? claim, switchSent };
+  }
+
+  // -- offer policy, adopt / release (NH Studio / NH Pocket) ----------------
+
+  /** offer_policy "all" | "managed"; takes effect on the next FindMe request. */
+  async setOfferPolicy(policy: unknown): Promise<OpResult> {
+    const locked = this.locked();
+    if (locked !== null) return locked;
+    let config: GatewayConfig;
+    try {
+      config = await this.configStore.setOfferPolicy(policy);
+    } catch (error) {
+      return opFail(errorMessage(error));
+    }
+    return opOk({ offer_policy: this.configStore.offerPolicy(), managed_devices: config.managed_devices ?? [] });
+  }
+
+  /**
+   * Takes a device on: it joins managed_devices (persisted), then is claimed
+   * and asked to switch here exactly as serve() does. Unlike serve() the
+   * Backend need not be reachable (NH Pocket adopts offline); the claim is
+   * then only local, which is all the device needs -- the preferred host
+   * mirrors the device's claim_id in its offer.
+   */
+  async adopt(deviceUid: unknown): Promise<OpResult> {
+    const locked = this.locked();
+    if (locked !== null) return locked;
+    const uid = upperUid(deviceUid);
+    if (!uid) return opFail('device_uid_required');
+    if (this.configStore.isDenied(uid)) return opFail('device_denied', 409);
+    const config = await this.configStore.manage(uid);
+    const { claim, switchSent } = this.claimAndSwitch(uid);
+    return opOk({ claim, managed_devices: config.managed_devices ?? [], switch_sent: switchSent });
+  }
+
+  /**
+   * Lets a device go: it leaves managed_devices and joins released_devices
+   * (FindMe now declines it with device_released), any claim in flight is
+   * failed, and the device is sent findme_discover so it chooses again.
+   */
+  async release(deviceUid: unknown): Promise<OpResult> {
+    const locked = this.locked();
+    if (locked !== null) return locked;
+    const uid = upperUid(deviceUid);
+    if (!uid) return opFail('device_uid_required');
+    const config = await this.configStore.release(uid);
+    const claim = this.state.activeClaimFor(uid);
+    if (claim !== null) this.state.updateClaim(claim.claim_id, { state: 'failed', last_error: 'device_released' });
+    const payload: Json = { command: 'findme_discover', request_id: `findme-release-${randomHex32()}` };
+    let discoverSent = false;
+    if (this.udpControl !== null) {
+      discoverSent = this.udpControl.sendCommand?.(uid, payload) ?? false;
+      const deviceIp = discoverSent ? null : this.state.lastFindmeAddr(uid);
+      if (deviceIp) discoverSent = this.udpControl.sendCommandTo(uid, { ip: deviceIp, port: DEVICE_CONTROL_PORT }, payload);
+    }
+    return opOk({
+      managed_devices: config.managed_devices ?? [],
+      released_devices: config.released_devices ?? [],
+      discover_sent: discoverSent,
+    });
   }
 }
 

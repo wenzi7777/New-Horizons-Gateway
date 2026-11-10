@@ -140,7 +140,9 @@ export class GatewayState {
       last_findme_monotonic: item.received_monotonic,
       findme_accepted: accepted,
       findme_reason: reason,
-      findme_state: accepted ? 'offered' : 'rejected',
+      // A device another host manages (offer_policy "managed") is not
+      // refused, just not ours: "available" to adopt.
+      findme_state: accepted ? 'offered' : reason === 'device_unmanaged' ? 'available' : 'rejected',
     });
   }
 

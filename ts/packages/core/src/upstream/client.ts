@@ -24,6 +24,7 @@
 // WebSocket and the `ws` package all do): above `maxBufferedBytes` the drain
 // pauses, the queues fill and drop as in Python, and service() resumes it.
 import { bytesToBase64, utf8Decode, utf8Encode } from '../bytes';
+import { stringifyKeepFloats } from '../floatJson';
 import type { Json, UpstreamCallbacks, UpstreamLink } from '../contracts';
 import type { Clock, Logger, WsConnection, WsConnector } from '../ports';
 import { silentLogger } from '../ports';
@@ -68,6 +69,8 @@ export interface UpstreamClientOptions {
   /** Pause draining while the connection's bufferedAmount exceeds this. */
   maxBufferedBytes?: number;
   logger?: Logger;
+  /** hello's client_type: "gateway" (default), "studio" or "pocket". */
+  clientType?: string;
 }
 
 type ControlMessage = Json & { type: string };
@@ -101,6 +104,7 @@ export class UpstreamClient implements UpstreamLink {
   private readonly callbacks: UpstreamCallbacks;
   private readonly maxBufferedBytes: number;
   private readonly logger: Logger;
+  private readonly clientType: string;
 
   private running = false;
   private connected = false;
@@ -126,6 +130,7 @@ export class UpstreamClient implements UpstreamLink {
     this.callbacks = options.callbacks;
     this.maxBufferedBytes = options.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
     this.logger = options.logger ?? silentLogger;
+    this.clientType = options.clientType ?? 'gateway';
     this.dataQueue = new DropOldestQueue(options.dataQueueSize ?? DEFAULT_DATA_QUEUE_SIZE);
     this.controlQueue = new ControlQueue(options.controlQueueSize ?? DEFAULT_CONTROL_QUEUE_SIZE);
   }
@@ -254,9 +259,10 @@ export class UpstreamClient implements UpstreamLink {
       gateway_id: this.gatewayId,
       version: this.version,
       update_channel: this.updateChannel,
-      // Tells the Backend this relay is a Gateway (a Hub sends "hub") and that
-      // it takes Desktop management commands.
-      client_type: 'gateway',
+      // Tells the Backend what kind of relay this is ("gateway"; a Hub sends
+      // "hub", NH Studio / NH Pocket their own) and that it takes Desktop
+      // management commands.
+      client_type: this.clientType,
       capabilities: [...CAPABILITIES],
       connected_at: pyIsoUtcFromEpochUs(this.clock.nowEpochUs()),
       platform: this.platform,
@@ -312,7 +318,8 @@ export class UpstreamClient implements UpstreamLink {
   private sendJson(payload: Json): void {
     const ws = this.connected ? this.attempt?.ws : null;
     if (!ws) throw new Error('upstream_not_connected');
-    ws.send(JSON.stringify(payload));
+    // Device floats (JsonFloat) go out as Python's json.dumps wrote them.
+    ws.send(stringifyKeepFloats(payload));
   }
 
   private sendPacketText(packet: Uint8Array): void {

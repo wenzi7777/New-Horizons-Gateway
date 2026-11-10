@@ -5,6 +5,7 @@
 // DiscoveryResponder.handleDatagram, and the reply goes out through the
 // injected UdpSocket.
 import { utf8Encode } from '../bytes';
+import type { OfferPolicy } from '../config';
 import type { Address, Clock, UdpSocket } from '../ports';
 import { decodeJsonLine } from '../protocol';
 import { isPlainObject, pyInt, pyTruthy } from '../py';
@@ -19,6 +20,16 @@ export const FINDME_RECV_BYTES = 1024;
 export const CLAIM_PRIORITY_BOOST = 10000;
 export const DENIED_COOLDOWN_MS = 30000;
 export const OFFER_TTL_MS = 10000;
+/**
+ * Under offer_policy "managed", the floor for a managed device's offer: above
+ * the Desktop server's own FindMe responder (100), so the App that manages a
+ * device wins it over the server. A claim adds CLAIM_PRIORITY_BOOST on top.
+ */
+export const MANAGED_OFFER_PRIORITY = 200;
+/** A device this host released: declined (with a cooldown) until it is adopted again. */
+export const DEVICE_RELEASED_REASON = 'device_released';
+/** Under "managed", a device not in the managed list: no offer, only noted as nearby. */
+export const DEVICE_UNMANAGED_REASON = 'device_unmanaged';
 
 export type FindmeRequestRecorder = (payload: Dict, addr: Address, accepted: boolean, reason: string) => void;
 
@@ -35,6 +46,10 @@ export interface FindmeContext {
   activeClaim(deviceUid: string): Dict | null;
   /** Wall clock ms, for `server_time`. */
   nowMs: number;
+  /** Absent: "all" (every device is offered, as the Gateway always did). */
+  offerPolicy?: OfferPolicy;
+  isManaged?(deviceUid: string): boolean;
+  isReleased?(deviceUid: string): boolean;
 }
 
 export interface FindmeDecision {
@@ -59,13 +74,13 @@ export function decodeFindmeRequest(data: Uint8Array): Dict | null {
   return payload;
 }
 
-function offerPayload(ctx: FindmeContext, denied: boolean, claimId: string): Dict {
+function offerPayload(ctx: FindmeContext, denied: boolean, claimId: string, priority = ctx.priority): Dict {
   return {
     version: 1,
     gateway_name: ctx.gatewayName,
     gateway_id: ctx.gatewayId,
     udp_port: pyInt(ctx.udpPort),
-    priority: ctx.priority + (claimId ? CLAIM_PRIORITY_BOOST : 0),
+    priority: priority + (claimId ? CLAIM_PRIORITY_BOOST : 0),
     accept: !denied,
     upstream_status: ctx.upstreamStatus,
     ttl_ms: OFFER_TTL_MS,
@@ -95,6 +110,21 @@ export function decideFindme(request: Dict, ctx: FindmeContext): FindmeDecision 
   }
 
   const denied = Boolean(deviceUid && ctx.isDenied(deviceUid));
+  if (!denied && deviceUid && ctx.isReleased?.(deviceUid)) {
+    // Released here: say so (accept:false, like a denied device) so the
+    // device stops coming back to this host and picks another.
+    const released = offerPayload(ctx, true, '');
+    Object.assign(released, { reason: DEVICE_RELEASED_REASON, cooldown_ms: DENIED_COOLDOWN_MS });
+    released.type = FINDME_OFFER_TYPE;
+    released.device_uid = deviceUid;
+    return { record: { accepted: false, reason: DEVICE_RELEASED_REASON }, reply: released };
+  }
+  const managedPolicy = ctx.offerPolicy === 'managed';
+  if (managedPolicy && !denied && !(deviceUid && ctx.isManaged?.(deviceUid))) {
+    // Not ours to take: remembered as nearby (the UI offers to adopt it), never offered.
+    return { record: { accepted: false, reason: DEVICE_UNMANAGED_REASON }, reply: null };
+  }
+  const priority = managedPolicy ? Math.max(ctx.priority, MANAGED_OFFER_PRIORITY) : ctx.priority;
   const reason = denied ? 'device_rejected' : '';
   const claim = deviceUid && !denied ? ctx.activeClaim(deviceUid) : null;
   let claimId = strOr((claim ?? {}).claim_id);
@@ -102,7 +132,7 @@ export function decideFindme(request: Dict, ctx: FindmeContext): FindmeDecision 
   // claim record is gone or the Backend marked it failed: the firmware only
   // completes the switch when offer.claim_id equals the claim it is following.
   if (!claimId && preferredGw === ctx.gatewayId && discoverClaimId && !denied) claimId = discoverClaimId;
-  const reply = offerPayload(ctx, denied, claimId);
+  const reply = offerPayload(ctx, denied, claimId, priority);
   if (claimId) reply.claim_id = claimId;
   if (denied) Object.assign(reply, { reason, cooldown_ms: DENIED_COOLDOWN_MS });
   reply.type = FINDME_OFFER_TYPE;
@@ -124,6 +154,10 @@ export interface DiscoveryResponderOptions {
   isDenied?: (deviceUid: string) => boolean;
   activeClaim?: (deviceUid: string) => Dict | null;
   onRequest?: FindmeRequestRecorder;
+  /** Read per request (the policy can change at run time). Default: "all". */
+  offerPolicy?: () => OfferPolicy;
+  isManaged?: (deviceUid: string) => boolean;
+  isReleased?: (deviceUid: string) => boolean;
 }
 
 /** discovery.DiscoveryResponder without the socket thread. */
@@ -143,6 +177,9 @@ export class DiscoveryResponder {
   private readonly isDenied: (deviceUid: string) => boolean;
   private readonly activeClaim: (deviceUid: string) => Dict | null;
   private readonly onRequest: FindmeRequestRecorder | undefined;
+  private readonly offerPolicy: () => OfferPolicy;
+  private readonly isManaged: (deviceUid: string) => boolean;
+  private readonly isReleased: (deviceUid: string) => boolean;
 
   constructor(options: DiscoveryResponderOptions) {
     this.socket = options.socket;
@@ -156,6 +193,9 @@ export class DiscoveryResponder {
     this.isDenied = options.isDenied ?? (() => false);
     this.activeClaim = options.activeClaim ?? (() => null);
     this.onRequest = options.onRequest;
+    this.offerPolicy = options.offerPolicy ?? (() => 'all');
+    this.isManaged = options.isManaged ?? (() => false);
+    this.isReleased = options.isReleased ?? (() => false);
   }
 
   private currentUdpPort(): number {
@@ -172,6 +212,9 @@ export class DiscoveryResponder {
       isDenied: this.isDenied,
       activeClaim: this.activeClaim,
       nowMs: this.clock.nowMs(),
+      offerPolicy: this.offerPolicy(),
+      isManaged: this.isManaged,
+      isReleased: this.isReleased,
     };
   }
 

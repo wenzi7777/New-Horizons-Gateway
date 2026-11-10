@@ -208,6 +208,13 @@ describe('connection and sending', () => {
     expect(client.status().last_connected_at).toMatch(/\+00:00$/);
   });
 
+  it('hello carries the configured client_type (NH Pocket / Studio)', () => {
+    const { client, open } = setup({ clientType: 'pocket' });
+    const ws = open();
+    expect(JSON.parse(ws.sent[0]!).client_type).toBe('pocket');
+    expect(client.helloPayload().client_type).toBe('pocket');
+  });
+
   it('set_update_channel re-announces when connected and only remembers otherwise', () => {
     const { client, open } = setup();
     client.setUpdateChannel('beta'); // not connected: just remembered

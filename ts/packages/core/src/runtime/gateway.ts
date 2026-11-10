@@ -11,6 +11,7 @@ import { silentLogger } from '../ports';
 import { decodeJsonLine, isHeartbeatPacket, isStreamPacket, looseDeviceUid, normalizeDeviceUid } from '../protocol';
 import { isPlainObject, pyInt, pyStr, pyTruthy } from '../py';
 import { RESULT_CHUNK_TYPE, ResultChunkReassembler } from '../resultChunks';
+import { parseJsonKeepFloats } from '../floatJson';
 import { buildTimeResponse, isTimeRequest } from '../time';
 import { PROTOCOL } from '../wire';
 import { DiscoveryResponder } from './discovery';
@@ -66,6 +67,44 @@ export interface GatewayHostHooks {
   publishConsoleStatus?(status: Json): void;
 }
 
+/** How the runtime treated a binary datagram (GatewayRuntimeObserver.onDevicePacket). */
+export interface DevicePacketInfo {
+  kind: 'stream' | 'heartbeat' | 'other';
+  /** The device's session/roster was updated from it (it is attached here). */
+  attached: boolean;
+  /** It was relayed upstream. */
+  forwarded: boolean;
+}
+
+/**
+ * Lets an engine built on the runtime (NH Studio / NH Pocket's device
+ * service) see what the runtime handles, and take over Backend commands.
+ * Every method is optional and called after the runtime did its own work;
+ * a throwing observer is logged, never breaks the runtime.
+ */
+export interface GatewayRuntimeObserver {
+  /** A device JSON frame (hello/status/update_progress/result, chunks joined) as relayed upstream as device_<type>. */
+  onDeviceMessage?(messageType: string, data: Json, from: Address): void;
+  /**
+   * Every JSON datagram on the stream port from a device that is not denied
+   * (result_chunk pieces and acks included), byte for byte, after the runtime
+   * handled it: an engine re-reads it with Python's float semantics.
+   * `deviceUid` is the frame's own (for a chunk, the piece's).
+   */
+  onControlDatagram?(deviceUid: string, datagram: Uint8Array, from: Address): void;
+  /** A binary datagram on the stream port from a (non-denied) device. */
+  onDevicePacket?(deviceUid: string, packet: Uint8Array, from: Address, info: DevicePacketInfo): void;
+  /** A FindMe discover request and what was decided (after the state recorded it). */
+  onFindmeRequest?(request: Json, from: Address, accepted: boolean, reason: string): void;
+  /**
+   * A not-yet-expired `command` from the Backend. Return true when handled:
+   * the runtime then sends nothing itself (the observer answers upstream).
+   */
+  onUpstreamCommand?(deviceUid: string, payload: Json): boolean;
+  /** A command the device never acked (after the runtime reported it upstream). */
+  onDeliveryTimeout?(deviceUid: string, payload: Json): void;
+}
+
 export interface GatewayRuntimeOptions {
   configStore: GatewayConfigStore;
   clock: Clock;
@@ -84,6 +123,10 @@ export interface GatewayRuntimeOptions {
   logger?: Logger;
   /** Claim IDs (uuid4 hex by default). */
   newClaimId?: () => string;
+  /** See GatewayRuntimeObserver; also settable later with setObserver(). */
+  observer?: GatewayRuntimeObserver;
+  /** How long a partial chunked result is kept (default 10 s, the Gateway's; the Desktop Backend used 30 s). */
+  resultChunkTtlMs?: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -118,6 +161,7 @@ export class GatewayRuntime {
   private lastGatewayStatusAt: number | null = null;
   private lastUpdateCheckAt: number | null = null;
   private updateCheck: Promise<void> | null = null;
+  private observer: GatewayRuntimeObserver;
 
   constructor(options: GatewayRuntimeOptions) {
     this.options = options;
@@ -128,6 +172,7 @@ export class GatewayRuntime {
     this.platform = options.platform;
     this.updateControl = options.updateControl;
     this.streamSocket = options.streamSocket;
+    this.observer = options.observer ?? {};
     const config = this.configStore.snapshot();
 
     this.state = new GatewayState({
@@ -135,7 +180,11 @@ export class GatewayRuntime {
       controlStaleSec: Number(pyGet(config, 'control_stale_sec', 16.0)),
       ...(options.newClaimId ? { newClaimId: options.newClaimId } : {}),
     });
-    this.resultChunks = new ResultChunkReassembler({ nowMs: () => this.clock.monotonicMs() });
+    this.resultChunks = new ResultChunkReassembler({
+      nowMs: () => this.clock.monotonicMs(),
+      parse: parseJsonKeepFloats,
+      ...(options.resultChunkTtlMs !== undefined ? { ttlMs: options.resultChunkTtlMs } : {}),
+    });
     this.upstreamCallbacks = {
       onCommand: (deviceUid, payload) => this.onCommand(deviceUid, payload),
       onMessage: (message) => this.onUpstreamMessage(message),
@@ -165,7 +214,13 @@ export class GatewayRuntime {
           upstreamStatus: () => (this.upstreamLink.isConnected() ? 'online' : 'offline'),
           isDenied: (uid) => this.configStore.isDenied(uid),
           activeClaim: (uid) => this.state.activeClaimFor(uid),
-          onRequest: (payload, addr, accepted, reason) => this.state.recordFindmeRequest(payload, addr, accepted, reason),
+          onRequest: (payload, addr, accepted, reason) => {
+            this.state.recordFindmeRequest(payload, addr, accepted, reason);
+            this.notify('findme', (o) => o.onFindmeRequest?.(payload, addr, accepted, reason));
+          },
+          offerPolicy: () => this.configStore.offerPolicy(),
+          isManaged: (uid) => this.configStore.isManaged(uid),
+          isReleased: (uid) => this.configStore.isReleased(uid),
         })
       : null;
 
@@ -184,6 +239,15 @@ export class GatewayRuntime {
       clock: this.clock,
       logger: this.logger,
     });
+  }
+
+  /** Replaces the observer (an engine attaches after building on the runtime). */
+  setObserver(observer: GatewayRuntimeObserver | null): void {
+    this.observer = observer ?? {};
+  }
+
+  private notify(what: string, fn: (observer: GatewayRuntimeObserver) => void): void {
+    this.guard(`observer ${what}`, () => fn(this.observer));
   }
 
   /** The current upstream link (replaced when the Gateway ID changes). */
@@ -403,6 +467,11 @@ export class GatewayRuntime {
       });
       return;
     }
+    let handled = false;
+    this.notify('command', (o) => {
+      handled = o.onUpstreamCommand?.(normalizedUid, payload) === true;
+    });
+    if (handled) return;
     if (this.udpCommands.sendCommand(normalizedUid, payload)) return;
     this.upstreamLink.sendDeviceMessage('result', {
       device_uid: normalizedUid,
@@ -435,6 +504,7 @@ export class GatewayRuntime {
       status: 'error',
       message: 'command_delivery_timeout',
     });
+    this.notify('delivery_timeout', (o) => o.onDeliveryTimeout?.(deviceUid, payload));
   }
 
   /** Every other upstream JSON message. */
@@ -506,9 +576,13 @@ export class GatewayRuntime {
     // The loose UID (magic + length only), as main.py routed: a truncated or
     // future-version packet still reaches its device's session.
     const deviceUid = looseDeviceUid(payload);
-    const denied = Boolean(deviceUid && this.configStore.isDenied(deviceUid));
+    // Under offer_policy "managed" a device this host does not manage (or
+    // released) is neither served nor relayed: it is only "nearby".
+    const denied = Boolean(deviceUid && (this.configStore.isDenied(deviceUid) || this.notOurs(deviceUid)));
     const sameArduinoPeer = this.arduinoHosts.get(deviceUid) === addr.ip;
+    let attached = false;
     if (isHeartbeat && deviceUid && !denied) {
+      attached = true;
       this.arduinoHosts.set(deviceUid, addr.ip);
       this.udpCommands.setSession(deviceUid, addr);
       this.state.recordHeartbeat(
@@ -522,6 +596,7 @@ export class GatewayRuntime {
       !denied &&
       (this.state.findmeAllowsStream(deviceUid, addr) || sameArduinoPeer)
     ) {
+      attached = true;
       this.arduinoHosts.set(deviceUid, addr.ip);
       this.udpCommands.setSession(deviceUid, addr);
       this.state.recordControl(
@@ -540,17 +615,44 @@ export class GatewayRuntime {
     const forwarded = Boolean(deviceUid && !denied && serving && !isHeartbeat);
     if (deviceUid && !isHeartbeat) this.state.recordUdpPacket(deviceUid, payload.length, forwarded);
     if (forwarded) this.upstreamLink.sendPacket(payload);
+    if (deviceUid && !this.configStore.isDenied(deviceUid)) {
+      const kind = isHeartbeat ? 'heartbeat' : isArduino ? 'stream' : 'other';
+      this.notify('packet', (o) => o.onDevicePacket?.(deviceUid, payload, addr, { kind, attached, forwarded }));
+    }
+  }
+
+  /** Under "managed": a device not managed here, or released. Always false under "all". */
+  private notOurs(deviceUid: string): boolean {
+    return (
+      this.configStore.offerPolicy() === 'managed' &&
+      (!this.configStore.isManaged(deviceUid) || this.configStore.isReleased(deviceUid))
+    );
   }
 
   /** A JSON control frame from a device (hello/status/update_progress/result/ack/result_chunk). */
   private handleUdpControl(payload: Uint8Array, addr: Address): void {
     let decoded: unknown;
     try {
-      decoded = decodeJsonLine(payload, false);
+      // Floats kept (JsonFloat), so the relay sends 1.0 as the Python Gateway did.
+      decoded = decodeJsonLine(payload, false, parseJsonKeepFloats);
     } catch {
       return;
     }
     if (!isPlainObject(decoded)) return;
+    const pieceUid =
+      normalizeDeviceUid(decoded.device_uid) ||
+      normalizeDeviceUid(dictOr(decoded.payload).device_uid) ||
+      normalizeDeviceUid(dictOr(decoded.payload).device_id);
+    try {
+      this.relayControl(decoded, addr);
+    } finally {
+      if (pieceUid && !this.configStore.isDenied(pieceUid)) {
+        this.notify('datagram', (o) => o.onControlDatagram?.(pieceUid, payload, addr));
+      }
+    }
+  }
+
+  private relayControl(decoded: Dict, addr: Address): void {
     let frame: Dict = decoded;
     if (strOr(frame.type) === RESULT_CHUNK_TYPE) {
       // Oversized results arrive in chunks; nothing happens until the last one is in.
@@ -575,6 +677,10 @@ export class GatewayRuntime {
       return;
     }
     if (!RELAYED_CONTROL_TYPES.includes(messageType)) return;
+    // Under "managed", a device that is not ours is not taken on by its
+    // status; only replies (to a command this host sent, e.g. a release's
+    // findme_discover) still go through.
+    if (messageType !== 'result' && this.notOurs(deviceUid)) return;
     if (messageType === 'result') {
       if ('cmd' in data && !('command' in data)) data.command = data.cmd;
       if ('ok' in data && !('status' in data)) data.status = pyTruthy(data.ok) ? 'ok' : 'error';
@@ -583,5 +689,6 @@ export class GatewayRuntime {
     }
     this.state.recordControl(deviceUid, messageType, data, addr, true, this.upstreamLink.gatewayId);
     this.upstreamLink.sendDeviceMessage(messageType, data);
+    this.notify('message', (o) => o.onDeviceMessage?.(messageType, data, addr));
   }
 }

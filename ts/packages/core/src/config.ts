@@ -12,6 +12,14 @@ export const GATEWAY_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 export type TargetMode = 'production' | 'local' | 'manual';
 
+/**
+ * Which devices FindMe offers to. "all" (the Gateway's behaviour): every
+ * device that asks. "managed" (NH Studio / NH Pocket): only the devices in
+ * managed_devices, at MANAGED_OFFER_PRIORITY; others are noted as nearby.
+ */
+export type OfferPolicy = 'all' | 'managed';
+export const OFFER_POLICIES: readonly OfferPolicy[] = ['all', 'managed'];
+
 export interface GatewayConfig {
   enabled: boolean;
   gateway_name: string;
@@ -33,6 +41,15 @@ export interface GatewayConfig {
   update_channel: UpdateChannel;
   /** Accept gateway_command from the Desktop; only the local WebUI may change it. */
   remote_management: boolean;
+  /**
+   * New (TS only), absent unless set: a Gateway that never uses them writes
+   * the same config.json as before. Missing means "all" / [].
+   */
+  offer_policy?: OfferPolicy;
+  /** UIDs this host manages (offer_policy "managed"); normalized, sorted. */
+  managed_devices?: string[];
+  /** UIDs released by this host: FindMe declines them (device_released) until adopted again. */
+  released_devices?: string[];
   [key: string]: unknown;
 }
 
@@ -68,6 +85,21 @@ export function parseBool(value: unknown, fallback = false): boolean {
   if (value === null || value === undefined) return fallback;
   if (typeof value === 'boolean') return value;
   return !['0', 'false', 'no', 'off', ''].includes(pyStrip(pyStr(value)).toLowerCase());
+}
+
+/** `str(uid).strip()`, separators (`:`, `-`, space) removed, upper case: how managed/released lists key a device. */
+export function normalizeListUid(value: unknown): string {
+  return pyStrip(pyStr(value)).replace(/[:\- ]/g, '').toUpperCase();
+}
+
+function normalizeUidList(value: unknown): string[] {
+  const items = Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined) : [];
+  return [...new Set(items.map(normalizeListUid).filter(Boolean))].sort(pyCompareStr);
+}
+
+export function normalizeOfferPolicy(value: unknown): OfferPolicy {
+  const policy = pyStrip(pyTruthy(value) ? pyStr(value) : '').toLowerCase();
+  return (OFFER_POLICIES as readonly string[]).includes(policy) ? (policy as OfferPolicy) : 'all';
 }
 
 /** Throws Error('gateway_id_required' | 'gateway_id_invalid'). */
@@ -159,6 +191,10 @@ export function normalizeConfig(raw: RawConfig): GatewayConfig {
   config.denied_devices = [...new Set(denied.map((uid) => pyStrip(pyStr(uid))).filter(Boolean).map((uid) => uid.toUpperCase()))].sort(
     pyCompareStr,
   );
+  // Only when present, so a config that never used them is written unchanged.
+  if ('offer_policy' in config) config.offer_policy = normalizeOfferPolicy(config.offer_policy);
+  if ('managed_devices' in config) config.managed_devices = normalizeUidList(config.managed_devices);
+  if ('released_devices' in config) config.released_devices = normalizeUidList(config.released_devices);
   config.server_url = resolveServerUrl(config);
   return config as GatewayConfig;
 }
@@ -189,7 +225,10 @@ export class GatewayConfigStore {
   }
 
   snapshot(): GatewayConfig {
-    return { ...this.config, denied_devices: [...this.config.denied_devices] };
+    const out: GatewayConfig = { ...this.config, denied_devices: [...this.config.denied_devices] };
+    if (this.config.managed_devices) out.managed_devices = [...this.config.managed_devices];
+    if (this.config.released_devices) out.released_devices = [...this.config.released_devices];
+    return out;
   }
 
   /** Merge, normalize, validate, persist. Throws gateway_id_required when enabling without an id. */
@@ -217,5 +256,58 @@ export class GatewayConfigStore {
   allow(deviceUid: unknown): Promise<GatewayConfig> {
     const uid = pyStrip(pyStr(deviceUid)).toUpperCase();
     return this.save({ denied_devices: this.config.denied_devices.filter((item) => item !== uid).sort(pyCompareStr) });
+  }
+
+  // -- FindMe offer policy (NH Studio / NH Pocket) ---------------------------
+
+  offerPolicy(): OfferPolicy {
+    return this.config.offer_policy ?? 'all';
+  }
+
+  managedDevices(): string[] {
+    return [...(this.config.managed_devices ?? [])];
+  }
+
+  releasedDevices(): string[] {
+    return [...(this.config.released_devices ?? [])];
+  }
+
+  isManaged(deviceUid: unknown): boolean {
+    const uid = normalizeListUid(deviceUid);
+    return Boolean(uid) && (this.config.managed_devices ?? []).includes(uid);
+  }
+
+  isReleased(deviceUid: unknown): boolean {
+    const uid = normalizeListUid(deviceUid);
+    return Boolean(uid) && (this.config.released_devices ?? []).includes(uid);
+  }
+
+  /** Throws Error('invalid_offer_policy'). */
+  setOfferPolicy(policy: unknown): Promise<GatewayConfig> {
+    const normalized = pyStrip(pyTruthy(policy) ? pyStr(policy) : '').toLowerCase();
+    if (!(OFFER_POLICIES as readonly string[]).includes(normalized)) return Promise.reject(new Error('invalid_offer_policy'));
+    return this.save({ offer_policy: normalized });
+  }
+
+  /** Adds to managed_devices (and takes it off released_devices). */
+  manage(deviceUid: unknown): Promise<GatewayConfig> {
+    const uid = normalizeListUid(deviceUid);
+    const managed = new Set(this.config.managed_devices ?? []);
+    if (uid) managed.add(uid);
+    return this.save({
+      managed_devices: [...managed],
+      released_devices: (this.config.released_devices ?? []).filter((item) => item !== uid),
+    });
+  }
+
+  /** Removes from managed_devices and adds to released_devices (FindMe declines it from now on). */
+  release(deviceUid: unknown): Promise<GatewayConfig> {
+    const uid = normalizeListUid(deviceUid);
+    const released = new Set(this.config.released_devices ?? []);
+    if (uid) released.add(uid);
+    return this.save({
+      managed_devices: (this.config.managed_devices ?? []).filter((item) => item !== uid),
+      released_devices: [...released],
+    });
   }
 }

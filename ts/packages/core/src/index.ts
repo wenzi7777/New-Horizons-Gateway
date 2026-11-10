@@ -4,6 +4,7 @@ export * as wire from './wire';
 export * from './protocol';
 export * from './time';
 export * from './resultChunks';
+export * from './floatJson';
 export * from './versioning';
 export * from './config';
 export * from './contracts';

@@ -89,9 +89,13 @@ export function encodeCommandLine(payload: Record<string, unknown> | null | unde
  * With requireProtocol=false the value is returned as parsed, object or not,
  * as Python did.
  */
-export function decodeJsonLine(payload: Uint8Array | string, requireProtocol = true): Record<string, unknown> {
+export function decodeJsonLine(
+  payload: Uint8Array | string,
+  requireProtocol = true,
+  parse: (text: string) => unknown = JSON.parse,
+): Record<string, unknown> {
   const text = typeof payload === 'string' ? payload : strictUtf8Decode(payload);
-  const data: unknown = JSON.parse(pyStrip(text));
+  const data: unknown = parse(pyStrip(text));
   if (requireProtocol) {
     // Python's data.get() raised AttributeError on a non-object; callers only see "it threw".
     if (!isPlainObject(data)) throw new Error('unsupported_protocol');
