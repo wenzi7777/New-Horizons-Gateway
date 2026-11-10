@@ -1,7 +1,7 @@
 # Gateway TS 重寫計劃（Mac / Windows / Linux / WebUI+TUI / Android）
 
 ## 背景
-工廠的 Hub（ESP-NOW）模式無法配對，原因查不出來，現場也不方便配合除錯。所以改用 **Wi-Fi/UDP 模式 + Gateway**：寄一支裝好 Gateway App 的 Android 手機過去，手機開 2.4 GHz 熱點，裝置連到手機，資料透過行動網路傳到 production Backend。工廠電腦有保密限制，不能安裝軟體。
+工廠的 Hub（ESP-NOW）模式無法配對，原因查不出來，現場也不方便配合除錯。所以改用 **Wi-Fi/UDP 模式 + Gateway**：寄一支裝好 Gateway App 的 Android 手機過去，手機和裝置都連工廠現有的 pocket Wi-Fi（手機只當 Wi-Fi 用戶端），資料經 pocket Wi-Fi 傳到 production Backend。手機開熱點、裝置直連手機的做法保留為備案（見「寄給工廠的手機」）。工廠電腦有保密限制，不能安裝軟體。
 
 我們同時把 Gateway 從 Python 改寫成 **Node/TS**：一份純 TS 核心，桌面版是單一執行檔，Android 版用 React Native/Expo，兩邊共用核心。所有程式碼都放在這個 repo 裡。
 
@@ -27,7 +27,7 @@ ts/                         npm workspaces（Python 版 newhorizons_gateway/ 在
   apps/android/             Expo（dev build / prebuild）
     react-native-udp        UDP 13250 / 22346
     modules/fgservice/      自訂 Expo module（Kotlin）：foreground service + wakelock + 申請略過電池最佳化
-    UI                      狀態、熱點連線教學、設定（gateway_id、target）、裝置清單、log
+    UI                      狀態、Wi-Fi 連線教學（含用戶端隔離檢查）、設定（gateway_id、target）、裝置清單、log
 ```
 
 ## UI 規範（三個介面都要遵守）
@@ -54,7 +54,7 @@ ts/                         npm workspaces（Python 版 newhorizons_gateway/ 在
 
 **Android（RN）**
 - 畫面結構對照 WebUI 和 Desktop 的 GatewayManageModal：
-  - 上方是總覽卡片：狀態、版本、網路/熱點、服務中的裝置數。
+  - 上方是總覽卡片：狀態、版本、網路（SSID、手機 IP）、服務中的裝置數。
   - 下方用 segmented control 切換 4 個分區：總覽、連線、更新、裝置。
   - 設定頁可以選語言和主題（自動 / 淺色 / 深色）。
 - 元件依 Desktop 的視覺規則實作：卡片（`--panel` + `--radius-lg` + `--shadow-sm`）、segmented（凹槽感，選取項目用 `--control-selected`）、按鈕（主要按鈕用 `--accent`、危險操作用 `--danger`）、清單列、狀態點、toast、確認對話框、可摺疊的技術細節。
@@ -119,21 +119,24 @@ ts/                         npm workspaces（Python 版 newhorizons_gateway/ 在
 ## 階段（工廠手機優先）
 | 階段 | 內容 | 完成條件 |
 |---|---|---|
-| 0. Android 可行性驗證 | 最小的 Expo dev build：手機開熱點，v1.5.F 連上；確認收得到 22346 廣播和 13250 串流；用 WSS 連 production；foreground service 在背景、關螢幕 30 分鐘都不斷線；量測時間精度 | 全部通過才繼續；有一項失敗就先處理 |
+| 0. Android 可行性驗證 | 最小的 Expo dev build：手機和 v1.5.F 連同一個 Wi-Fi（2026-11-10 起在家用 ALLDOCUBE iPlay 60 mini Pro / Helio G99 / Android 14 測）；確認收得到 22346 廣播和 13250 串流；用 WSS 連 production；foreground service 在背景、關螢幕 30 分鐘都不斷線；量測時間精度 | 全部通過才繼續；有一項失敗就先處理 |
 | 1. core + ui-tokens | 上面列的 packages/core 全部模組 + 移植的測試 + wire.ts 產生器；ui-tokens（token 產生器 + --check、主題和日出日落邏輯、i18n 字串） | vitest 全部通過，fixtures 一致；token 跟 Desktop 一致 |
-| 2. Android App | 依 UI 規範製作的正式 UI（三種主題、三種語言）、設定保存、開機自動啟動、APK 自我更新 | v1.5.F 在手機熱點下串流、指令、對時、OTA 透過 Backend 都正常；連續跑 8 小時 |
+| 2. Android App | 依 UI 規範製作的正式 UI（三種主題、三種語言）、設定保存、開機自動啟動、APK 自我更新 | v1.5.F 與手機在同一個 Wi-Fi 下串流、指令、對時、OTA 透過 Backend 都正常；連續跑 8 小時 |
 | 3. 桌面版 | packages/node + WebUI + TUI + 三平台 SEA 執行檔 | 在 Mac、Windows、Linux 上取代 Python 版跑同樣的情境 |
 | 4. 發布與更新 | gateway-bin manifest、GitHub Actions 建置發布、三語 release note、執行檔替換和回滾 | 從舊版自動更新到新版並驗證成功；回滾驗證成功 |
 | 5. 遷移與淘汰 Python 版 | Python v1.2.0（遷移提示 + gateway_status.migration）、Desktop 小版本（依 platform 選擇 manifest + Relays 遷移提示）、新版自動匯入舊設定；README 和 CLAUDE.md 一併更新 | 研究室的兩台舊 Gateway（.90、.99）自動更新到 v1.2.0 後顯示提示；照提示換成 v2.0.0 後，`gateway_id` 不變，Desktop 上仍是同一台，裝置正常串流 |
 
 ## 寄給工廠的手機
-- 熱點：固定 SSID 和密碼、**2.4 GHz**，關掉「無人連線時自動關閉」。Android 不允許 App 自己開熱點（LocalOnlyHotspot 沒有網路），所以要在設定裡手動開一次。
-- 需要有行動數據的 SIM 卡。工廠的網路完全不會用到，也符合他們的保密限制。
-- 裝置切到 Wi-Fi 模式的步驟：手機先關熱點 → 連裝置的 `NHOS-<MAC>` 設定頁 → 選 Wi-Fi 模式，填入手機熱點的 SSID → 再打開熱點。App 內附圖文教學。
-- 出貨前在研究室把整套流程用 GCU 板子跑過一次（如果拿得到 GCU 2.1 最好）。
+- **主要架構**：手機和裝置都連工廠現有的 pocket Wi-Fi，手機只當 Wi-Fi 用戶端，資料經 pocket Wi-Fi 上網。不需要 SIM 卡。
+- **出貨前必須確認 pocket Wi-Fi 沒有開用戶端隔離**（NEC Aterm / Speed Wi-Fi 等稱為「プライバシーセパレーター」，有些機型預設開啟）。開著的話，裝置送給手機的 FindMe 和 UDP 全部收不到。請工廠提供型號或到管理頁確認；App 在一段時間收不到任何 FindMe 時要提示這一點。
+- 背景運作：foreground service + partial wake lock + multicast lock + Wi-Fi 鎖（API 29+ low-latency）。螢幕關閉後 Android 仍可能讓 Wi-Fi 省電，延遲由第 0 階段的關螢幕測試確認。
+- 裝置切到 Wi-Fi 模式：裝置設定頁（`NHOS-<MAC>`）選 Wi-Fi 模式，填 pocket Wi-Fi 的 SSID。App 內附圖文教學。
+- **備案（pocket Wi-Fi 有隔離又不能關時）**：手機開 2.4 GHz 熱點、裝置直連手機，需要行動數據 SIM 卡；熱點要固定 SSID/密碼、關掉「無人連線時自動關閉」，Android 不允許 App 自己開熱點，要手動開一次。
+- 出貨前在研究室把整套流程用 GCU 板子跑過一次（如果拿得到 GCU 2.1 最好），並用要寄出的那支手機跑。
 
 ## 風險
 - RN 的 UDP 廣播接收、背景存活時間，各家廠商的 Android 差異很大 → 用第 0 階段驗證，並且只保證寄出去那一支手機。
+- pocket Wi-Fi 的用戶端隔離會讓整個方案失效 → 出貨前確認；改走熱點備案。
 - Node SEA 在 macOS 上沒公證時，Gatekeeper 會擋 → 先用 ad-hoc 簽章並寫明開啟步驟；之後再決定要不要買 Developer 帳號。
 - 現有的靜態測試（grep README、webui）不適用於新版 → 改寫成新版的檢查。
 - Desktop 的 token 有一部分依賴 CSS 本身的特性（`backdrop-filter`、`rgba` 疊色、`color-mix`），RN 和終端機無法完全重現 → 毛玻璃在 RN 改用實色的 `--panel-solid`，終端機只用前景色和強調色；在 ui-tokens 裡列出每個 token 在 RN 和 TUI 上的對應方式。

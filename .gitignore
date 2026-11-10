@@ -7,3 +7,7 @@ __pycache__/
 gateway_config.json
 data/
 .venv/
+
+.DS_Store
+.serena/
+*.egg-info/
