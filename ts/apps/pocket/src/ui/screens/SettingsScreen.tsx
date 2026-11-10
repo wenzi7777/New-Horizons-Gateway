@@ -8,6 +8,7 @@ import { LAB_NAME, LAB_URL, UAIZU_COLOR, UNIVERSITY_URL, type Locale, type Theme
 import type { PocketSettings, ServerTarget, SyncPolicy } from '../../host/contract';
 import { useToast } from '../components/feedback';
 import { PocketMark, UAizuLogo } from '../components/PocketMark';
+import { RelayBenchCard } from '../components/RelayBenchCard';
 import { Select } from '../components/Select';
 import {
   Body,
@@ -506,6 +507,9 @@ export function SettingsScreen() {
         <Divider />
         <FactRow label={t('storageFree')} value={formatBytes(status.storage.freeBytes)} />
       </Collapsible>
+
+      <SectionHeader title={t('sectionBench')} />
+      <RelayBenchCard />
 
       <SectionHeader title={t('sectionUpdate')} />
       <UpdateCard />

@@ -49,6 +49,10 @@ export function createMockSync(): PocketSync {
       set({ counts: { ...status.counts, queued: 0, synced: status.counts.synced + status.counts.queued }, lastUploadMs: Date.now() });
     },
     async retry() {},
+    async benchLink() {
+      await new Promise((r) => setTimeout(r, 300));
+      return { ok: true, error: '', rttMs: 42, uploadBytesPerSecond: status.configured ? 2_500_000 : null };
+    },
     async setLabel() {
       if (!status.configured) throw new Error('server_unavailable');
     },

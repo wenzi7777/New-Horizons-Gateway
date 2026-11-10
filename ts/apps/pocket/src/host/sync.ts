@@ -2,7 +2,7 @@
 // and its data folder (the same client NH Studio runs). Signing in uses a
 // New Horizons Desktop account; the password goes to the server once and
 // only the app token it returns is kept (in the host config).
-import { FetchSyncHttp, SyncClient, SyncError, type AppHost, type HostFiles, type SyncStatus } from '@nhgw/host';
+import { FetchSyncHttp, SyncClient, SyncError, type AppHost, type HostFiles, type LinkBenchResult, type SyncStatus } from '@nhgw/host';
 
 export type { SyncStatus };
 
@@ -15,6 +15,8 @@ export interface PocketSync {
   retry(): Promise<void>;
   /** Labels are edited on the server only; rejects 'server_unavailable' offline / signed out. */
   setLabel(uid: string, patch: { nickname?: string; group?: string }): Promise<void>;
+  /** The server-link half of the relay test. */
+  benchLink(): Promise<LinkBenchResult>;
 }
 
 /** A SyncError (or anything else) as the plain code the screens translate. */
@@ -51,6 +53,7 @@ export function createPocketSync(host: AppHost, files: HostFiles, deviceName: st
     logout: () => client.logout(),
     uploadNow: () => client.uploadNow(),
     setLabel: (uid, patch) => client.setLabel(uid, patch),
+    benchLink: () => client.benchLink(),
     retry: () => client.retry(),
   };
 }

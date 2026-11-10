@@ -25,6 +25,7 @@ import { realTimers, type TimerPort } from '../throttle';
 import { maskToken, redact, SYNC_KEYS, syncBaseUrl, TOKEN_PATTERN } from './config';
 import type { SyncHttp, SyncMethod } from './http';
 import { Sha256, sha256Hex } from './sha256';
+import { runLinkBench, type LinkBenchResult } from '../tools/relayBench';
 
 export const SYNC_DIR = '.nhsync';
 export const SYNC_PATHS = {
@@ -828,6 +829,26 @@ export class SyncClient {
       throw this.failure(done.status, done.json);
     }
     throw new SyncError('upload_incomplete', true);
+  }
+
+  // -- relay performance test ---------------------------------------------------------
+
+  /** The server-link half of the relay test (tools/relayBench): round trip, and the upload when signed in. */
+  async benchLink(): Promise<LinkBenchResult> {
+    const token = this.activeToken();
+    return runLinkBench(
+      {
+        baseUrl: this.baseUrl(),
+        request: async (method, url, body) => {
+          const headers: Record<string, string> = { Accept: 'application/json' };
+          if (token) headers.Authorization = `Bearer ${token}`;
+          if (body) headers['Content-Type'] = 'application/octet-stream';
+          const response = await this.http.request({ method, url, headers, ...(body ? { body } : {}), timeoutMs: this.timeoutMs });
+          return { status: response.status };
+        },
+      },
+      { upload: token !== '' },
+    );
   }
 
   // -- labels and profiles: the server's copy is the only one edited -----------------
