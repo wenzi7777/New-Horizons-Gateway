@@ -300,3 +300,15 @@ describe('native file adapters', () => {
     expect(native.files.get('r.nhraw')).toEqual(writer.bytes());
   });
 });
+
+describe('commandTimeoutMs (v2.0.F long commands)', () => {
+  it('waits 20 s for ordinary commands, 30 s for rfb_measure and a sweep-sized time for vref_sweep', async () => {
+    const { commandTimeoutMs } = await import('../src/host');
+    expect(commandTimeoutMs({ command: 'status' })).toBe(20_000);
+    expect(commandTimeoutMs({ command: 'rfb_measure' })).toBe(30_000);
+    // 100..800 by 100 = 8 steps of settle 150 + capture 300 + 150 = 600 ms, plus 5 s.
+    expect(commandTimeoutMs({ command: 'vref_sweep', start_mv: 100, stop_mv: 800, step_mv: 100, settle_ms: 150 })).toBe(8 * 600 + 5_000);
+    expect(commandTimeoutMs({ command: 'vref_sweep', start_mv: 100, stop_mv: 2000, step_mv: 10 })).toBe(120_000);
+    expect(commandTimeoutMs({ command: 'vref_sweep', start_mv: 'x' })).toBe(60_000);
+  });
+});

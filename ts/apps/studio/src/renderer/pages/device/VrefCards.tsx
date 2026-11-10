@@ -48,13 +48,11 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const { t } = useStudio();
   const [vrefOverride, setVrefOverride] = useState<Record<string, unknown> | null>(null);
   const [rangeOverride, setRangeOverride] = useState<Record<string, unknown> | null>(null);
-  const statusKey = JSON.stringify([status.vref, status.range]);
-  useEffect(() => {
-    setVrefOverride(null);
-    setRangeOverride(null);
-  }, [statusKey]);
-  const vref = vrefOverride ?? record(status.vref);
-  const range = rangeOverride ?? record(status.range);
+  // What the device last answered to a command here is kept over the status: a status poll can
+  // land in between or a relay can drop a field, and a Rfb just measured must unlock the range
+  // modes at once.
+  const vref = { ...record(status.vref), ...vrefOverride };
+  const range = { ...record(status.range), ...rangeOverride };
 
   const currentMv = num(vref.mv);
   const limitMv = num(vref.limit_mv);
@@ -65,13 +63,14 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const rfbTable = numbers(range.rfb_ohm);
   const rfbOffsets = numbers(range.offset_mv);
   const knownRows = num(range.rfb_known_rows) ?? 0;
-  const rfbValid = knownRows > 0;
 
   const [error, setError] = useState<string | null>(null);
   const [vrefDraft, setVrefDraft] = useState('330');
   const [limitDraft, setLimitDraft] = useState('800');
   const [measureVref, setMeasureVref] = useState('');
   const [rfbRows, setRfbRows] = useState<RfbRow[] | null>(null);
+  // A table that came back from this very measurement counts even if `range` did not.
+  const rfbValid = knownRows > 0 || (rfbRows?.some((row) => row.rfb_ohm > 0) ?? false);
   const [modeDraft, setModeDraft] = useState(modeNow);
   const [refRfbDraft, setRefRfbDraft] = useState(String(refRfbNow));
   const [leakDraft, setLeakDraft] = useState(leakNow);
@@ -240,7 +239,9 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
             )}
           </Field>
           <Field label={ds('rangeRefRfb')}>{(id) => <NumberInput id={id} min={1000} max={1000000} step={1000} value={refRfbDraft} onChange={(e) => setRefRfbDraft(e.target.value)} />}</Field>
-          <Checkbox checked={leakDraft} onChange={(e) => setLeakDraft(e.target.checked)} label={ds('rangeLeak')} />
+          <div className="vref-check">
+            <Checkbox checked={leakDraft} onChange={(e) => setLeakDraft(e.target.checked)} label={ds('rangeLeak')} />
+          </div>
         </div>
         <p className="field-note">
           {ds('rangeSaturated')}: {num(range.saturated_rows) ?? '-'}

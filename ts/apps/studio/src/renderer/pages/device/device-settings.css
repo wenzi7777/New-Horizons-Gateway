@@ -193,3 +193,10 @@
   color: var(--text-muted, inherit);
   font-weight: 600;
 }
+
+.vref-check {
+  align-self: end;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+}

@@ -69,8 +69,26 @@ export const STREAM_PORT = 13250;
 export const DISCOVERY_PORT = 22346;
 /** How long run() waits for the device's reply (the command TTL is 15 s, resends included). */
 export const COMMAND_RESULT_TIMEOUT_MS = 20_000;
-/** Commands that legitimately take longer than the usual reply (v2.0.F Rfb measurement and Vref sweep). */
-const LONG_COMMAND_TIMEOUT_MS: Record<string, number> = { rfb_measure: 30_000, vref_sweep: 90_000 };
+/**
+ * How long to wait for a command's reply. Most answer at once; the v2.0.F Rfb measurement
+ * (seven passes, ~1.5 s) and Vref sweep (the device is busy for settle + capture at every
+ * step, up to 120 s) legitimately take longer. Same rule as the Desktop backend's.
+ */
+export function commandTimeoutMs(payload: Record<string, unknown>): number {
+  const command = str(payload.command);
+  if (command === 'rfb_measure') return 30_000;
+  if (command === 'vref_sweep') {
+    const start = Number(payload.start_mv ?? 100);
+    const stop = Number(payload.stop_mv ?? 800);
+    const step = Math.max(10, Number(payload.step_mv ?? 100));
+    const settle = Number(payload.settle_ms ?? 150);
+    const capture = Number(payload.duration_ms ?? 300);
+    if (![start, stop, step, settle, capture].every(Number.isFinite)) return 60_000;
+    const steps = Math.max(1, (stop - start) / step + 1);
+    return Math.min(120_000, steps * (settle + capture + 150) + 5_000);
+  }
+  return COMMAND_RESULT_TIMEOUT_MS;
+}
 /** Recordings, addresses and storage are re-read this often (and on every recording change). */
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
@@ -903,7 +921,7 @@ export class AppHost implements HostStore {
     if (early) resolveResult(early);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<null>((resolve) => {
-      timer = setTimeout(() => resolve(null), LONG_COMMAND_TIMEOUT_MS[str(payload.command)] ?? COMMAND_RESULT_TIMEOUT_MS);
+      timer = setTimeout(() => resolve(null), commandTimeoutMs(payload));
     });
     try {
       const reply = await Promise.race([result, timeout]);
