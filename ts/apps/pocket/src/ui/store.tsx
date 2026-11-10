@@ -11,6 +11,8 @@ import { createPocketStore, getPocketSync } from '../host';
 import { createMockSync } from '../host/mockSync';
 import { createMockStore } from '../host/mockStore';
 import type { PocketSync } from '../host/sync';
+import { getPocketUpdater } from '../host/updates';
+import type { PocketUpdater } from '../host/updater';
 
 // The real host on Android; the mock where the native module is missing
 // (Expo Go, iOS, web), so the screens still run there for review.
@@ -134,4 +136,15 @@ export function usePocketSync(): { sync: PocketSync; status: ReturnType<PocketSy
   const sync = syncCurrent;
   const status = useSyncExternalStore(sync.subscribe, sync.status, sync.status);
   return { sync, status };
+}
+
+/** In-app update (check, download, install). */
+export function usePocketUpdater(): { updater: PocketUpdater; state: ReturnType<PocketUpdater['snapshot']> } {
+  const updater = getPocketUpdater();
+  const state = useSyncExternalStore(
+    (listener) => updater.subscribe(listener),
+    () => updater.snapshot(),
+    () => updater.snapshot(),
+  );
+  return { updater, state };
 }

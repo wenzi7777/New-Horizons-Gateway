@@ -25,7 +25,7 @@ class NhGatewayNativeModule : Module(), UdpHub.Listener {
   override fun definition() = ModuleDefinition {
     Name("NhGatewayNative")
 
-    Events("onDatagram", "onTimeServed")
+    Events("onDatagram", "onTimeServed", "onUpdateProgress")
 
     OnCreate {
       UdpHub.listener = this@NhGatewayNativeModule
@@ -129,6 +129,28 @@ class NhGatewayNativeModule : Module(), UdpHub.Listener {
     Function("rawFlushAll") { RawCapture.flushAll() }
     Function("rawStop") { handle: Int -> RawCapture.stop(handle) }
     Function("rawStats") { handle: Int -> RawCapture.stats(handle) }
+
+    // In-app update (ApkUpdater): download + verify, then Android's installer.
+    AsyncFunction("updateDownload") { url: String, sha256: String, size: Double ->
+      try {
+        ApkUpdater.download(context, url, sha256, size.toLong()) { received, total ->
+          sendEvent("onUpdateProgress", mapOf("received" to received.toDouble(), "total" to total.toDouble()))
+        }
+      } catch (error: ApkUpdater.UpdateError) {
+        throw expo.modules.kotlin.exception.CodedException(error.message ?: "update_failed")
+      }
+    }
+    Function("updateCanInstall") { ApkUpdater.canInstall(context) }
+    Function("updateOpenInstallSettings") { ApkUpdater.openInstallSettings(context); true }
+    Function("updateInstall") { path: String ->
+      try {
+        ApkUpdater.install(context, path)
+      } catch (error: ApkUpdater.UpdateError) {
+        throw expo.modules.kotlin.exception.CodedException(error.message ?: "update_failed")
+      }
+      true
+    }
+    Function("installedVersion") { ApkUpdater.installedVersion(context) }
 
     Function("isIgnoringBatteryOptimizations") {
       val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager

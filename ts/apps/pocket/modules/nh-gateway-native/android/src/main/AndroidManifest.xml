@@ -10,6 +10,8 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+  <!-- In-app update: open the package installer on a downloaded release APK. -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
   <application>
     <!-- connectedDevice, not dataSync: dataSync is capped at 6 h a day on
@@ -18,5 +20,14 @@
       android:name="expo.modules.nhgatewaynative.GatewayService"
       android:exported="false"
       android:foregroundServiceType="connectedDevice" />
+    <provider
+      android:name="expo.modules.nhgatewaynative.NhUpdateFileProvider"
+      android:authorities="${applicationId}.nhupdates"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/nh_update_paths" />
+    </provider>
   </application>
 </manifest>

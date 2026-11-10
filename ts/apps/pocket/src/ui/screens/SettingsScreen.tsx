@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { BatteryWarning, Check, CloudUpload, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
+import { BatteryWarning, Check, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -29,7 +29,7 @@ import {
 import { formatBytes, formatTime, isValidPocketId, isValidServerUrl } from '../format';
 import { useI18n } from '../i18n';
 import { syncErrorCode } from '../../host/sync';
-import { usePocketSync, useSettings, useStatus, useStore } from '../store';
+import { usePocketSync, usePocketUpdater, useSettings, useStatus, useStore } from '../store';
 import { useTheme } from '../theme';
 
 const SYNC_ERROR_KEYS: Record<string, 'syncErrCredentials' | 'syncErrMissing' | 'syncErrNetwork' | 'syncErrNotAdmin' | 'syncErrNoServer' | 'syncErrUnsupported'> = {
@@ -40,6 +40,64 @@ const SYNC_ERROR_KEYS: Record<string, 'syncErrCredentials' | 'syncErrMissing' | 
   no_server: 'syncErrNoServer',
   sync_unsupported: 'syncErrUnsupported',
 };
+
+const UPDATE_ERROR_KEYS: Record<string, 'updateErrNetwork' | 'updateErrVerify' | 'updateErrPackage' | 'updateErrUnsupported'> = {
+  network: 'updateErrNetwork',
+  sha256_mismatch: 'updateErrVerify',
+  size_mismatch: 'updateErrVerify',
+  wrong_package: 'updateErrPackage',
+  unsupported: 'updateErrUnsupported',
+};
+
+/** In-app update: channel, check, download with progress, Android's installer. */
+function UpdateCard() {
+  const { t } = useI18n();
+  const { updater, state } = usePocketUpdater();
+  const errorText = UPDATE_ERROR_KEYS[state.error] ? t(UPDATE_ERROR_KEYS[state.error]!) : t('updateErrOther', { error: state.error });
+  const line =
+    state.phase === 'checking' ? t('updateChecking')
+    : state.phase === 'none' ? t('updateNone')
+    : state.phase === 'upToDate' ? t('updateUpToDate')
+    : state.phase === 'available' ? t('updateAvailable', { version: state.latestVersion })
+    : state.phase === 'downloading' ? t('updateDownloading', { percent: state.totalBytes ? Math.floor((state.receivedBytes / state.totalBytes) * 100) : 0 })
+    : state.phase === 'needsPermission' ? t('updateNeedsPermission')
+    : state.phase === 'installing' ? t('updateInstalling')
+    : state.phase === 'error' ? errorText
+    : '';
+  return (
+    <Card>
+      <FactRow label={t('updateCurrent')} value={state.currentVersion} mono />
+      <Divider />
+      <SegmentedControl<'stable' | 'beta'>
+        accessibilityLabel={t('updateChannel')}
+        options={[
+          { value: 'stable', label: t('updateStable') },
+          { value: 'beta', label: t('updateBeta') },
+        ]}
+        value={state.channel}
+        onChange={(channel) => void updater.setChannel(channel)}
+      />
+      {line ? <Caption>{line}</Caption> : null}
+      {state.phase === 'downloading' ? (
+        <View style={{ height: 4, borderRadius: 2, backgroundColor: 'rgba(127,127,127,0.25)', overflow: 'hidden' }}>
+          <View style={{ height: 4, width: `${state.totalBytes ? (state.receivedBytes / state.totalBytes) * 100 : 0}%`, backgroundColor: '#1f6b54' }} />
+        </View>
+      ) : null}
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        {state.phase === 'available' || state.phase === 'installing' || (state.phase === 'error' && state.latestVersion) ? (
+          <Button label={t('updateInstall', { version: state.latestVersion })} icon={Download} variant="primary" compact onPress={() => void updater.install()} />
+        ) : null}
+        {state.phase === 'needsPermission' ? (
+          <>
+            <Button label={t('updateAllow')} variant="primary" compact onPress={() => updater.openInstallSettings()} />
+            <Button label={t('updateContinue')} compact onPress={() => void updater.install()} />
+          </>
+        ) : null}
+        <Button label={t('updateCheck')} icon={RefreshCw} compact busy={state.phase === 'checking'} disabled={state.phase === 'checking' || state.phase === 'downloading'} onPress={() => void updater.check()} />
+      </View>
+    </Card>
+  );
+}
 
 /** Signs in with a Desktop account, shows the upload queue, signs out. */
 function SyncAccountCard() {
@@ -460,6 +518,9 @@ export function SettingsScreen() {
         <Divider />
         <FactRow label={t('storageFree')} value={formatBytes(status.storage.freeBytes)} />
       </Collapsible>
+
+      <SectionHeader title={t('sectionUpdate')} />
+      <UpdateCard />
 
       <SectionHeader title={t('sectionAbout')} />
       <Card style={{ alignItems: 'center', paddingVertical: 24 }}>

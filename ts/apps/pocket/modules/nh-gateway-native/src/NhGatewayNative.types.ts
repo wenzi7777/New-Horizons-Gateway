@@ -28,6 +28,8 @@ export type NetworkInterfaceInfo = { name: string; address: string };
 export type NhGatewayNativeEvents = {
   onDatagram: (event: DatagramEvent) => void;
   onTimeServed: (event: TimeServedEvent) => void;
+  /** In-app update download progress (bytes). */
+  onUpdateProgress: (event: { received: number; total: number }) => void;
 };
 
 /** A file or folder under the app's files root (stat / listDir). */

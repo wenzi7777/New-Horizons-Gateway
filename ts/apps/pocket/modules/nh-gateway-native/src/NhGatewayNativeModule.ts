@@ -13,6 +13,19 @@ declare class NhGatewayNativeModule extends NativeModule<NhGatewayNativeEvents> 
   isIgnoringBatteryOptimizations(): boolean;
   requestIgnoreBatteryOptimizations(): boolean;
 
+  // In-app update (ApkUpdater.kt). updateDownload rejects with a code in the
+  // message: insecure_url, bad_size, http_<n>, network, size_mismatch,
+  // sha256_mismatch, wrong_package, write_failed.
+  /** Downloads and verifies a release APK; resolves to its path (cache dir). */
+  updateDownload(url: string, sha256: string, size: number): Promise<string>;
+  /** Whether Android allows this app to open the installer ("install unknown apps"). */
+  updateCanInstall(): boolean;
+  /** Opens that switch in Settings. */
+  updateOpenInstallSettings(): boolean;
+  /** Opens the package installer on a path updateDownload returned. */
+  updateInstall(path: string): boolean;
+  installedVersion(): { versionName: string; versionCode: number };
+
   // Files: '/'-separated paths relative to the app's external files dir
   // (filesRoot()); absolute paths and '..' are refused. All synchronous
   // except zipDir; failures throw.

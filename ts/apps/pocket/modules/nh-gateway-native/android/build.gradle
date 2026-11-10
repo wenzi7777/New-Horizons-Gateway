@@ -16,3 +16,8 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // FileProvider (in-app update: hands the downloaded APK to the installer).
+  implementation "androidx.core:core-ktx:1.13.1"
+}

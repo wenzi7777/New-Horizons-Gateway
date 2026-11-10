@@ -2,10 +2,11 @@
 // language, safe areas, navigation theme, toasts and confirm dialogs.
 
 import { DarkTheme, DefaultTheme, ThemeProvider as NavigationThemeProvider, type Theme as NavigationTheme } from 'expo-router';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { nativeChromeColor } from '@nhgw/ui-tokens';
 
+import { getPocketUpdater } from '../host/updates';
 import { FeedbackProvider } from './components/feedback';
 import { I18nProvider } from './i18n';
 import { StoreProvider } from './store';
@@ -33,6 +34,8 @@ function NavigationTheming({ children }: { children: ReactNode }) {
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
+  // Looks for an update once per start (Settings shows the result).
+  useEffect(() => void getPocketUpdater(), []);
   return (
     <StoreProvider>
       <ThemeProvider>
