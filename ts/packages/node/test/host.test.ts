@@ -126,7 +126,7 @@ describe('UDP on real sockets', () => {
     expect(findmePort).toBeGreaterThan(0);
     await waitFor(() => connector.connections.length > 0 && connector.last.ofType('hello').length > 0);
     expect(connector.last.url).toBe('ws://127.0.0.1:5051/newhorizons/gateway/ws');
-    expect(connector.last.ofType('hello')[0]).toMatchObject({ gateway_id: 'nh-gateway-test', client_type: 'gateway', version: host.version });
+    expect(connector.last.ofType('hello')[0]).toMatchObject({ gateway_id: 'nh-gateway-test', client_type: 'studio', version: host.version });
 
     const device = await udpClient();
     await send(device.socket, JSON.stringify({ type: 'findme_discover', device_uid: UID, mode: 'normal' }), findmePort);
@@ -186,8 +186,8 @@ describe('files', () => {
       current_version: host.version,
     });
     expect(host.status()).toMatchObject({ gateway_id: 'gw-files' });
-    expect(host.recentLogs().some((line) => line.message.includes('New Horizons Gateway'))).toBe(true);
-    expect(readFileSync(paths.logFile, 'utf8')).toContain('New Horizons Gateway');
+    expect(host.recentLogs().some((line) => line.message.includes('NH Studio (headless)'))).toBe(true);
+    expect(readFileSync(paths.logFile, 'utf8')).toContain('NH Studio (headless)');
     await host.stop();
     expect(existsSync(paths.pidFile)).toBe(false);
     expect(existsSync(paths.healthFile)).toBe(false);
@@ -288,13 +288,37 @@ describe('web API', () => {
     const { status, json, headers } = await api(base, '/api/status');
     expect(status).toBe(200);
     expect(headers.get('content-type')).toBe('application/json');
-    expect(Object.keys(json).sort()).toEqual(['config', 'legacy_import', 'state', 'udp_control', 'update_state', 'upstream', 'version']);
+    expect(Object.keys(json).sort()).toEqual(['app_token', 'config', 'legacy_import', 'state', 'udp_control', 'update_state', 'upstream', 'version']);
     expect(json.version).toBe(host.version);
     expect(json.config).toMatchObject({ gateway_id: 'gw-status', enabled: false, target_mode: 'local', listen_web_port: 0 });
     expect(json.state).toMatchObject({ devices: [], nearby_devices: [], denied_devices: [], claims: [], findme_requests: [] });
     expect(json.upstream).toHaveProperty('connected');
     expect(json.update_state).toMatchObject({ current_version: host.version, required_update: false });
     expect(json.legacy_import).toBeNull();
+  });
+
+  it('stores the NH Studio app token, never shows it, and relays with it after a reconnect', async () => {
+    const token = 'nhapp_0123456789ab_' + 'S'.repeat(40);
+    const { base, host, connector } = await start({ enabled: true, gateway_id: 'nh-studio-tok' });
+    await waitFor(() => connector.connections.length > 0);
+    expect(connector.headers[0]).toEqual({});
+    expect((await api(base, '/api/app-token', { token: 'nope' })).json).toEqual({ ok: false, error: 'invalid_app_token' });
+    const saved = await api(base, '/api/app-token', { token });
+    expect(saved.status).toBe(200);
+    expect(saved.json.app_token).toEqual({ set: true, masked: 'nhapp_0123456789ab_…SSSS', server: 'http://127.0.0.1:5051/newhorizons', active: true });
+    await waitFor(() => connector.headers.length > 1, 5000);
+    expect(connector.headers.at(-1)).toEqual({ Authorization: `Bearer ${token}` });
+    const status = await api(base, '/api/status');
+    expect(JSON.stringify(status.json)).not.toContain(token);
+    expect(status.json.config).not.toHaveProperty('sync_app_token');
+    expect(status.json.app_token.active).toBe(true);
+    // Pointed at another server, the token stays home.
+    await api(base, '/api/settings', { target_mode: 'manual', manual_url: 'ws://10.0.0.9:5051/newhorizons/gateway/ws', gateway_id: 'nh-studio-tok', enabled: true });
+    await waitFor(() => connector.last.url.startsWith('ws://10.0.0.9'), 5000);
+    expect(connector.headers.at(-1)).toEqual({});
+    expect((await api(base, '/api/status')).json.app_token).toMatchObject({ set: true, active: false });
+    expect((await api(base, '/api/app-token/clear', {})).json.app_token).toMatchObject({ set: false, active: false });
+    expect(host.version).toBeTruthy();
   });
 
   it('saves settings, with web.py validation errors and status codes', async () => {
@@ -325,7 +349,7 @@ describe('web API', () => {
 
     const suggest = await api(base, '/api/gateway-id/suggest', {});
     expect(suggest.status).toBe(200);
-    expect(suggest.json.gateway_id).toMatch(/^nh-gateway-[0-9a-f]{6}$/);
+    expect(suggest.json.gateway_id).toMatch(/^nh-studio-[0-9a-f]{6}$/);
   });
 
   it('rejects and allows devices, and serve needs the server', async () => {

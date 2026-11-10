@@ -35,7 +35,7 @@ describe('build-sea.mjs', () => {
     expect(p.entry).toBe(join(packageDir, 'src', 'cli.ts'));
     expect(p.platformKey).toBe(`${process.platform}-${process.arch}`);
     expect(p.node).toBe(process.execPath);
-    const name = process.platform === 'win32' ? 'nh-gateway.exe' : 'nh-gateway';
+    const name = process.platform === 'win32' ? 'nh-studio.exe' : 'nh-studio';
     expect(p.output).toBe(join(tsRoot, 'dist', p.platformKey, name));
     expect(p.seaConfig.main).toBe(p.bundle);
     expect(p.seaConfig.disableExperimentalSEAWarning).toBe(true);
@@ -57,7 +57,7 @@ describe('build-sea.mjs', () => {
     expect(mac.postject.machoSegmentName).toBe('NODE_SEA');
     expect(mac.removeSignature).toBe(true);
     expect(mac.adhocSign).toBe(true);
-    expect(mac.output.endsWith(join('dist', 'darwin-x64', 'nh-gateway'))).toBe(true);
+    expect(mac.output.endsWith(join('dist', 'darwin-x64', 'nh-studio'))).toBe(true);
     const unsigned = plan(['--platform-key=darwin-arm64', '--no-sign']);
     expect(unsigned.removeSignature).toBe(false);
     expect(unsigned.adhocSign).toBe(false);
@@ -69,14 +69,14 @@ describe('build-sea.mjs', () => {
     expect(win.postject.machoSegmentName).toBeUndefined();
     expect(win.removeSignature).toBe(false);
     const linux = plan(['--platform-key', 'linux-arm64']);
-    expect(linux.output.endsWith(join('linux-arm64', 'nh-gateway'))).toBe(true);
+    expect(linux.output.endsWith(join('linux-arm64', 'nh-studio'))).toBe(true);
     expect(linux.adhocSign).toBe(false);
   });
 
   it('resolves --entry, --out-dir and --node against the working directory', () => {
     const p = plan(['--entry', 'some/entry.ts', '--out-dir', 'out/here', '--node', 'bin/node']);
     expect(p.entry).toBe(join(tsRoot, 'some', 'entry.ts'));
-    expect(p.output).toBe(join(tsRoot, 'out', 'here', process.platform === 'win32' ? 'nh-gateway.exe' : 'nh-gateway'));
+    expect(p.output).toBe(join(tsRoot, 'out', 'here', process.platform === 'win32' ? 'nh-studio.exe' : 'nh-studio'));
     expect(p.node).toBe(join(tsRoot, 'bin', 'node'));
   });
 

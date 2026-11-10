@@ -300,7 +300,7 @@ export function runTui(handle: GatewayHostHandle, options: TuiOptions = {}): Tui
     }
   };
 
-  writeOut(`${setTitle('NH Gateway')}${ALT_SCREEN_ON}${CURSOR_HIDE}${AUTOWRAP_OFF}${CLEAR_SCREEN}`);
+  writeOut(`${setTitle('NH Studio')}${ALT_SCREEN_ON}${CURSOR_HIDE}${AUTOWRAP_OFF}${CLEAR_SCREEN}`);
 
   if (stdin.isTTY && typeof stdin.setRawMode === 'function') {
     try {

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Desktop host for the New Horizons Gateway core: Node UDP/WebSocket/HTTP/files, the web UI, the terminal UI, single-executable packaging and self-update.",
   "bin": {
-    "nh-gateway": "./src/cli.ts"
+    "nh-studio": "./src/cli.ts"
   },
   "exports": {
     ".": "./src/index.ts"

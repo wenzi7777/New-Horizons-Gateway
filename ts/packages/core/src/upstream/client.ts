@@ -61,8 +61,12 @@ export interface UpstreamClientOptions {
   connector: WsConnector;
   clock: Clock;
   callbacks: UpstreamCallbacks;
-  /** Sent as "Authorization: Bearer <token>" when non-empty; no config sets it today. */
-  authToken?: string;
+  /**
+   * Sent as "Authorization: Bearer <token>" when non-empty (an NH Studio app
+   * token). A function is read at every connection attempt, so a token that
+   * belongs to one server follows the config without extra calls.
+   */
+  authToken?: string | (() => string);
   updateChannel?: string;
   dataQueueSize?: number;
   controlQueueSize?: number;
@@ -87,7 +91,7 @@ interface Attempt {
 export class UpstreamClient implements UpstreamLink {
   serverUrl: string;
   gatewayId: string;
-  authToken: string;
+  private authTokenSource: () => string;
   /** Sent in hello so the Backend answers with this channel's latest version (gateway_hello_ack). */
   updateChannel: string;
   lastError = '';
@@ -121,7 +125,8 @@ export class UpstreamClient implements UpstreamLink {
   constructor(options: UpstreamClientOptions) {
     this.serverUrl = options.serverUrl;
     this.gatewayId = options.gatewayId;
-    this.authToken = options.authToken ?? '';
+    const token = options.authToken ?? '';
+    this.authTokenSource = typeof token === 'function' ? token : () => token;
     this.updateChannel = options.updateChannel ?? 'stable';
     this.version = options.version;
     this.platform = options.platform;
@@ -180,7 +185,7 @@ export class UpstreamClient implements UpstreamLink {
 
   updateServer(serverUrl: string, authToken?: string): void {
     this.serverUrl = serverUrl;
-    if (authToken !== undefined) this.authToken = authToken;
+    if (authToken !== undefined) this.authTokenSource = () => authToken;
     this.disconnectCurrent();
   }
 
@@ -332,7 +337,8 @@ export class UpstreamClient implements UpstreamLink {
 
   private connect(): void {
     const headers: Record<string, string> = {};
-    if (this.authToken) headers.Authorization = `Bearer ${this.authToken}`;
+    const authToken = this.authTokenSource();
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
     const attempt: Attempt = { ws: null, startedAtMs: this.clock.monotonicMs(), opened: false, openPending: false };
     this.attempt = attempt;
     let ws: WsConnection;

@@ -4,7 +4,7 @@
 //
 //   esbuild  src/cli.ts -> dist/<platform>/build/gateway.cjs   (CommonJS, node22)
 //   node --experimental-sea-config  -> sea-prep.blob  (web UI files as SEA assets)
-//   copy the node binary -> dist/<platform>/nh-gateway[.exe]
+//   copy the node binary -> dist/<platform>/nh-studio[.exe]
 //   macOS: codesign --remove-signature
 //   postject NODE_SEA_BLOB (sentinel fuse; Mach-O segment NODE_SEA on macOS)
 //   macOS: codesign --sign -   (ad-hoc; Apple Silicon refuses unsigned code)
@@ -13,7 +13,7 @@
 // Usage (from ts/):  npm run build:sea -- [options]
 //   --entry <file>        entry module (default packages/node/src/cli.ts)
 //   --out-dir <dir>       output directory (default dist/<platform>-<arch>)
-//   --name <name>         executable name (default nh-gateway, + .exe on Windows)
+//   --name <name>         executable name (default nh-studio, + .exe on Windows)
 //   --node <file>         the node binary to embed into (default: this node);
 //                         it also generates the blob, so it must run here
 //   --platform-key <key>  directory/key override (default <platform>-<arch> of this process)
@@ -80,7 +80,7 @@ export function parseArgs(argv, { platform = process.platform, arch = process.ar
   opts.entry = resolve(cwd, opts.entry);
   opts.node = resolve(cwd, opts.node);
   opts.outDir = resolve(cwd, opts.outDir || join(TS_ROOT, 'dist', opts.platformKey));
-  if (!opts.name) opts.name = opts.platform === 'win32' ? 'nh-gateway.exe' : 'nh-gateway';
+  if (!opts.name) opts.name = opts.platform === 'win32' ? 'nh-studio.exe' : 'nh-studio';
   else if (opts.platform === 'win32' && !opts.name.toLowerCase().endsWith('.exe')) opts.name += '.exe';
   return opts;
 }

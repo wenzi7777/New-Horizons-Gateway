@@ -127,11 +127,11 @@ describe('terminal UI (TTY)', () => {
     const input = new FakeIn();
     controller = runTui(fake.handle, { stdout: asOut(out), stdin: asIn(input), theme: 'light', locale: 'en', colorDepth: 24 });
     const text = out.text;
-    expect(text.startsWith('\x1b]0;NH Gateway\x07')).toBe(true);
+    expect(text.startsWith('\x1b]0;NH Studio\x07')).toBe(true);
     expect(text).toContain(ALT_SCREEN_ON);
     const plain = stripAnsi(text);
     for (const needle of [
-      'NH Gateway v2.0.0',
+      'NH Studio v2.0.0',
       'Online',
       'Enabled: Yes',
       'gw-lab-1',
@@ -147,7 +147,7 @@ describe('terminal UI (TTY)', () => {
       paths.logFile,
       'WARN',
       'upstream reconnecting',
-      'Ctrl+C stops the Gateway.',
+      'Ctrl+C stops NH Studio.',
     ]) {
       expect(plain).toContain(needle);
     }
@@ -316,7 +316,7 @@ describe('terminal UI (TTY)', () => {
     controller = runTui(fake.handle, { stdout: asOut(out), stdin: asIn(input), theme: 'light', locale: 'en', onExit, onForceExit });
     input.emit('data', Buffer.from('\x03'));
     expect(onExit).toHaveBeenCalledTimes(1);
-    expect(stripAnsi(out.text)).toContain('Stopping the Gateway…');
+    expect(stripAnsi(out.text)).toContain('Stopping NH Studio…');
     input.emit('data', '\x03');
     expect(onForceExit).toHaveBeenCalledTimes(1);
     expect(onExit).toHaveBeenCalledTimes(1);

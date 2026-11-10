@@ -36,9 +36,12 @@ export class FakeWs implements WsConnection {
 export class FakeConnector implements WsConnector {
   connections: FakeWs[] = [];
   constructor(private readonly autoOpen = true) {}
-  connect(url: string, _headers: Record<string, string>, handlers: WsHandlers): WsConnection {
+  /** The request headers of each connection, in order. */
+  headers: Record<string, string>[] = [];
+  connect(url: string, headers: Record<string, string>, handlers: WsHandlers): WsConnection {
     const ws = new FakeWs(url, handlers);
     this.connections.push(ws);
+    this.headers.push({ ...headers });
     if (this.autoOpen) queueMicrotask(() => handlers.onOpen());
     return ws;
   }

@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { LOCAL_URL, PRODUCTION_URL, validateGatewayId, type GatewayRuntime, type Json, type Logger, type OpResult, silentLogger } from '@nhgw/core';
 
 import { PortInUseError } from '../adapters/udp';
+import { appTokenStatus, clearAppToken, saveAppToken, withoutSecrets } from '../appToken';
 import { readAsset, TOKENS_CSS } from '../assets';
 import { pyJsonDumps } from '../pyJson';
 
@@ -59,7 +60,8 @@ export function flaskJson(value: unknown): string {
 
 /** web.py _public_config: currently the whole config. */
 export function publicConfig(config: unknown): Json {
-  return { ...(config as Json) };
+  // The NH Studio app token stays in the config file (status has app_token: masked).
+  return withoutSecrets({ ...(config as Json) });
 }
 
 /** Python bool(): what `bool(body.get("enabled", False))` makes of a JSON value. */
@@ -97,6 +99,14 @@ interface Route {
   method: 'GET' | 'POST';
   pattern: RegExp;
   json?: Handler;
+  /** Only from this machine (127.0.0.1 / ::1): the web UI also listens on the LAN, without a login. */
+  loopbackOnly?: boolean;
+}
+
+/** Whether a request came from this machine. */
+export function isLoopback(address: string | undefined): boolean {
+  if (!address) return false;
+  return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
 }
 
 export class GatewayWebServer {
@@ -178,9 +188,11 @@ export class GatewayWebServer {
       { method: 'GET', pattern: /^\/assets\/([^/]+)$/ },
       { method: 'GET', pattern: /^\/api\/status$/, json: () => this.status() },
       post('/api/settings', (body) => this.saveSettings(body)),
+      { ...post('/api/app-token', (body) => this.setAppToken(typeof body.token === 'string' ? body.token : '')), loopbackOnly: true },
+      { ...post('/api/app-token/clear', () => this.setAppToken(null)), loopbackOnly: true },
       post('/api/gateway-id/suggest', () => {
         try {
-          return [200, { gateway_id: validateGatewayId(`nh-gateway-${randomBytes(3).toString('hex')}`) }];
+          return [200, { gateway_id: validateGatewayId(`nh-studio-${randomBytes(3).toString('hex')}`) }];
         } catch (error) {
           return [503, { ok: false, error: errorText(error) }];
         }
@@ -237,6 +249,11 @@ export class GatewayWebServer {
         // web.py served only the WEBUI_ASSETS names here (index.html is not one).
         else if (params[0]! in WEBUI_ASSET_TYPES) this.sendFile(req, res, params[0]!);
         else this.sendError(req, res, 404);
+        return;
+      }
+      if (route.loopbackOnly && !isLoopback(req.socket.remoteAddress)) {
+        this.sendJson(req, res, 403, { ok: false, error: 'local_only' });
+        this.logger.info(`${method} ${path} 403 (not from this machine)`);
         return;
       }
       const body = route.method === 'POST' ? await readJsonBody(req) : {};
@@ -301,9 +318,24 @@ export class GatewayWebServer {
         udp_control: runtime.udpCommands.snapshot(),
         state: runtime.state.snapshot(config.denied_devices ?? []),
         update_state: updateState,
+        app_token: appTokenStatus(config as unknown as Record<string, unknown>) as unknown as Json,
         ...this.extraStatus(),
       },
     ];
+  }
+
+  /** Stores (or with null clears) the app token, then reconnects so the relay link uses it. */
+  private async setAppToken(token: string | null): Promise<[number, unknown]> {
+    const runtime = this.getRuntime();
+    let status;
+    try {
+      status = token === null ? await clearAppToken(runtime.configStore) : await saveAppToken(runtime.configStore, token);
+    } catch (error) {
+      return [400, { ok: false, error: error instanceof Error ? error.message : String(error) }];
+    }
+    runtime.upstream.updateServer(String(runtime.configStore.snapshot().server_url ?? ''));
+    this.logger.info(token === null ? 'app token cleared' : `app token set (${status.masked})`);
+    return [200, { ok: true, app_token: status }];
   }
 
   private async saveSettings(body: Json): Promise<[number, unknown]> {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>NH Gateway</title>
+  <title>NH Studio</title>
   <script>
     // The theme last shown, before first paint, so a night visit does not
     // flash white (theme.js takes over once loaded).
@@ -20,7 +20,7 @@
 <body>
   <header class="topbar" id="topbar">
     <div class="topbar-brand">
-      <span class="topbar-title">NH Gateway</span>
+      <span class="topbar-title">NH Studio</span>
       <span class="app-version" id="app-version">__VERSION__</span>
     </div>
     <div class="topbar-session">
@@ -57,7 +57,7 @@
         <div class="field">
           <label for="setup-gateway-id-input" data-i18n="gatewayIdLabel">Gateway ID</label>
           <div class="field-row">
-            <input id="setup-gateway-id-input" maxlength="64" placeholder="nh-gateway-xxxxxx" autocomplete="off" spellcheck="false">
+            <input id="setup-gateway-id-input" maxlength="64" placeholder="nh-studio-xxxxxx" autocomplete="off" spellcheck="false">
             <button class="button" type="button" id="setup-auto-gateway-id" data-i18n="autoGenerate">Generate</button>
           </div>
           <span class="field-note" data-i18n="gatewayIdHint">Letters, digits, dot, dash and underscore; up to 64.</span>
@@ -234,7 +234,7 @@
               <div class="field">
                 <label for="gateway-id-input" data-i18n="gatewayIdLabel">Gateway ID</label>
                 <div class="field-row">
-                  <input id="gateway-id-input" maxlength="64" placeholder="nh-gateway-xxxxxx" autocomplete="off" spellcheck="false">
+                  <input id="gateway-id-input" maxlength="64" placeholder="nh-studio-xxxxxx" autocomplete="off" spellcheck="false">
                   <button class="button" type="button" id="auto-gateway-id" data-i18n="autoGenerate">Generate</button>
                 </div>
                 <span class="field-error" id="gateway-id-error" hidden></span>
@@ -271,6 +271,26 @@
                 <span class="dirty-indicator" id="settings-dirty" data-i18n="unsavedChanges" hidden>Unsaved changes</span>
                 <button class="button ghost" type="button" id="revert-settings" data-i18n="revert" hidden>Revert</button>
                 <button class="button primary" type="submit" id="save-settings" data-i18n="save">Save</button>
+              </div>
+            </form>
+            <form class="settings-card" id="app-token-form" novalidate>
+              <div class="settings-detail-header">
+                <div>
+                  <h4 data-i18n="appTokenTitle">App token</h4>
+                  <p data-i18n="appTokenCopy">Made on the server's Relays page. It identifies this NH Studio to the server; it is only sent to the server it was entered for.</p>
+                </div>
+              </div>
+              <div class="field">
+                <span class="field-label" data-i18n="appTokenStatusLabel">Status</span>
+                <div class="url-preview mono" id="app-token-status"></div>
+              </div>
+              <div class="field">
+                <label for="app-token-input" data-i18n="appTokenInputLabel">New token</label>
+                <input id="app-token-input" type="password" placeholder="nhapp_…" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-footer">
+                <button class="button ghost" type="button" id="clear-app-token" data-i18n="appTokenClear">Remove</button>
+                <button class="button primary" type="submit" id="save-app-token" data-i18n="save">Save</button>
               </div>
             </form>
           </div>

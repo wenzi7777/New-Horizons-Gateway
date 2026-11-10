@@ -35,6 +35,7 @@ import {
   platformKey,
   type RuntimePaths,
 } from './hostApi';
+import { relayToken } from './appToken';
 import { importLegacyConfig, type LegacyImportRecord, readLegacyImportRecord } from './legacyImport';
 import { consoleStatusFile, resolveRuntimePaths } from './paths';
 import { CONFIG_FLOAT_KEYS } from './pyJson';
@@ -145,7 +146,7 @@ export async function runGateway(options: RunGatewayOptions = {}): Promise<NodeG
   const config = configStore.snapshot();
 
   const clock = options.clock ?? new NodeClock();
-  const http = options.http ?? new FetchHttp({ userAgent: `NH-Gateway/${version}` });
+  const http = options.http ?? new FetchHttp({ userAgent: `NH-Studio/${version}` });
   const connector = options.connector ?? new NodeWsConnector({ logger });
   const executable = options.executable ?? process.execPath;
   const installer = options.installerFactory?.({ paths, executable, logger }) ?? refusingInstaller();
@@ -249,7 +250,19 @@ export async function runGateway(options: RunGatewayOptions = {}): Promise<NodeG
     streamSocket,
     findmeSocket,
     createUpstream: (params, callbacks) =>
-      new UpstreamClient({ ...params, version, platform: platformKey(), connector, clock, callbacks, logger }),
+      new UpstreamClient({
+        ...params,
+        version,
+        platform: platformKey(),
+        // NH Studio (headless): the Desktop lists it with the Studio relays.
+        clientType: 'studio',
+        // Read at every connection attempt: follows a token or server change.
+        authToken: () => relayToken(configStore.snapshot() as unknown as Record<string, unknown>),
+        connector,
+        clock,
+        callbacks,
+        logger,
+      }),
     updateControl: updateManager,
     createAutoApplier: (isIdle) => new RequiredUpdateAutoApplier(updateManager, { isIdle, clock, logger }),
     platform: hostPlatform(),
@@ -300,7 +313,7 @@ export async function runGateway(options: RunGatewayOptions = {}): Promise<NodeG
 
   const current = configStore.snapshot();
   logger.info(
-    `New Horizons Gateway ${version} web=http://127.0.0.1:${webPort} enabled=${current.enabled ? 'True' : 'False'} ` +
+    `NH Studio (headless) ${version} web=http://127.0.0.1:${webPort} enabled=${current.enabled ? 'True' : 'False'} ` +
       `udp=${current.listen_udp_host}:${streamSocket.boundPort ?? current.listen_udp_port} ` +
       `findme=${current.listen_discovery_host}:${findmeSocket.boundPort ?? current.listen_discovery_port} upstream=${current.server_url}`,
   );
