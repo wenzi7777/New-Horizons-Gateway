@@ -14,12 +14,20 @@ name: studio-release
 on:
   push:
     tags: ["studio-v*"]
+  # Rebuild an existing tag with this workflow file, e.g. after a
+  # runner image is retired; assets already on the release are replaced.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "studio-vX.Y.Z to build"
+        required: true
 
 permissions:
   contents: write
 
 env:
   NODE_VERSION: "22.22.0"
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   app:
@@ -28,7 +36,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: mac, runner: macos-14 }
+          - { target: mac, runner: macos-15 }
           - { target: win, runner: windows-latest }
           - { target: linux, runner: ubuntu-latest }
     runs-on: ${{ matrix.runner }}
@@ -37,6 +45,8 @@ jobs:
         working-directory: ts
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -60,7 +70,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { key: darwin-arm64, runner: macos-14 }
+          - { key: darwin-arm64, runner: macos-15 }
           - { key: darwin-x64, runner: macos-15-intel }
           - { key: win32-x64, runner: windows-latest }
           - { key: linux-x64, runner: ubuntu-latest }
@@ -72,6 +82,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -96,6 +108,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/download-artifact@v4
         with:
           path: assets
@@ -103,7 +117,6 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           version="${TAG#studio-}"
           ls -la assets
