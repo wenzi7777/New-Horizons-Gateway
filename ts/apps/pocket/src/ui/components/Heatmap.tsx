@@ -1,16 +1,25 @@
-// 2D pressure heatmap of a device's matrix (row-major values), drawn with
-// react-native-svg in the Desktop Visualization's style: rounded cells with
-// a gap, the Desktop colour scale, values in the cells when they fit.
+// 2D pressure heat map of a device's matrix (row-major values), drawn with
+// react-native-svg exactly like the Desktop Visualization's 2D canvas: dark
+// field, 2 px gaps, rounded cells in the Desktop colour scale, the sensor's
+// P number (CSV column, from P1) in the corner and the value in the middle
+// when the cell is big enough. Tapping a cell shows its value underneath.
 
 import { memo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 
-import { formatValue } from '../format';
+import {
+  cellAt,
+  cellOrigin,
+  cellValueText,
+  HEATMAP_BG,
+  HEATMAP_VALUE_INK,
+  heatmapLayout,
+  streamSensorLabel,
+} from '../heatmapLayout';
+import { useI18n } from '../i18n';
 import { CELL_INK, colorForValue, type PressureRange } from '../pressureColor';
 import { useTheme } from '../theme';
-
-const GAP = 3;
 
 export const Heatmap = memo(function Heatmap({
   values,
@@ -27,45 +36,51 @@ export const Heatmap = memo(function Heatmap({
   maxHeight?: number;
 }) {
   const theme = useTheme();
+  const { t } = useI18n();
   const [width, setWidth] = useState(0);
-  const aspect = (cols * 1.0) / Math.max(rows, 1);
-  let drawWidth = width;
-  let drawHeight = width / aspect;
-  if (maxHeight && drawHeight > maxHeight) {
-    drawHeight = maxHeight;
-    drawWidth = maxHeight * aspect;
-  }
-  const cellW = (drawWidth - GAP * (cols + 1)) / Math.max(cols, 1);
-  const cellH = (drawHeight - GAP * (rows + 1)) / Math.max(rows, 1);
-  // Same thresholds as the Desktop canvas: too small to read is not drawn.
-  const showText = cellW >= 34 && cellH >= 22;
-  const radius = Math.min(6, cellW * 0.18, cellH * 0.18);
-  const fontSize = Math.max(9, Math.min(12, cellW * 0.28));
+  const [selected, setSelected] = useState<number | null>(null);
+  const layout = heatmapLayout(width, rows, cols, maxHeight);
+  const sel = selected !== null && selected < rows * cols ? selected : null;
 
   const cells = [];
-  if (width > 0 && cellW > 0 && cellH > 0) {
+  if (width > 0) {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const i = r * cols + c;
         const value = values?.[i];
-        const x = GAP + c * (cellW + GAP);
-        const y = GAP + r * (cellH + GAP);
+        const { x, y } = cellOrigin(layout, r, c);
         cells.push(
           <Rect
             key={`r${i}`}
             x={x}
             y={y}
-            width={cellW}
-            height={cellH}
-            rx={radius}
-            ry={radius}
+            width={layout.cellW}
+            height={layout.cellH}
+            rx={layout.radius}
+            ry={layout.radius}
             fill={value === undefined ? theme.colors.panelSoft : colorForValue(value, range)}
+            stroke={i === sel ? theme.colors.accent : undefined}
+            strokeWidth={i === sel ? 2 : 0}
           />,
         );
-        if (showText && value !== undefined) {
+        if (layout.showLabels) {
           cells.push(
-            <SvgText key={`t${i}`} x={x + cellW / 2} y={y + cellH / 2 + fontSize * 0.35} fontSize={fontSize} fill={CELL_INK} textAnchor="middle">
-              {formatValue(value)}
+            <SvgText key={`l${i}`} x={x + 3} y={y + 2 + layout.labelFont} fontSize={layout.labelFont} fontWeight="600" fill={CELL_INK}>
+              {streamSensorLabel(i)}
+            </SvgText>,
+          );
+        }
+        if (layout.showText && value !== undefined) {
+          cells.push(
+            <SvgText
+              key={`t${i}`}
+              x={x + layout.cellW / 2}
+              y={y + layout.cellH / 2 + layout.valueFont * 0.35}
+              fontSize={layout.valueFont}
+              fill={HEATMAP_VALUE_INK}
+              textAnchor="middle"
+            >
+              {cellValueText(value)}
             </SvgText>,
           );
         }
@@ -73,33 +88,56 @@ export const Heatmap = memo(function Heatmap({
     }
   }
 
+  const selValue = sel !== null ? values?.[sel] : undefined;
   return (
-    <View
-      onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))}
-      style={{ width: '100%', alignItems: 'center' }}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={`${rows} × ${cols}`}
-    >
-      {width > 0 ? (
-        <Svg width={drawWidth} height={drawHeight}>
-          {cells}
-        </Svg>
-      ) : (
-        <View style={{ height: 200 }} />
-      )}
+    <View style={{ width: '100%', alignItems: 'center', gap: 8 }}>
+      <View onLayout={(e) => setWidth(Math.floor(e.nativeEvent.layout.width))} style={{ width: '100%', alignItems: 'center' }}>
+        {width > 0 ? (
+          <Pressable
+            accessibilityRole="image"
+            accessibilityLabel={`${rows} × ${cols}`}
+            accessibilityHint={t('heatmapTapHint')}
+            onPress={(e) => {
+              const hit = cellAt(layout, rows, cols, e.nativeEvent.locationX, e.nativeEvent.locationY);
+              setSelected((prev) => (hit === prev ? null : hit));
+            }}
+            style={{ width: layout.width, height: layout.height, borderRadius: theme.radius.sm, overflow: 'hidden' }}
+          >
+            <Svg width={layout.width} height={layout.height} pointerEvents="none">
+              <Rect x={0} y={0} width={layout.width} height={layout.height} fill={HEATMAP_BG} />
+              {cells}
+            </Svg>
+          </Pressable>
+        ) : (
+          <View style={{ height: 220 }} />
+        )}
+      </View>
+      <Text
+        accessibilityLiveRegion="polite"
+        style={{ color: sel !== null ? theme.colors.text : theme.colors.textMuted, fontSize: 13, fontVariant: ['tabular-nums'] }}
+      >
+        {sel !== null
+          ? t('heatmapReadout', {
+              label: streamSensorLabel(sel),
+              row: Math.floor(sel / cols) + 1,
+              col: (sel % cols) + 1,
+              value: selValue === undefined ? '-' : cellValueText(selValue),
+            })
+          : t('heatmapTapHint')}
+      </Text>
     </View>
   );
 });
 
-/** The colour scale as a bar with its range (the Desktop's legend). */
+/** The colour scale as a bar with its range and midpoint (the Desktop's legend). */
 export function HeatmapLegend({ range }: { range: PressureRange }) {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
-  const steps = 24;
+  const steps = 32;
+  const mid = Math.round((range.min + range.max) / 2);
   return (
     <View style={{ gap: 4 }}>
-      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height: 10 }}>
+      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height: 10, borderRadius: 5, overflow: 'hidden' }}>
         {width > 0 ? (
           <Svg width={width} height={10}>
             {Array.from({ length: steps }, (_, i) => (
@@ -116,13 +154,12 @@ export function HeatmapLegend({ range }: { range: PressureRange }) {
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <SvgLabel color={theme.colors.textDim} text={String(range.min)} />
-        <SvgLabel color={theme.colors.textDim} text={String(range.max)} />
+        {[range.min, mid, range.max].map((v) => (
+          <Text key={v} style={{ color: theme.colors.textDim, fontSize: 12, fontVariant: ['tabular-nums'] }}>
+            {v}
+          </Text>
+        ))}
       </View>
     </View>
   );
-}
-
-function SvgLabel({ text, color }: { text: string; color: string }) {
-  return <Text style={{ color, fontSize: 12, fontVariant: ['tabular-nums'] }}>{text}</Text>;
 }

@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { MonitorSmartphone, BatteryWarning, Check, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
+import { MonitorSmartphone, BatteryWarning, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -8,6 +8,7 @@ import { LAB_NAME, LAB_URL, UAIZU_COLOR, UNIVERSITY_URL, type Locale, type Theme
 import type { PocketSettings, ServerTarget, SyncPolicy } from '../../host/contract';
 import { useToast } from '../components/feedback';
 import { PocketMark, UAizuLogo } from '../components/PocketMark';
+import { Select } from '../components/Select';
 import {
   Body,
   Button,
@@ -401,37 +402,17 @@ function AppearanceCard() {
 }
 
 function LanguageCard() {
-  const theme = useTheme();
   const { t } = useI18n();
   const settings = useSettings();
   const save = useSave();
   return (
-    <Card padded={false}>
-      {LANGUAGES.map((lang, i) => {
-        const selected = settings.locale === lang.value;
-        const label = lang.label ?? t('languageSystem');
-        return (
-          <View key={lang.value}>
-            {i > 0 ? <Divider /> : null}
-            <Pressable
-              onPress={() => save({ locale: lang.value })}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              accessibilityLabel={label}
-              style={({ pressed }) => ({
-                flexDirection: 'row',
-                alignItems: 'center',
-                minHeight: 48,
-                paddingHorizontal: 16,
-                backgroundColor: pressed ? theme.colors.panelSoft : 'transparent',
-              })}
-            >
-              <Text style={{ flex: 1, color: theme.colors.text, fontSize: 16 }}>{label}</Text>
-              {selected ? <Check size={20} color={theme.colors.accent} /> : null}
-            </Pressable>
-          </View>
-        );
-      })}
+    <Card>
+      <Select<Locale | 'system'>
+        label={t('language')}
+        options={LANGUAGES.map((lang) => ({ value: lang.value, label: lang.label ?? t('languageSystem') }))}
+        value={settings.locale}
+        onChange={(v) => save({ locale: v })}
+      />
     </Card>
   );
 }

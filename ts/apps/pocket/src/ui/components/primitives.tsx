@@ -9,10 +9,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -309,15 +309,61 @@ export function SwitchRow({
         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '500' }}>{title}</Text>
         {subtitle ? <Caption>{subtitle}</Caption> : null}
       </View>
-      <Switch
-        accessibilityLabel={title}
-        value={value}
-        onValueChange={onValueChange}
-        disabled={disabled}
-        trackColor={{ false: colors.lineStrong, true: colors.accent }}
-        thumbColor={colors.panelSolid}
-      />
+      <Toggle label={title} value={value} onValueChange={onValueChange} disabled={disabled} />
     </View>
+  );
+}
+
+/** A drawn on/off toggle (no platform Switch): accent track, sliding thumb; no slide under reduced motion. */
+export function Toggle({
+  label,
+  value,
+  onValueChange,
+  disabled,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    if (theme.reduceMotion) {
+      progress.setValue(value ? 1 : 0);
+      return;
+    }
+    Animated.timing(progress, { toValue: value ? 1 : 0, duration: theme.motion.fast || 160, easing: theme.easing, useNativeDriver: false }).start();
+  }, [value, progress, theme.reduceMotion, theme.motion.fast, theme.easing]);
+  const W = 50;
+  const H = 30;
+  const THUMB = 26;
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [2, W - THUMB - 2] });
+  const backgroundColor = progress.interpolate({ inputRange: [0, 1], outputRange: [colors.lineStrong, colors.accent] });
+  return (
+    <Pressable
+      onPress={() => onValueChange(!value)}
+      disabled={disabled}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      hitSlop={8}
+      style={{ opacity: disabled ? 0.45 : 1 }}
+    >
+      <Animated.View style={{ width: W, height: H, borderRadius: H / 2, backgroundColor, justifyContent: 'center' }}>
+        <Animated.View
+          style={{
+            width: THUMB,
+            height: THUMB,
+            borderRadius: THUMB / 2,
+            backgroundColor: colors.panelSolid,
+            boxShadow: theme.shadow.sm,
+            transform: [{ translateX }],
+          }}
+        />
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -487,9 +533,10 @@ export function TextField({ label, hint, error, style, ...props }: TextInputProp
   const [focused, setFocused] = useState(false);
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: colors.textDim, fontSize: 13, fontWeight: '500' }}>{label}</Text>
+      <Text style={{ color: error ? colors.danger : focused ? colors.accent : colors.textDim, fontSize: 13, fontWeight: '500' }}>{label}</Text>
       <TextInput
         accessibilityLabel={label}
+        accessibilityHint={error}
         placeholderTextColor={colors.textMuted}
         selectionColor={colors.accent}
         cursorColor={colors.accent}
@@ -502,18 +549,25 @@ export function TextField({ label, hint, error, style, ...props }: TextInputProp
           setFocused(false);
           props.onBlur?.(e);
         }}
+        underlineColorAndroid="transparent"
         style={[
           {
             minHeight: MIN_TOUCH,
             borderRadius: theme.radius.sm,
             borderWidth: 1,
             borderColor: error ? colors.danger : focused ? colors.accent : colors.lineStrong,
+            // Focus ring like the Desktop's inputs: a soft accent halo (danger when invalid).
+            boxShadow: focused ? `0 0 0 3px ${error ? colors.danger : colors.accentSoft}` : undefined,
             backgroundColor: colors.panelSolid,
             color: colors.text,
             fontSize: 16,
             paddingHorizontal: 12,
             paddingVertical: 8,
+            // No platform chrome: web outline, Android padding/underline.
+            includeFontPadding: false,
+            textAlignVertical: props.multiline ? 'top' : 'center',
           },
+          Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as TextStyle) : null,
           style,
         ]}
       />

@@ -11,9 +11,15 @@
 
 import { parseArgs } from 'node:util';
 
+import { GatewayConfigStore } from '@nhgw/core';
 import type { ThemeMode } from '@nhgw/ui-tokens';
 
+import { estimateCapacity, runCpuBench, runLinkBench } from '../../host/src/tools/relayBench';
+import { serverChoiceOf, syncBaseUrl } from '../../host/src/sync/config';
+
 import { HostLogger, PortInUseError } from './adapters';
+import { JsonFileStore } from './adapters/jsonStore';
+import { CONFIG_FLOAT_KEYS } from './pyJson';
 import { runGateway } from './host';
 import { cleanupAfterStart, createDesktopInstaller, runningAsSea, superviseSwitchDetailed } from './installer';
 import { resolveRuntimePaths } from './paths';
@@ -25,6 +31,10 @@ const HELP = `NH Studio ${GATEWAY_VERSION} (headless)
 Usage: nh-studio [--headless] [options]
 
   --headless         Run without a window (the only mode of this executable)
+  --bench            Relay performance test: how many devices this machine and
+                     its link to the configured server can relay, then exit
+  --fps <n>          Frame rate for --bench (default 60)
+  --sensors <n>      Sensors per device for --bench (default 112)
   --root <dir>       Directory that holds .run/ (default: beside the executable)
   --config <file>    Config file (default: <root>/.run/config/config.json)
   --theme <mode>     Terminal UI theme: auto (sunrise/sunset), light, dark
@@ -54,6 +64,9 @@ async function main(): Promise<void> {
         lang: { type: 'string' },
         plain: { type: 'boolean' },
         headless: { type: 'boolean' },
+        bench: { type: 'boolean' },
+        fps: { type: 'string' },
+        sensors: { type: 'string' },
         version: { type: 'boolean' },
         help: { type: 'boolean' },
       },
@@ -75,6 +88,10 @@ async function main(): Promise<void> {
   if (!['auto', 'light', 'dark'].includes(theme)) fail(`--theme must be auto, light or dark\n\n${HELP}`);
 
   const paths = resolveRuntimePaths({ root: options.root, configFile: options.config });
+  if (options.bench) {
+    await bench(paths.configFile, Number(options.fps ?? 60), Number(options.sensors ?? 112));
+    return;
+  }
   const useTui = !options.plain && Boolean(process.stdout.isTTY);
   // One logger for every in-process run, so the terminal UI keeps its history across restarts.
   const logger = new HostLogger({
@@ -118,6 +135,43 @@ async function main(): Promise<void> {
     }
     process.exit(0);
   }
+}
+
+/** --bench: this machine's relay throughput and the round trip to the configured server. */
+async function bench(configFile: string, fps: number, sensors: number): Promise<void> {
+  if (!(fps > 0 && fps <= 1000) || !(sensors > 0 && sensors <= 4096)) fail('--fps must be 1-1000 and --sensors 1-4096');
+  const store = await GatewayConfigStore.load(new JsonFileStore(configFile, { floatKeys: CONFIG_FLOAT_KEYS }), process.env);
+  const config = store.snapshot() as unknown as Record<string, unknown>;
+  const baseUrl = syncBaseUrl(serverChoiceOf(config));
+  process.stdout.write(`NH Studio headless ${GATEWAY_VERSION} relay test: ${sensors} sensors at ${fps} fps\n`);
+  process.stdout.write('Measuring this machine (3 s)…\n');
+  const cpu = await runCpuBench({ sensors, durationMs: 3000 });
+  process.stdout.write(`  ${Math.round(cpu.framesPerSecond).toLocaleString('en')} frames/s (${cpu.packetBytes} B a frame)\n`);
+  process.stdout.write(`Measuring the link to ${baseUrl || '(no server)'}…\n`);
+  const link = await runLinkBench(
+    {
+      baseUrl,
+      request: async (method, url) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15_000);
+        try {
+          const response = await fetch(url, { method, signal: controller.signal });
+          await response.arrayBuffer();
+          return { status: response.status };
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+    },
+    { upload: false },
+  );
+  if (link.ok) process.stdout.write(`  round trip ${Math.round(link.rttMs ?? 0)} ms (upload is not measured without a sign-in)\n`);
+  else process.stdout.write(`  not measured: ${link.error}\n`);
+  const estimate = estimateCapacity({ cpu, link, fps, sensors });
+  const perDevice = (estimate.bytesPerDevicePerSecond / 1024).toFixed(1);
+  process.stdout.write(`\nThis machine can relay about ${estimate.devicesByMachine} devices (with headroom).\n`);
+  process.stdout.write(`Each device needs about ${perDevice} KiB/s of upload to the server; check the link can carry ${estimate.devicesByMachine} x ${perDevice} KiB/s.\n`);
+  if (link.ok && (link.rttMs ?? 0) > 250) process.stdout.write('The round trip is long: live views on the server will lag.\n');
 }
 
 main().catch((error: unknown) => {

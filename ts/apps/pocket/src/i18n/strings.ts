@@ -99,6 +99,9 @@ const en = {
   liveWaiting: 'Waiting for data…',
   liveNoMatrix: 'This device does not report a sensor matrix.',
   liveRange: 'Colour range',
+  heatmapTapHint: 'Tap a cell to read its value',
+  heatmapReadout: '{label} · row {row}, col {col} · {value}',
+  selectChoose: 'Choose…',
 
   // Recordings
   noRecordings: 'No recordings yet. Start one from a device.',
@@ -340,6 +343,9 @@ const ja = {
   liveWaiting: 'データを待っています…',
   liveNoMatrix: 'このデバイスはセンサーマトリクスを報告していません。',
   liveRange: 'カラー範囲',
+  heatmapTapHint: 'セルをタップすると値を表示します',
+  heatmapReadout: '{label} · {row} 行 {col} 列 · {value}',
+  selectChoose: '選択…',
 
   noRecordings: '録画はまだありません。デバイスの画面から開始できます。',
   storageUsage: 'ストレージ',
@@ -576,6 +582,9 @@ const zhCN = {
   liveWaiting: '正在等待数据…',
   liveNoMatrix: '此设备没有报告传感器矩阵。',
   liveRange: '颜色范围',
+  heatmapTapHint: '点按单元格查看数值',
+  heatmapReadout: '{label} · 第 {row} 行 第 {col} 列 · {value}',
+  selectChoose: '请选择…',
 
   noRecordings: '还没有录制。可以在设备页面开始录制。',
   storageUsage: '存储',
