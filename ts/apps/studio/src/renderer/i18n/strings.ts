@@ -383,6 +383,7 @@ const en = {
   opDone: '{label}: done',
   opFailed: '{label} failed: {error}',
   errDeviceOffline: 'The device is offline.',
+  errServerUnavailable: "Needs the server: labels and profiles are edited on the server only. Sign in under Settings → Sync and check the connection.",
   errDeviceNotFound: 'The device was not found.',
   errAttachedElsewhere: 'The device is attached elsewhere.',
   errTimeout: 'The device did not answer in time.',
@@ -759,6 +760,7 @@ const ja = {
   opDone: '{label}：完了しました',
   opFailed: '{label}に失敗しました：{error}',
   errDeviceOffline: 'デバイスはオフラインです。',
+  errServerUnavailable: "サーバーが必要です。ラベルとプロファイルはサーバー上でのみ編集できます。設定 → 同期でサインインし、接続を確認してください。",
   errDeviceNotFound: 'デバイスが見つかりません。',
   errAttachedElsewhere: 'デバイスはほかの場所に接続されています。',
   errTimeout: 'デバイスから時間内に応答がありませんでした。',
@@ -1132,6 +1134,7 @@ const zhCN = {
   opDone: '{label}：已完成',
   opFailed: '{label}失败：{error}',
   errDeviceOffline: '设备已离线。',
+  errServerUnavailable: "需要服务器：标签和描述文件只能在服务器上编辑。请在设置 → 同步中登录并检查连接。",
   errDeviceNotFound: '找不到设备。',
   errAttachedElsewhere: '设备已连接到其他地方。',
   errTimeout: '设备未在规定时间内响应。',
@@ -1203,6 +1206,7 @@ export function translate(locale: Locale, key: Key, vars?: Readonly<Record<strin
 }
 
 const ERROR_KEYS: Record<string, AppKey> = {
+  server_unavailable: 'errServerUnavailable',
   device_offline: 'errDeviceOffline',
   device_not_found: 'errDeviceNotFound',
   device_attached_elsewhere: 'errAttachedElsewhere',

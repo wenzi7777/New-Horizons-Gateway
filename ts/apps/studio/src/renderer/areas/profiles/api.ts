@@ -10,6 +10,7 @@ export function profilesApi(api: StudioApi) {
       api.onAreaEvent('profiles', event, listener as (payload: unknown) => void),
     list: () => c<ProfileListEntry[]>('list'),
     get: (name: string) => c<Profile>('get', name),
+    editable: () => c<boolean>('editable'),
     save: (name: string, profile: Profile) => c<string>('save', name, profile),
     create: (name: string) => c<string>('create', name),
     duplicate: (name: string, newName?: string) => c<string>('duplicate', name, newName),

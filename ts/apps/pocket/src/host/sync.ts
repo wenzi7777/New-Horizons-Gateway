@@ -13,6 +13,8 @@ export interface PocketSync {
   logout(): Promise<void>;
   uploadNow(): Promise<void>;
   retry(): Promise<void>;
+  /** Labels are edited on the server only; rejects 'server_unavailable' offline / signed out. */
+  setLabel(uid: string, patch: { nickname?: string; group?: string }): Promise<void>;
 }
 
 /** A SyncError (or anything else) as the plain code the screens translate. */
@@ -48,6 +50,7 @@ export function createPocketSync(host: AppHost, files: HostFiles, deviceName: st
     },
     logout: () => client.logout(),
     uploadNow: () => client.uploadNow(),
+    setLabel: (uid, patch) => client.setLabel(uid, patch),
     retry: () => client.retry(),
   };
 }

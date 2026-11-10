@@ -21,6 +21,7 @@ class FakeServer implements SyncHttp {
   failPutsAfter = Infinity;
   puts = 0;
   role = 'admin';
+  offline = false;
   loginBodies: Record<string, string>[] = [];
   revoked = 0;
 
@@ -87,6 +88,34 @@ class FakeServer implements SyncHttp {
       upload.complete = true;
       upload.path = `X/${this.uploads.size}`;
       return this.reply(200, { status: 'complete', path: upload.path });
+    }
+    let dm = /^\/api\/devices\/([^/]+)\/(nickname|group)$/.exec(path);
+    if (dm && req.method === 'PUT') {
+      if (this.offline) throw new Error('ECONNREFUSED');
+      const uid = decodeURIComponent(dm[1]!);
+      const cur = this.labels.get(uid) ?? { nickname: '', nickname_updated_ms: 0, group: '', group_updated_ms: 0 };
+      (cur as any)[dm[2]!] = body![dm[2]!];
+      this.labels.set(uid, cur);
+      return this.reply(200, { device_uid: uid, ...cur });
+    }
+    if (path === '/api/profiles' && req.method === 'GET') return this.reply(200, { items: [...this.profiles].filter(([, p]) => !p.deleted).map(([name]) => ({ name, displayName: name })) });
+    dm = /^\/api\/profiles\/([^/]+)$/.exec(path);
+    if (dm) {
+      if (this.offline) throw new Error('ECONNREFUSED');
+      const name = decodeURIComponent(dm[1]!);
+      if (req.method === 'GET') {
+        const p = this.profiles.get(name);
+        return p && !p.deleted ? this.reply(200, p.profile) : this.reply(404, { error: 'profile_not_found' });
+      }
+      if (req.method === 'POST') {
+        this.profiles.set(name, { updated_ms: 1, deleted: false, profile: body! });
+        return this.reply(200, { status: 'saved', name });
+      }
+      if (req.method === 'DELETE') {
+        if (!this.profiles.has(name)) return this.reply(404, { error: 'profile_not_found' });
+        this.profiles.delete(name);
+        return this.reply(200, { status: 'deleted' });
+      }
     }
     if (path === '/api/sync/labels' && req.method === 'GET') return this.reply(200, { items: [...this.labels].map(([device_uid, l]) => ({ device_uid, ...l })) });
     if (path === '/api/sync/labels' && req.method === 'PUT') {
@@ -320,47 +349,39 @@ describe('SyncClient sign-in', () => {
 });
 
 describe('SyncClient labels and profiles', () => {
-  it('labels: last writer wins per field', async () => {
+  it('labels: the server copy wins and is the one edited', async () => {
     const ctx = await started(setup());
-    ctx.host.nicknames = { AAAAAAAAAAAA: 'local nick' };
+    ctx.host.nicknames = { AAAAAAAAAAAA: 'local nick', CCCCCCCCCCCC: 'gone' };
     ctx.server.labels.set('AAAAAAAAAAAA', { nickname: 'server nick', nickname_updated_ms: 500, group: 'lab', group_updated_ms: 600 });
     ctx.server.labels.set('BBBBBBBBBBBB', { nickname: 'b', nickname_updated_ms: 10, group: '', group_updated_ms: 0 });
-    await ctx.client.syncLabelsNow();
-    // Never-synced local labels count as old: the server's stamped values win.
+    expect((await ctx.client.syncLabelsNow()).ok).toBe(true);
     expect(ctx.host.nicknames).toEqual({ AAAAAAAAAAAA: 'server nick', BBBBBBBBBBBB: 'b' });
     expect(ctx.host.groups).toEqual({ AAAAAAAAAAAA: 'lab' });
-    // A later local edit wins over the server's.
-    ctx.host.nicknames.AAAAAAAAAAAA = 'edited here';
-    ctx.clock.t += 1000;
-    const result = await ctx.client.syncLabelsNow();
-    expect(result.ok).toBe(true);
-    expect(ctx.server.labels.get('AAAAAAAAAAAA')!.nickname).toBe('edited here');
-    expect(ctx.server.labels.get('AAAAAAAAAAAA')!.nickname_updated_ms).toBe(ctx.clock.t);
-    // A newer server edit then comes back.
-    ctx.server.labels.get('AAAAAAAAAAAA')!.group = 'moved';
-    ctx.server.labels.get('AAAAAAAAAAAA')!.group_updated_ms = ctx.clock.t + 5;
-    await ctx.client.syncLabelsNow();
-    expect(ctx.host.groups.AAAAAAAAAAAA).toBe('moved');
+    // An edit goes to the server, then into the mirror.
+    await ctx.client.setLabel('AAAAAAAAAAAA', { nickname: 'edited', group: 'bench' });
+    expect(ctx.server.labels.get('AAAAAAAAAAAA')).toMatchObject({ nickname: 'edited', group: 'bench' });
+    expect(ctx.host.nicknames.AAAAAAAAAAAA).toBe('edited');
+    // Unreachable server: nothing changes locally.
+    ctx.server.offline = true;
+    await expect(ctx.client.setLabel('AAAAAAAAAAAA', { nickname: 'offline edit' })).rejects.toMatchObject({ code: 'server_unavailable' });
+    expect(ctx.host.nicknames.AAAAAAAAAAAA).toBe('edited');
   });
 
-  it('profiles: last writer wins per profile, deletes included', async () => {
+  it('profiles: mirrored from the server, edited and deleted there', async () => {
     const ctx = await started(setup());
-    ctx.native.writeAtomic('profiles/mine.json', '{"rows":2}');
+    ctx.native.writeAtomic('profiles/stale.json', '{"rows":2}');
     ctx.server.profiles.set('theirs', { updated_ms: 100, deleted: false, profile: { rows: 3 } });
-    await ctx.client.syncProfilesNow();
+    expect((await ctx.client.syncProfilesNow()).ok).toBe(true);
     expect(JSON.parse(ctx.native.text('profiles/theirs.json')!)).toEqual({ rows: 3 });
-    expect(ctx.server.profiles.get('mine')!.profile).toEqual({ rows: 2 });
-    // Older server copy does not overwrite a newer local edit.
-    ctx.clock.t += 10;
-    ctx.native.writeAtomic('profiles/theirs.json', '{"rows":4}');
-    await ctx.client.syncProfilesNow();
-    expect(ctx.server.profiles.get('theirs')!.profile).toEqual({ rows: 4 });
-    // Local delete propagates; a newer server edit comes back.
-    ctx.native.deletePath('profiles/mine.json');
-    ctx.clock.t += 10;
-    ctx.server.profiles.set('theirs', { updated_ms: ctx.clock.t + 1000, deleted: false, profile: { rows: 9 } });
-    await ctx.client.syncProfilesNow();
-    expect(ctx.server.profiles.get('mine')!.deleted).toBe(true);
-    expect(JSON.parse(ctx.native.text('profiles/theirs.json')!)).toEqual({ rows: 9 });
+    expect(ctx.native.text('profiles/stale.json')).toBeNull();
+    await ctx.client.saveProfile('mine', { rows: 5 });
+    expect(ctx.server.profiles.get('mine')!.profile).toEqual({ rows: 5 });
+    expect(JSON.parse(ctx.native.text('profiles/mine.json')!)).toEqual({ rows: 5 });
+    await ctx.client.deleteProfile('theirs');
+    expect(ctx.server.profiles.has('theirs')).toBe(false);
+    expect(ctx.native.text('profiles/theirs.json')).toBeNull();
+    ctx.server.offline = true;
+    await expect(ctx.client.saveProfile('mine', { rows: 6 })).rejects.toMatchObject({ code: 'server_unavailable' });
+    expect(JSON.parse(ctx.native.text('profiles/mine.json')!)).toEqual({ rows: 5 });
   });
 });

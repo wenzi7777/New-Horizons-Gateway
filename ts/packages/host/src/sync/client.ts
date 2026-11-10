@@ -8,8 +8,9 @@
 //   recognized (same recording_id + files), failures retry with exponential
 //   backoff. Policy: manual (only "upload now"), auto, wifi_only (not on a
 //   network the host says is metered; unknown counts as allowed).
-// - Labels (nickname, group): last writer wins per field.
-// - Profiles (<data>/profiles/<name>.json): last writer wins per profile.
+// - Labels (nickname, group) and profiles (<data>/profiles/<name>.json): the
+//   server's copy is the one edited; the app mirrors it read-only and sends
+//   every edit to the server (none while it is unreachable).
 //
 // State lives in the data folder, beside the recordings:
 //   .nhsync/recordings.json   per-recording upload state (see RecordingIndex)
@@ -122,6 +123,8 @@ export interface SyncStatus {
   counts: Record<UploadState, number>;
   current: { id: string; sentBytes: number; totalBytes: number } | null;
   lastUploadMs: number;
+  /** Labels and profiles can be edited now (they are edited on the server only). */
+  editable: boolean;
   labels: MetadataResult | null;
   profiles: MetadataResult | null;
 }
@@ -562,6 +565,7 @@ export class SyncClient {
       counts,
       current: this.current ? { ...this.current } : null,
       lastUploadMs: this.index.last_upload_ms,
+      editable: this.serverEditable(),
       labels: this.labelState.server === this.baseUrl() ? this.labelState.last : null,
       profiles: this.profileState.server === this.baseUrl() ? this.profileState.last : null,
     };
@@ -826,65 +830,105 @@ export class SyncClient {
     throw new SyncError('upload_incomplete', true);
   }
 
-  // -- labels -----------------------------------------------------------------------------
+  // -- labels and profiles: the server's copy is the only one edited -----------------
+  //
+  // Nicknames, groups and profiles live on the server. The app keeps a mirror
+  // (the host's label documents, <data>/profiles/*.json) refreshed from the
+  // server, and every edit goes to the server first; without a reachable
+  // server they cannot be edited (SyncError 'server_unavailable').
 
-  /** Two-way label sync, last writer wins per field (nickname, group). */
+  /** Whether edits can go to the server now (signed in for this server, last check fine). */
+  serverEditable(): boolean {
+    return this.activeToken() !== '' && this.connection?.ok === true;
+  }
+
+  private async serverCall(method: SyncMethod, path: string, body?: unknown): Promise<Record<string, unknown>> {
+    if (!this.activeToken()) throw new SyncError('server_unavailable', false);
+    let response;
+    try {
+      response = await this.call(method, path, body);
+    } catch (error) {
+      if (error instanceof SyncError && (error.code === 'network' || error.code === 'no_token' || error.code === 'no_server')) {
+        throw new SyncError('server_unavailable', true);
+      }
+      throw error;
+    }
+    if (response.status < 200 || response.status >= 300) throw this.failure(response.status, response.json);
+    return response.json;
+  }
+
+  /** Sets a device's nickname and/or group on the server, then in the local mirror. */
+  async setLabel(uid: string, patch: { nickname?: string; group?: string }): Promise<void> {
+    const id = encodeURIComponent(uid.trim().toUpperCase());
+    if (patch.nickname !== undefined) {
+      await this.serverCall('PUT', `/api/devices/${id}/nickname`, { nickname: patch.nickname });
+      await this.host.setNickname(uid, patch.nickname);
+    }
+    if (patch.group !== undefined) {
+      await this.serverCall('PUT', `/api/devices/${id}/group`, { group: patch.group });
+      await this.host.setGroup(uid, patch.group);
+    }
+    this.emit({ type: 'state' });
+  }
+
+  /** Saves a profile on the server, then mirrors it. */
+  async saveProfile(name: string, profile: Record<string, unknown>): Promise<void> {
+    if (!PROFILE_NAME.test(name)) throw new SyncError('invalid_profile_name', false);
+    await this.serverCall('POST', `/api/profiles/${encodeURIComponent(name)}`, profile);
+    this.mirrorProfile(name, profile);
+    this.emit({ type: 'state' });
+  }
+
+  /** Deletes a profile on the server, then from the mirror. */
+  async deleteProfile(name: string): Promise<void> {
+    if (!PROFILE_NAME.test(name)) throw new SyncError('invalid_profile_name', false);
+    try {
+      await this.serverCall('DELETE', `/api/profiles/${encodeURIComponent(name)}`);
+    } catch (error) {
+      // Already gone there: still drop the mirror.
+      if (!(error instanceof SyncError && error.status === 404)) throw error;
+    }
+    const path = `${SYNC_PATHS.profilesDir}/${name}.json`;
+    if (this.files.fileExists(path)) this.files.deletePath(path);
+    this.emit({ type: 'state' });
+  }
+
+  private mirrorProfile(name: string, profile: unknown): boolean {
+    if (!PROFILE_NAME.test(name) || !isObject(profile)) return false;
+    const path = `${SYNC_PATHS.profilesDir}/${name}.json`;
+    const body = `${JSON.stringify(profile, null, 2)}\n`;
+    if (this.files.readText(path) === body) return false;
+    this.files.mkdirp(SYNC_PATHS.profilesDir);
+    this.files.writeAtomic(path, body);
+    return true;
+  }
+
+  /** Refreshes the local label mirror from the server (the server wins; labels it does not have are cleared). */
   async syncLabelsNow(): Promise<MetadataResult> {
     const run = async (): Promise<MetadataResult> => {
-      const base = this.baseUrl();
-      const now = this.timers.now();
-      const result: MetadataResult = { ok: false, error: '', atMs: now, pushed: 0, pulled: 0 };
-      if (this.labelState.server !== base) this.labelState = { version: 1, server: base, items: {}, last: null };
-      const known = this.labelState.items;
+      const result: MetadataResult = { ok: false, error: '', atMs: this.timers.now(), pushed: 0, pulled: 0 };
       try {
+        const remote = await this.serverCall('GET', '/api/sync/labels?since_ms=0');
         const local = this.host.readLabels();
-        const uids = new Set([...Object.keys(local.nicknames), ...Object.keys(local.groups), ...Object.keys(known)]);
-        // Local edits since the last sync are stamped now; a label never synced counts as very old (time 1).
-        for (const uid of uids) {
-          const nickname = local.nicknames[uid] ?? '';
-          const group = local.groups[uid] ?? '';
-          const entry = known[uid];
-          if (!entry) {
-            known[uid] = { nickname, nickname_ms: nickname ? 1 : 0, group, group_ms: group ? 1 : 0 };
-            continue;
-          }
-          if (entry.nickname !== nickname) Object.assign(entry, { nickname, nickname_ms: Math.max(now, entry.nickname_ms + 1) });
-          if (entry.group !== group) Object.assign(entry, { group, group_ms: Math.max(now, entry.group_ms + 1) });
-        }
-        const remote = await this.call('GET', '/api/sync/labels?since_ms=0');
-        if (remote.status !== 200) throw this.failure(remote.status, remote.json);
-        const remoteItems = new Map<string, LabelKnown>();
-        for (const raw of Array.isArray(remote.json.items) ? remote.json.items : []) {
+        const nicknames = new Map<string, string>();
+        const groups = new Map<string, string>();
+        for (const raw of Array.isArray(remote.items) ? remote.items : []) {
           if (!isObject(raw) || !text(raw.device_uid)) continue;
-          remoteItems.set(text(raw.device_uid), {
-            nickname: text(raw.nickname),
-            nickname_ms: num(raw.nickname_updated_ms),
-            group: text(raw.group),
-            group_ms: num(raw.group_updated_ms),
-          });
+          nicknames.set(text(raw.device_uid), text(raw.nickname));
+          groups.set(text(raw.device_uid), text(raw.group));
         }
-        const push: Record<string, unknown>[] = [];
-        for (const uid of new Set([...remoteItems.keys(), ...Object.keys(known)])) {
-          const theirs = remoteItems.get(uid) ?? { nickname: '', nickname_ms: 0, group: '', group_ms: 0 };
-          const mine = (known[uid] ??= { nickname: '', nickname_ms: 0, group: '', group_ms: 0 });
-          result.pulled += await this.takeLabels(uid, mine, theirs, local);
-          const item: Record<string, unknown> = { device_uid: uid };
-          if (mine.nickname_ms > theirs.nickname_ms) Object.assign(item, { nickname: mine.nickname, nickname_updated_ms: mine.nickname_ms });
-          if (mine.group_ms > theirs.group_ms) Object.assign(item, { group: mine.group, group_updated_ms: mine.group_ms });
-          if (Object.keys(item).length > 1) push.push(item);
+        for (const uid of new Set([...nicknames.keys(), ...Object.keys(local.nicknames)])) {
+          const want = nicknames.get(uid) ?? '';
+          if ((local.nicknames[uid] ?? '') !== want) {
+            await this.host.setNickname(uid, want);
+            result.pulled += 1;
+          }
         }
-        if (push.length) {
-          const put = await this.call('PUT', '/api/sync/labels', { items: push });
-          if (put.status !== 200) throw this.failure(put.status, put.json);
-          for (const raw of Array.isArray(put.json.items) ? put.json.items : []) {
-            if (!isObject(raw)) continue;
-            const uid = text(raw.device_uid);
-            const mine = known[uid];
-            if (!mine) continue;
-            const applied = Array.isArray(raw.applied) ? raw.applied : [];
-            result.pushed += applied.length;
-            const theirs = { nickname: text(raw.nickname), nickname_ms: num(raw.nickname_updated_ms), group: text(raw.group), group_ms: num(raw.group_updated_ms) };
-            result.pulled += await this.takeLabels(uid, mine, theirs, local, true);
+        for (const uid of new Set([...groups.keys(), ...Object.keys(local.groups)])) {
+          const want = groups.get(uid) ?? '';
+          if ((local.groups[uid] ?? '') !== want) {
+            await this.host.setGroup(uid, want);
+            result.pulled += 1;
           }
         }
         result.ok = true;
@@ -892,7 +936,7 @@ export class SyncClient {
         result.error = error instanceof SyncError ? error.code : 'unexpected';
         this.log('warn', `labels: ${result.error}`);
       }
-      this.labelState.last = result;
+      this.labelState = { version: 1, server: this.baseUrl(), items: {}, last: result };
       this.writeState(SYNC_PATHS.labels, this.labelState);
       this.emit({ type: 'state' });
       return result;
@@ -900,98 +944,31 @@ export class SyncClient {
     return this.serialMetadata(run);
   }
 
-  /** Takes the server's fields that are newer (or equal, after a push: the server's answer is final). Returns fields changed locally. */
-  private async takeLabels(uid: string, mine: LabelKnown, theirs: LabelKnown, local: { nicknames: Record<string, string>; groups: Record<string, string> }, orEqual = false): Promise<number> {
-    let changed = 0;
-    const newer = (a: number, b: number) => (orEqual ? a >= b && a > 0 : a > b);
-    if (newer(theirs.nickname_ms, mine.nickname_ms) && (theirs.nickname_ms !== mine.nickname_ms || theirs.nickname !== mine.nickname)) {
-      if ((local.nicknames[uid] ?? '') !== theirs.nickname) {
-        await this.host.setNickname(uid, theirs.nickname);
-        local.nicknames[uid] = theirs.nickname;
-        changed += 1;
-      }
-      Object.assign(mine, { nickname: theirs.nickname, nickname_ms: theirs.nickname_ms });
-    }
-    if (newer(theirs.group_ms, mine.group_ms) && (theirs.group_ms !== mine.group_ms || theirs.group !== mine.group)) {
-      if ((local.groups[uid] ?? '') !== theirs.group) {
-        await this.host.setGroup(uid, theirs.group);
-        local.groups[uid] = theirs.group;
-        changed += 1;
-      }
-      Object.assign(mine, { group: theirs.group, group_ms: theirs.group_ms });
-    }
-    return changed;
-  }
-
-  // -- profiles ----------------------------------------------------------------------------
-
-  /** Two-way profile sync (<data>/profiles/<name>.json), last writer wins per profile. */
+  /** Refreshes the local profile mirror from the server (profiles the server does not have are removed). */
   async syncProfilesNow(): Promise<MetadataResult> {
     const run = async (): Promise<MetadataResult> => {
-      const base = this.baseUrl();
-      const now = this.timers.now();
-      const result: MetadataResult = { ok: false, error: '', atMs: now, pushed: 0, pulled: 0 };
-      if (this.profileState.server !== base) this.profileState = { version: 1, server: base, items: {}, last: null };
-      const known = this.profileState.items;
+      const result: MetadataResult = { ok: false, error: '', atMs: this.timers.now(), pushed: 0, pulled: 0 };
       try {
-        const local = new Map<string, { text: string; mtimeMs: number }>();
-        let listing: ReturnType<HostFiles['listDir']> = [];
-        try {
-          listing = this.files.listDir(SYNC_PATHS.profilesDir);
-        } catch {
-          listing = [];
-        }
-        for (const entry of listing) {
-          if (entry.isDirectory || !entry.name.endsWith('.json')) continue;
-          const name = entry.name.slice(0, -5);
+        const listing = await this.serverCall('GET', '/api/profiles');
+        const names = new Set<string>();
+        for (const raw of Array.isArray(listing.items) ? listing.items : []) {
+          const name = isObject(raw) ? text(raw.name) : '';
           if (!PROFILE_NAME.test(name)) continue;
-          const body = this.files.readText(`${SYNC_PATHS.profilesDir}/${entry.name}`);
-          if (body !== null) local.set(name, { text: body, mtimeMs: entry.mtimeMs });
+          names.add(name);
+          const profile = await this.serverCall('GET', `/api/profiles/${encodeURIComponent(name)}`);
+          if (this.mirrorProfile(name, profile)) result.pulled += 1;
         }
-        for (const [name, file] of local) {
-          const sha = sha256Hex(file.text);
-          const entry = known[name];
-          if (!entry) known[name] = { updated_ms: Math.max(1, Math.floor(file.mtimeMs)), sha256: sha, deleted: false };
-          else if (entry.deleted || entry.sha256 !== sha) known[name] = { updated_ms: Math.max(Math.floor(file.mtimeMs), entry.updated_ms + 1), sha256: sha, deleted: false };
+        let local: ReturnType<HostFiles['listDir']> = [];
+        try {
+          local = this.files.listDir(SYNC_PATHS.profilesDir);
+        } catch {
+          local = [];
         }
-        for (const [name, entry] of Object.entries(known)) {
-          if (!entry.deleted && !local.has(name)) known[name] = { updated_ms: Math.max(now, entry.updated_ms + 1), sha256: '', deleted: true };
-        }
-        const remote = await this.call('GET', '/api/sync/profiles?since_ms=0');
-        if (remote.status !== 200) throw this.failure(remote.status, remote.json);
-        const remoteItems = new Map<string, Record<string, unknown>>();
-        for (const raw of Array.isArray(remote.json.items) ? remote.json.items : []) {
-          if (isObject(raw) && PROFILE_NAME.test(text(raw.name))) remoteItems.set(text(raw.name), raw);
-        }
-        const push: Record<string, unknown>[] = [];
-        for (const name of new Set([...remoteItems.keys(), ...Object.keys(known)])) {
-          const theirs = remoteItems.get(name);
-          const mine = known[name];
-          const theirsMs = theirs ? num(theirs.updated_ms) : 0;
-          if (theirs && (!mine || theirsMs > mine.updated_ms)) {
-            if (this.takeProfile(name, theirs)) result.pulled += 1;
-            continue;
-          }
-          if (!mine || mine.updated_ms <= theirsMs) continue;
-          if (mine.deleted) {
-            if (theirs && theirs.deleted !== true) push.push({ name, updated_ms: mine.updated_ms, deleted: true });
-            continue;
-          }
-          let profile: unknown;
-          try {
-            profile = JSON.parse(local.get(name)?.text ?? '');
-          } catch {
-            profile = null;
-          }
-          if (isObject(profile)) push.push({ name, updated_ms: mine.updated_ms, profile });
-        }
-        if (push.length) {
-          const put = await this.call('PUT', '/api/sync/profiles', { items: push });
-          if (put.status !== 200) throw this.failure(put.status, put.json);
-          for (const raw of Array.isArray(put.json.items) ? put.json.items : []) {
-            if (!isObject(raw)) continue;
-            if (raw.applied === true) result.pushed += 1;
-            else if (this.takeProfile(text(raw.name), raw)) result.pulled += 1;
+        for (const entry of local) {
+          if (entry.isDirectory || !entry.name.endsWith('.json')) continue;
+          if (!names.has(entry.name.slice(0, -5))) {
+            this.files.deletePath(`${SYNC_PATHS.profilesDir}/${entry.name}`);
+            result.pulled += 1;
           }
         }
         result.ok = true;
@@ -999,29 +976,12 @@ export class SyncClient {
         result.error = error instanceof SyncError ? error.code : 'unexpected';
         this.log('warn', `profiles: ${result.error}`);
       }
-      this.profileState.last = result;
+      this.profileState = { version: 1, server: this.baseUrl(), items: {}, last: result };
       this.writeState(SYNC_PATHS.profiles, this.profileState);
       this.emit({ type: 'state' });
       return result;
     };
     return this.serialMetadata(run);
-  }
-
-  /** Writes (or deletes) a profile as the server has it; returns whether the local folder changed. */
-  private takeProfile(name: string, theirs: Record<string, unknown>): boolean {
-    if (!PROFILE_NAME.test(name)) return false;
-    const path = `${SYNC_PATHS.profilesDir}/${name}.json`;
-    const updated = num(theirs.updated_ms);
-    if (theirs.deleted === true) {
-      this.profileState.items[name] = { updated_ms: updated, sha256: '', deleted: true };
-      return this.files.fileExists(path) ? this.files.deletePath(path) : false;
-    }
-    if (!isObject(theirs.profile)) return false;
-    const body = `${JSON.stringify(theirs.profile, null, 2)}\n`;
-    this.files.mkdirp(SYNC_PATHS.profilesDir);
-    this.files.writeAtomic(path, body);
-    this.profileState.items[name] = { updated_ms: updated, sha256: sha256Hex(body), deleted: false };
-    return true;
   }
 
   private writeState(path: string, value: unknown): void {

@@ -70,3 +70,20 @@ export function useDeviceProfile(uid: string | null): Profile | null {
   }, [client, name]);
   return profile;
 }
+
+/** Whether profiles can be edited now (on the server only); null until known. Rechecked every 10 s. */
+export function useProfilesEditable(): boolean | null {
+  const client = useProfilesClient();
+  const [editable, setEditable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const check = () => void client.editable().then((v) => alive && setEditable(v), () => alive && setEditable(false));
+    check();
+    const timer = setInterval(check, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [client]);
+  return editable;
+}

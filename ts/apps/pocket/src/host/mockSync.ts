@@ -16,6 +16,7 @@ export function createMockSync(): PocketSync {
     autoAllowed: false,
     network: { online: true, metered: false },
     connection: null,
+    editable: false,
     recordings: [],
     counts: { local: 0, queued: 2, uploading: 0, synced: 5, failed: 0 },
     current: null,
@@ -39,14 +40,17 @@ export function createMockSync(): PocketSync {
       await new Promise((r) => setTimeout(r, 400));
       if (!username.trim() || !password) throw new Error('username_and_password_required');
       if (password !== 'admin') throw new Error('invalid_credentials');
-      set({ configured: true, account: username.trim(), tokenMasked: 'nhapp_0123456789ab_…mock', connection: { ok: true, error: '', checkedAtMs: Date.now(), username: 'app:0123456789ab', role: 'admin', clientType: 'pocket' } });
+      set({ configured: true, editable: true, account: username.trim(), tokenMasked: 'nhapp_0123456789ab_…mock', connection: { ok: true, error: '', checkedAtMs: Date.now(), username: 'app:0123456789ab', role: 'admin', clientType: 'pocket' } });
     },
     async logout() {
-      set({ configured: false, account: '', tokenMasked: '', connection: null });
+      set({ configured: false, editable: false, account: '', tokenMasked: '', connection: null });
     },
     async uploadNow() {
       set({ counts: { ...status.counts, queued: 0, synced: status.counts.synced + status.counts.queued }, lastUploadMs: Date.now() });
     },
     async retry() {},
+    async setLabel() {
+      if (!status.configured) throw new Error('server_unavailable');
+    },
   };
 }

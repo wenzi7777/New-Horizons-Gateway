@@ -30,6 +30,7 @@ import { dark, light, resolveTheme } from '@nhgw/ui-tokens';
 
 import type { SplashPrompt } from '../shared/areas/app';
 import { AREA_MODULES, AreaRegistry } from './areas';
+import { syncArea } from './areas/sync';
 import { appService, configureAppArea } from './areas/app';
 import { QuitRequested, StartupSequence, waitFor, type StepBody, type StepResult } from './app/startup';
 import { WINDOW_CH } from './ipcChannels';
@@ -390,7 +391,7 @@ function main(): void {
       // The host's default is React Native's WebSocket (url, protocols, {headers}); Node's takes {headers} second.
       connector: new NodeWsConnector({ logger }),
     });
-    registerStudioIpc(ipcMain, controller, desktopPorts(), { isTrustedSender, logger });
+    registerStudioIpc(ipcMain, controller, desktopPorts(), { isTrustedSender, logger, labels: () => syncArea.client() });
     ipcMain.handle(WINDOW_CH.control, (event, action: unknown) => {
       if (!isTrustedSender(event as unknown as IpcEventLike)) throw new Error('untrusted_sender');
       const window = BrowserWindow.fromWebContents(event.sender);

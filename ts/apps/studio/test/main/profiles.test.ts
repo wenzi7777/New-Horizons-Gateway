@@ -12,7 +12,21 @@ function setup() {
   const user = join(root, 'user');
   const events: [string, unknown][] = [];
   const picked = { json: null as string | null, save: null as string | null };
+  const server = { online: true, saved: new Map<string, unknown>(), deleted: [] as string[] };
+  const remote = {
+    serverEditable: () => server.online,
+    saveProfile: async (name: string, profile: Record<string, unknown>) => {
+      if (!server.online) throw new Error('server_unavailable');
+      server.saved.set(name, profile);
+    },
+    deleteProfile: async (name: string) => {
+      if (!server.online) throw new Error('server_unavailable');
+      server.saved.delete(name);
+      server.deleted.push(name);
+    },
+  };
   const area = createProfilesArea({
+    remote: () => remote,
     dialogs: { openJson: async () => picked.json, saveJson: async () => picked.save, openImage: async () => null },
   });
   const ctx = {
@@ -23,10 +37,25 @@ function setup() {
     version: 'v0',
   };
   const h = area.register(ctx) as unknown as Record<string, (...a: unknown[]) => Promise<any>>;
-  return { root, data, user, events, picked, h };
+  return { root, data, user, events, picked, h, server };
 }
 
 describe('profiles area', () => {
+  it('edits go to the server; offline nothing is edited and the mirror stays as it was', async () => {
+    const { h, server } = setup();
+    const name = await h.create!('Bench');
+    expect(server.saved.has(name)).toBe(true);
+    expect(await h.editable!()).toBe(true);
+    server.online = false;
+    expect(await h.editable!()).toBe(false);
+    const p = await h.get!(name);
+    p.sensors.push({ index: 0, x: 0.5, y: 0.5, label: 'P1', enabled: true });
+    await expect(h.save!(name, p)).rejects.toThrow('server_unavailable');
+    expect((await h.get!(name)).sensors).toHaveLength(0);
+    await expect(h.remove!(name)).rejects.toThrow('server_unavailable');
+    expect((await h.list!()).map((e: { name: string }) => e.name)).toContain(name);
+  });
+
   it('creates, saves, lists and emits changes', async () => {
     const { h, data, events } = setup();
     const name = await h.create!('My Glove');

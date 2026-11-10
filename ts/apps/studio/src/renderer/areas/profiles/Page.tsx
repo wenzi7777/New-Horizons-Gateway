@@ -11,7 +11,7 @@ import { Card, Field, Notice, Segmented, SwitchRow, useConfirm } from '../../com
 import type { Route } from '../../lib/navigation';
 import { useLiveFrame, useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
-import { useAssignments, useProfileList, useProfilesClient } from './hooks';
+import { useAssignments, useProfileList, useProfilesClient, useProfilesEditable } from './hooks';
 import { normalizeProfile, sensorLabel, serializeProfile } from './model';
 import { ProfileStage } from './Stage';
 import { PROFILE_STRINGS } from './strings';
@@ -39,6 +39,7 @@ function ProfileList({ navigate }: { navigate: (route: Route) => void }) {
   const { snapshot, toast, errorText } = useStudio();
   const client = useProfilesClient();
   const { items, loaded, error } = useProfileList();
+  const editable = useProfilesEditable();
   const assignments = useAssignments();
   const [newName, setNewName] = useState('');
   const open = (n: string) => navigate({ area: 'profiles', path: [n] });
@@ -54,6 +55,7 @@ function ProfileList({ navigate }: { navigate: (route: Route) => void }) {
         <button
           className="button"
           type="button"
+          disabled={editable !== true}
           onClick={() =>
             client.importFile().then((n) => {
               if (!n) return;
@@ -74,12 +76,13 @@ function ProfileList({ navigate }: { navigate: (route: Route) => void }) {
         }}
       >
         <Field label={pt('newName')}>{(id) => <input id={id} value={newName} placeholder="new_profile" onChange={(e) => setNewName(e.target.value)} />}</Field>
-        <button className="button primary" type="submit">
+        <button className="button primary" type="submit" disabled={editable !== true}>
           <FilePlus2 size={14} aria-hidden="true" />
           {pt('create')}
         </button>
       </form>
       {error ? <Notice kind="error">{errorText(error)}</Notice> : null}
+      {editable === false ? <Notice kind="warning">{errorText('server_unavailable')}</Notice> : null}
       {loaded && items.length === 0 ? (
         <div className="empty-state">
           <p>{pt('noProfiles')}</p>
@@ -134,6 +137,7 @@ function gridSensors(rows: number, cols: number): ProfileSensor[] {
 }
 
 function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Route) => void }) {
+  const editable = useProfilesEditable();
   const pt = useAreaT(PROFILE_STRINGS);
   const { snapshot, toast, errorText } = useStudio();
   const client = useProfilesClient();
@@ -224,6 +228,7 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
   return (
     <div className="stack profiles-page">
       {confirmEl}
+      {editable === false ? <Notice kind="warning">{errorText('server_unavailable')}</Notice> : null}
       <header className="profiles-editor-head">
         <button className="button ghost profiles-back" type="button" onClick={() => void leave({ area: 'profiles', path: [] })}>
           <ArrowLeft size={14} aria-hidden="true" />
@@ -256,7 +261,7 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
         )}
         <span className="spacer" />
         <div className="profiles-actions">
-          <button className="button primary" type="button" disabled={!dirty} onClick={() => void save()}>
+          <button className="button primary" type="button" disabled={!dirty || editable !== true} title={editable === false ? errorText('server_unavailable') : undefined} onClick={() => void save()}>
             <Save size={14} aria-hidden="true" />
             {pt('save')}
           </button>

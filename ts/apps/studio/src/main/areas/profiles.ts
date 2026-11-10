@@ -1,6 +1,9 @@
 // Main-process handlers of the "profiles" area (see ../../shared/areas/profiles.ts).
-// Profiles live in <dataFolder>/profiles (synced by modification time; see
-// @nhgw/host profiles/store.ts); the device → profile mapping lives in
+// Profiles live on the server; <dataFolder>/profiles is the app's read-only
+// mirror (refreshed by the sync area). Every edit is done on the mirror, sent
+// to the server, and undone if the server refuses or cannot be reached --
+// without a server they cannot be edited ('server_unavailable'). The device →
+// profile mapping (which layout this app draws for a device) lives in
 // <userData>/profile-assignments.json. Electron's dialog is loaded lazily so
 // this module stays testable without Electron.
 
@@ -17,6 +20,7 @@ import {
   type ProfileFs,
 } from '../../../../../packages/host/src/profiles';
 import type { AreaContext, AreaHandlers, AreaModule } from './registry';
+import { syncArea } from './sync';
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
@@ -89,6 +93,15 @@ export interface ProfilesAreaOptions {
   dialogs?: ProfileDialogs;
   /** Watch the folder for changes from outside (sync); off in tests. */
   watch?: boolean;
+  /** Where edits go (the sync area's client). Absent: edits are refused. */
+  remote?: () => ProfileRemote | null;
+}
+
+/** The server side of profile edits (SyncClient implements it). */
+export interface ProfileRemote {
+  serverEditable(): boolean;
+  saveProfile(name: string, profile: Record<string, unknown>): Promise<void>;
+  deleteProfile(name: string): Promise<void>;
 }
 
 function str(value: unknown, error: string): string {
@@ -127,6 +140,48 @@ export function createProfilesArea(options: ProfilesAreaOptions = {}): AreaModul
       };
       const changed = (...names: string[]) => context.emit('changed', { names });
 
+      /**
+       * Runs a local edit, then sends every touched profile to the server (or
+       * deletes it there); on any failure the mirror is put back as it was.
+       */
+      const serverFirst = async <T>(touched: (result: T) => string[], edit: () => T, before: string[] = []): Promise<T> => {
+        const remote = options.remote?.() ?? null;
+        if (!remote || !remote.serverEditable()) throw new Error('server_unavailable');
+        const snapshot = new Map<string, string | null>();
+        const keep = (name: string) => {
+          if (snapshot.has(name)) return;
+          const path = fs.join(store.dir(), `${name}.json`);
+          snapshot.set(name, fs.exists(path) ? fs.readText(path) : null);
+        };
+        for (const name of before) keep(name);
+        const result = edit();
+        const names = touched(result);
+        try {
+          for (const name of names) {
+            if (store.has(name)) await remote.saveProfile(name, JSON.parse(store.exportText(name)) as Record<string, unknown>);
+            else await remote.deleteProfile(name);
+          }
+        } catch (error) {
+          for (const [name, text] of snapshot) {
+            const path = fs.join(store.dir(), `${name}.json`);
+            if (text === null) {
+              if (fs.exists(path)) fs.remove(path);
+            } else fs.writeAtomic(path, text);
+          }
+          for (const name of names) {
+            if (!snapshot.has(name)) {
+              const path = fs.join(store.dir(), `${name}.json`);
+              if (fs.exists(path)) fs.remove(path);
+            }
+          }
+          changed(...names);
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(/network|server_unavailable|no_token|no_server/.test(message) ? 'server_unavailable' : message);
+        }
+        changed(...names);
+        return result;
+      };
+
       const ensureWatch = () => {
         if (!options.watch) return;
         const dir = store.dir();
@@ -154,46 +209,40 @@ export function createProfilesArea(options: ProfilesAreaOptions = {}): AreaModul
           return store.list();
         },
         get: async (name: unknown) => store.get(str(name, 'invalid_profile_name')),
+        /** Whether profiles can be edited now (only on the server). */
+        editable: async () => options.remote?.()?.serverEditable() === true,
         save: async (name: unknown, profile: unknown) => {
           if (!profile || typeof profile !== 'object') throw new Error('invalid_profile');
-          const stored = store.save(str(name, 'invalid_profile_name'), profile);
-          changed(stored);
-          return stored;
+          const target = str(name, 'invalid_profile_name');
+          return serverFirst((stored: string) => [stored], () => store.save(target, profile), [target]);
         },
         create: async (name: unknown) => {
           const target = store.uniqueName(str(name, 'invalid_profile_name') || 'new_profile');
-          const stored = store.save(target, emptyProfile(target));
-          changed(stored);
-          return stored;
+          return serverFirst((stored: string) => [stored], () => store.save(target, emptyProfile(target)), [target]);
         },
-        duplicate: async (name: unknown, newName?: unknown) => {
-          const stored = store.duplicate(str(name, 'invalid_profile_name'), typeof newName === 'string' ? newName : undefined);
-          changed(stored);
-          return stored;
-        },
+        duplicate: async (name: unknown, newName?: unknown) =>
+          serverFirst((stored: string) => [stored], () => store.duplicate(str(name, 'invalid_profile_name'), typeof newName === 'string' ? newName : undefined)),
         rename: async (name: unknown, newName: unknown) => {
           const from = str(name, 'invalid_profile_name');
-          const to = store.rename(from, str(newName, 'invalid_profile_name'));
+          const to = await serverFirst((next: string) => (next === from ? [from] : [next, from]), () => store.rename(from, str(newName, 'invalid_profile_name')), [from]);
           const current = loadAssignments();
           if (to !== from && Object.values(current).includes(from)) {
             saveAssignments(Object.fromEntries(Object.entries(current).map(([uid, n]) => [uid, n === from ? to : n])));
           }
-          changed(from, to);
           return to;
         },
         remove: async (name: unknown) => {
           const target = str(name, 'invalid_profile_name');
-          store.remove(target);
+          await serverFirst(() => [target], () => store.remove(target), [target]);
           const current = loadAssignments();
           if (Object.values(current).includes(target)) saveAssignments(Object.fromEntries(Object.entries(current).filter(([, n]) => n !== target)));
-          changed(target);
         },
         importFile: async () => {
+          if (options.remote?.()?.serverEditable() !== true) throw new Error('server_unavailable');
           const path = await dialogs.openJson();
           if (!path) return null;
-          const stored = store.importText(fs.readText(path), basename(path));
-          changed(stored);
-          return stored;
+          const text = fs.readText(path);
+          return serverFirst((stored: string) => [stored], () => store.importText(text, basename(path)));
         },
         exportFile: async (name: unknown) => {
           const target = str(name, 'invalid_profile_name');
@@ -232,4 +281,4 @@ export function createProfilesArea(options: ProfilesAreaOptions = {}): AreaModul
   };
 }
 
-export const profilesArea: AreaModule = createProfilesArea({ watch: true });
+export const profilesArea: AreaModule = createProfilesArea({ watch: true, remote: () => syncArea.client() });

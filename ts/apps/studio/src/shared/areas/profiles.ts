@@ -8,6 +8,8 @@ export type { Profile, ProfileAssignments, ProfileListEntry, ProfileSensor } fro
 
 export interface ProfilesAreaApi {
   list(): Promise<ProfileListEntry[]>;
+  /** Whether profiles can be edited now: they are edited on the server only (false offline / signed out). */
+  editable(): Promise<boolean>;
   /** Rejects "profile_not_found" / "invalid_profile". */
   get(name: string): Promise<Profile>;
   /** Writes (atomically); the name is sanitised to a file stem, which is returned. */

@@ -42,6 +42,7 @@ export const profilesMock: AreaMock = (emit) => {
         name, displayName: p.name || name, deviceType: p.deviceType, rows: p.matrix.rows, cols: p.matrix.cols, sensorCount: p.sensors.length, hasBackground: Boolean(p.background.imageData), modifiedMs,
       })),
     get: async (name: string) => structuredClone(need(name)),
+    editable: async () => true,
     save: async (name: string, profile: Profile) => put(name, profile),
     create: async (name: string) => {
       const stem = free(name || 'new_profile');

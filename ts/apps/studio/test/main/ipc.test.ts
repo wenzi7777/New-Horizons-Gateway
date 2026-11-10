@@ -149,7 +149,14 @@ function setup(overrides: Partial<DesktopPorts> = {}, trusted = true) {
     zipName: (id) => `${id.split('/').join('_')}.zip`,
     ...overrides,
   };
-  const dispose = registerStudioIpc(ipc, backend, desktop, { timers, isTrustedSender: () => trusted });
+  // Labels are edited on the server (the sync client), which updates the host's mirror.
+  const labels = {
+    setLabel: async (uid: string, patch: { nickname?: string; group?: string }) => {
+      if (patch.nickname !== undefined) await backend.host.setNickname(uid, patch.nickname);
+      if (patch.group !== undefined) await backend.host.setGroup(uid, patch.group);
+    },
+  };
+  const dispose = registerStudioIpc(ipc, backend, desktop, { timers, isTrustedSender: () => trusted, labels: () => labels });
   return { ipc, timers, backend, desktop, dispose };
 }
 

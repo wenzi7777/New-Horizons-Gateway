@@ -67,6 +67,12 @@ export interface IpcOptions {
   isTrustedSender?: (event: IpcEventLike) => boolean;
   timers?: TimerPort;
   logger?: { warn(message: string): void };
+  /**
+   * Where nickname / group edits go: the server (the sync client), which
+   * then updates the local mirror. Absent or null: they are refused
+   * ('server_unavailable'); labels are edited on the server only.
+   */
+  labels?: () => { setLabel(uid: string, patch: { nickname?: string; group?: string }): Promise<void> } | null;
 }
 
 const UID = /^[0-9A-Fa-f]{12}$/;
@@ -152,6 +158,16 @@ type Window = {
 
 /** Registers every StudioApi handler; returns a function that removes them and stops all pushes. */
 export function registerStudioIpc(ipc: IpcMainLike, backend: StudioBackend, desktop: DesktopPorts, options: IpcOptions = {}): () => void {
+  const editLabel = async (uid: string, patch: { nickname?: string; group?: string }) => {
+    const remote = options.labels?.() ?? null;
+    if (!remote) throw new Error('server_unavailable');
+    try {
+      await remote.setLabel(uid, patch);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(/network|server_unavailable|no_token|no_server/.test(message) ? 'server_unavailable' : message);
+    }
+  };
   const timers = options.timers ?? realTimers;
   const trusted = options.isTrustedSender ?? (() => true);
   const windows = new Map<number, Window>();
@@ -232,8 +248,8 @@ export function registerStudioIpc(ipc: IpcMainLike, backend: StudioBackend, desk
     [CH.updateSettings]: (_event, patch) => backend.updateSettings(settingsArg(patch)),
     [CH.adopt]: (_event, uid) => backend.host.adopt(uidArg(uid)),
     [CH.release]: (_event, uid) => backend.host.release(uidArg(uid)),
-    [CH.setNickname]: (_event, uid, nickname) => backend.host.setNickname(uidArg(uid), stringArg(nickname, 'nickname')),
-    [CH.setGroup]: (_event, uid, group) => backend.host.setGroup(uidArg(uid), stringArg(group, 'group')),
+    [CH.setNickname]: (_event, uid, nickname) => editLabel(uidArg(uid), { nickname: stringArg(nickname, 'nickname') }),
+    [CH.setGroup]: (_event, uid, group) => editLabel(uidArg(uid), { group: stringArg(group, 'group') }),
     [CH.run]: (_event, uid, command) => backend.host.run(uidArg(uid), quickArg(command)),
     [CH.sendCommand]: (_event, uid, payload) => {
       const body = objectArg(payload, 'payload');

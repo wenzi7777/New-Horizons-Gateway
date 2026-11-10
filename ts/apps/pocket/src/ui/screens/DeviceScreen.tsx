@@ -39,7 +39,8 @@ import {
 import { batteryLabel, modeLabel } from '../deviceText';
 import { formatDateTime, formatDuration } from '../format';
 import { useI18n } from '../i18n';
-import { useDevice, useNow, useRecordings, useStore } from '../store';
+import { useDevice, useNow, usePocketSync, useRecordings, useStore } from '../store';
+import { syncErrorCode } from '../../host/sync';
 import { useTheme } from '../theme';
 
 type CommandKey = QuickCommand['kind'] | 'release' | 'recording';
@@ -78,6 +79,8 @@ export function DeviceScreen({ uid }: { uid: string }) {
   const theme = useTheme();
   const { t, locale } = useI18n();
   const router = useRouter();
+  const { sync, status: syncStatus } = usePocketSync();
+  const labelsEditable = syncStatus.editable;
   const store = useStore();
   const toast = useToast();
   const confirm = useConfirm();
@@ -129,8 +132,14 @@ export function DeviceScreen({ uid }: { uid: string }) {
     if (ok) setScanRate(fps);
   };
 
+  // Nicknames live on the server: edited there, then mirrored here.
   const saveNickname = async () => {
-    await store.setNickname(uid, nickname.trim());
+    try {
+      await sync.setLabel(uid, { nickname: nickname.trim() });
+    } catch (error) {
+      toast.show(syncErrorCode(error) === 'server_unavailable' ? t('labelsNeedServer') : t('actionFailed', { error: syncErrorCode(error) }), 'danger');
+      return;
+    }
     setNicknameDirty(false);
     toast.show(t('nicknameSaved'));
   };
@@ -300,7 +309,8 @@ export function DeviceScreen({ uid }: { uid: string }) {
       <Card>
         <TextField
           label={t('nicknameLabel')}
-          hint={t('nicknameHint')}
+          hint={labelsEditable ? t('nicknameHint') : t('labelsNeedServer')}
+          editable={labelsEditable}
           value={nickname}
           placeholder={device.displayName}
           onChangeText={(text) => {
