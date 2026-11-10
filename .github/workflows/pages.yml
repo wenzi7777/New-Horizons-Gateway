@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "brand/svg/**"
       - "ts/packages/ui-tokens/src/tokens.css"
       - "ts/packages/node/webui/theme.js"
       - ".github/workflows/pages.yml"

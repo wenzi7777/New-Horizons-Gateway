@@ -3,7 +3,8 @@
 // folder; see .github/workflows/pages.yml). Node 22, built-ins only, no
 // bundler: the hand-written sources are copied as they are, plus the two
 // files shared with the Gateway web UI, which live only in ts/ and are
-// copied here at build time (never committed twice):
+// copied here at build time (never committed twice), and the product icons
+// from brand/svg/:
 //   ts/packages/ui-tokens/src/tokens.css   -- the Desktop design tokens
 //   ts/packages/node/webui/theme.js        -- auto/light/dark (window.NHGTheme)
 // "__BUILD__" in the sources becomes a short content hash, so browsers pick up
@@ -23,20 +24,26 @@ export const SHARED = {
   "tokens.css": join(REPO_DIR, "ts/packages/ui-tokens/src/tokens.css"),
   "theme.js": join(REPO_DIR, "ts/packages/node/webui/theme.js"),
 };
+// The product icons, copied from brand/ (the one copy) into dist/brand/.
+export const BRAND = {
+  "brand/nh-studio-rounded.svg": join(REPO_DIR, "brand/svg/nh-studio-rounded.svg"),
+  "brand/nh-pocket-rounded.svg": join(REPO_DIR, "brand/svg/nh-pocket-rounded.svg"),
+  "brand/favicon.svg": join(REPO_DIR, "brand/svg/favicon.svg"),
+};
 // Files whose text gets the build stamp (the rest are copied byte for byte).
 const STAMPED = new Set(["index.html", "app.js"]);
 
 export function build(outDir = join(SITE_DIR, "dist")) {
   const files = new Map();
   for (const name of SOURCES) files.set(name, readFileSync(join(SITE_DIR, name)));
-  for (const [name, path] of Object.entries(SHARED)) files.set(name, readFileSync(path));
+  for (const [name, path] of Object.entries({ ...SHARED, ...BRAND })) files.set(name, readFileSync(path));
 
   const hash = createHash("sha256");
   for (const [name, data] of [...files].sort(([a], [b]) => (a < b ? -1 : 1))) hash.update(name).update(data);
   const stamp = hash.digest("hex").slice(0, 10);
 
   rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(outDir, { recursive: true });
+  mkdirSync(join(outDir, "brand"), { recursive: true });
   for (const [name, data] of files) {
     const out = STAMPED.has(name) ? Buffer.from(data.toString("utf8").replaceAll("__BUILD__", stamp)) : data;
     writeFileSync(join(outDir, name), out);

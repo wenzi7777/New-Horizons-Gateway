@@ -2,20 +2,23 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  binManifestUrlFor,
-  decideView,
+  PRODUCTS,
   detectPlatform,
   fileNameFromUrl,
   formatSize,
+  headlessAssetName,
   localizedNotesUrl,
+  manifestUrlFor,
   parseAsset,
-  parseBinManifest,
-  parsePythonManifest,
+  parseManifest,
   pickAssets,
   pickLanguage,
-  pythonManifestUrlFor,
+  productById,
+  productView,
+  recommendedProduct,
   releasePageUrl,
   renderedUrl,
+  studioAssetName,
 } from "../download.js";
 
 const UA = {
@@ -35,7 +38,7 @@ const UA = {
 const ALL_ASSETS = Object.fromEntries(
   ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64", "linux-arm64", "android"].map((key) => [
     key,
-    { url: `https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/v2.0.0/nh-gateway-${key}`, sha256: "ab".repeat(32), size: 110_000_000 },
+    { url: `https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/v2.0.0/nh-studio-headless-${key}`, sha256: "ab".repeat(32), size: 110_000_000 },
   ]),
 );
 
@@ -120,35 +123,45 @@ test("a platform missing from the release says so", () => {
 
 // ── Manifests ───────────────────────────────────────────────────────────
 
-test("manifest URLs follow the channel", () => {
-  const base = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/gateway";
-  assert.equal(binManifestUrlFor("stable"), `${base}-bin-latest.json`);
-  assert.equal(binManifestUrlFor("beta"), `${base}-bin-beta.json`);
-  assert.equal(binManifestUrlFor(" BETA "), `${base}-bin-beta.json`);
-  assert.equal(binManifestUrlFor("nightly"), `${base}-bin-latest.json`);
-  assert.equal(pythonManifestUrlFor("stable"), `${base}-latest.json`);
-  assert.equal(pythonManifestUrlFor("beta"), `${base}-beta.json`);
+const BASE = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases";
+
+test("each product has its manifest, following the channel", () => {
+  assert.deepEqual(PRODUCTS.map((p) => p.id), ["studio", "headless", "pocket"]);
+  assert.equal(manifestUrlFor(productById("studio"), "stable"), `${BASE}/studio-latest.json`);
+  assert.equal(manifestUrlFor("studio", "beta"), `${BASE}/studio-beta.json`);
+  assert.equal(manifestUrlFor("headless", "stable"), `${BASE}/gateway-bin-latest.json`);
+  assert.equal(manifestUrlFor("headless", " BETA "), `${BASE}/gateway-bin-beta.json`);
+  assert.equal(manifestUrlFor("pocket", "nightly"), `${BASE}/pocket-latest.json`);
 });
 
-test("parses a bin manifest with every platform", () => {
+test("products ship for their platforms", () => {
+  assert.deepEqual(productById("studio").keys, ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64"]);
+  assert.deepEqual(productById("headless").keys, ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64", "linux-arm64"]);
+  assert.deepEqual(productById("pocket").keys, ["android"]);
+  assert.equal(productById("nope"), null);
+});
+
+test("parses a manifest with every platform", () => {
   const body = JSON.stringify({
     version: " v2.0.0 ",
     notes_url: "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/v2.0.0/releases/notes/v2.0.0.md",
     assets: Object.fromEntries(Object.entries(ALL_ASSETS).map(([k, v]) => [k, { ...v, sha256: v.sha256.toUpperCase() }])),
   });
-  const manifest = parseBinManifest(body);
+  const manifest = parseManifest(body);
   assert.equal(manifest.version, "v2.0.0");
   assert.equal(Object.keys(manifest.assets).length, 6);
   assert.equal(manifest.assets["win32-x64"].sha256, "ab".repeat(32)); // lower-cased
   assert.deepEqual(manifest.rejected, {});
+  // Only the product's own keys are read.
+  assert.deepEqual(Object.keys(parseManifest(body, productById("pocket").keys).assets), ["android"]);
 });
 
-test("bin manifest validation mirrors parseBinManifest's errors", () => {
-  assert.throws(() => parseBinManifest("not json"), /invalid_manifest/);
-  assert.throws(() => parseBinManifest("[]"), /invalid_manifest/);
-  assert.throws(() => parseBinManifest(JSON.stringify({ assets: {} })), /manifest_missing_version/);
-  assert.throws(() => parseBinManifest(JSON.stringify({ version: "v2.0.0" })), /manifest_missing_assets/);
-  assert.throws(() => parseBinManifest(JSON.stringify({ version: "v2.0.0", assets: [] })), /manifest_missing_assets/);
+test("manifest validation mirrors parseBinManifest's errors", () => {
+  assert.throws(() => parseManifest("not json"), /invalid_manifest/);
+  assert.throws(() => parseManifest("[]"), /invalid_manifest/);
+  assert.throws(() => parseManifest(JSON.stringify({ assets: {} })), /manifest_missing_version/);
+  assert.throws(() => parseManifest(JSON.stringify({ version: "v2.0.0" })), /manifest_missing_assets/);
+  assert.throws(() => parseManifest(JSON.stringify({ version: "v2.0.0", assets: [] })), /manifest_missing_assets/);
 
   assert.throws(() => parseAsset("x"), /manifest_invalid_asset/);
   assert.throws(() => parseAsset({ sha256: "a", size: 1 }), /manifest_missing_url/);
@@ -162,7 +175,7 @@ test("bin manifest validation mirrors parseBinManifest's errors", () => {
 });
 
 test("a bad or absent asset drops only that platform", () => {
-  const manifest = parseBinManifest({
+  const manifest = parseManifest({
     version: "v2.0.0",
     assets: { "darwin-arm64": ALL_ASSETS["darwin-arm64"], "win32-x64": { url: "u", sha256: "a", size: -1 }, android: null, "freebsd-x64": ALL_ASSETS.android },
   });
@@ -170,50 +183,47 @@ test("a bad or absent asset drops only that platform", () => {
   assert.deepEqual(manifest.rejected, { "win32-x64": "manifest_missing_size" });
 });
 
-test("parses the Python manifest", () => {
-  const manifest = parsePythonManifest(
-    JSON.stringify({ version: "v1.1.3", zip_url: "https://example.invalid/g.zip", sha256: "AB", notes_url: "https://example.invalid/v1.1.3.md" }),
-  );
-  assert.deepEqual(manifest, { version: "v1.1.3", zipUrl: "https://example.invalid/g.zip", sha256: "ab", notesUrl: "https://example.invalid/v1.1.3.md" });
-  assert.throws(() => parsePythonManifest(JSON.stringify({ zip_url: "x" })), /manifest_missing_version/);
-  assert.throws(() => parsePythonManifest(JSON.stringify({ version: "v1" })), /manifest_missing_zip_url/);
+// ── Product states ──────────────────────────────────────────────────────
+
+test("a published manifest makes the product ready", () => {
+  const view = productView(productById("studio"), { status: "ok", body: JSON.stringify({ version: "v2.0.0", assets: ALL_ASSETS }) });
+  assert.equal(view.kind, "ready");
+  assert.deepEqual(Object.keys(view.manifest.assets), ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64"]);
 });
 
-// ── Python fallback ─────────────────────────────────────────────────────
-
-const PY_OK = { status: "ok", body: JSON.stringify({ version: "v1.1.3", zip_url: "https://example.invalid/g.zip", sha256: "ab" }) };
-const BIN_OK = { status: "ok", body: JSON.stringify({ version: "v2.0.0", assets: ALL_ASSETS }) };
-
-test("the executables win when the bin manifest has assets", () => {
-  const view = decideView(BIN_OK, PY_OK);
-  assert.equal(view.kind, "bin");
-  assert.equal(view.manifest.version, "v2.0.0");
-  // Even when the Python manifest is gone.
-  assert.equal(decideView(BIN_OK, { status: "missing" }).kind, "bin");
+test("before the first release the product says it is coming, never breaks", () => {
+  const pocket = productById("pocket");
+  assert.deepEqual(productView(pocket, { status: "missing" }), { kind: "coming", issue: null });
+  assert.deepEqual(productView(pocket, undefined), { kind: "coming", issue: null });
+  // A manifest without this product's platform is not a release of it yet.
+  assert.deepEqual(productView(pocket, { status: "ok", body: JSON.stringify({ version: "v1.0.0", assets: { "linux-x64": ALL_ASSETS["linux-x64"] } }) }), {
+    kind: "coming",
+    issue: "manifest_no_assets",
+  });
 });
 
-test("falls back to Python when the bin manifest is missing, empty or broken", () => {
-  assert.equal(decideView({ status: "missing" }, PY_OK).kind, "python");
-  assert.equal(decideView({ status: "missing" }, PY_OK).binIssue, null);
-  const empty = decideView({ status: "ok", body: JSON.stringify({ version: "v2.0.0", assets: {} }) }, PY_OK);
-  assert.deepEqual([empty.kind, empty.binIssue], ["python", "manifest_no_assets"]);
-  const broken = decideView({ status: "ok", body: "<html>" }, PY_OK);
-  assert.deepEqual([broken.kind, broken.binIssue], ["python", "invalid_manifest"]);
-  const failed = decideView({ status: "error", error: "network_error" }, PY_OK);
-  assert.deepEqual([failed.kind, failed.binIssue], ["python", "network_error"]);
-  assert.equal(decideView({ status: "missing" }, PY_OK).manifest.version, "v1.1.3");
+test("fetch failures and broken manifests are errors with their code", () => {
+  const headless = productById("headless");
+  assert.deepEqual(productView(headless, { status: "error", error: "network_error" }), { kind: "error", error: "network_error" });
+  assert.deepEqual(productView(headless, { status: "error" }), { kind: "error", error: "fetch_failed" });
+  assert.deepEqual(productView(headless, { status: "ok", body: "<html>" }), { kind: "error", error: "invalid_manifest" });
+  assert.deepEqual(productView(headless, { status: "ok", body: "{}" }), { kind: "error", error: "manifest_missing_version" });
 });
 
-test("errors when neither release is usable", () => {
-  assert.deepEqual(decideView({ status: "missing" }, { status: "missing" }), { kind: "error", error: "manifest_not_found" });
-  assert.deepEqual(decideView({ status: "error", error: "network_error" }, { status: "error", error: "network_error" }), { kind: "error", error: "network_error" });
-  assert.deepEqual(decideView({ status: "missing" }, { status: "ok", body: "{}" }), { kind: "error", error: "manifest_missing_version" });
+test("the recommended product follows the platform", () => {
+  assert.equal(recommendedProduct({ os: "android" }), "pocket");
+  for (const os of ["mac", "windows", "linux"]) assert.equal(recommendedProduct({ os }), "studio");
+  for (const os of ["ios", "chromeos", "unknown"]) assert.equal(recommendedProduct({ os }), null);
+  assert.equal(recommendedProduct(null), null);
 });
 
 // ── Links, sizes, language ──────────────────────────────────────────────
 
 test("release links", () => {
-  assert.equal(releasePageUrl("v2.0.0"), "https://github.com/wenzi7777/New-Horizons-Gateway/releases/tag/v2.0.0");
+  assert.equal(releasePageUrl("studio", "v2.0.0"), "https://github.com/wenzi7777/New-Horizons-Gateway/releases/tag/studio-v2.0.0");
+  assert.equal(releasePageUrl("studio", "2.0.0"), "https://github.com/wenzi7777/New-Horizons-Gateway/releases/tag/studio-v2.0.0");
+  assert.equal(releasePageUrl("studio", ""), "https://github.com/wenzi7777/New-Horizons-Gateway/releases");
+  assert.equal(releasePageUrl("pocket", "v1.0.0"), "https://github.com/wenzi7777/New-Horizons-Gateway/releases");
   const raw = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/v1.1.3/releases/notes/v1.1.3.md";
   assert.equal(renderedUrl(raw), "https://github.com/wenzi7777/New-Horizons-Gateway/blob/v1.1.3/releases/notes/v1.1.3.md");
   assert.equal(renderedUrl("https://example.invalid/x"), "https://example.invalid/x");
@@ -225,9 +235,16 @@ test("release links", () => {
 });
 
 test("file names and sizes", () => {
-  assert.equal(fileNameFromUrl("https://github.com/o/r/releases/download/v2.0.0/nh-gateway-win32-x64.exe"), "nh-gateway-win32-x64.exe");
-  assert.equal(fileNameFromUrl("not a url"), "nh-gateway");
-  assert.equal(fileNameFromUrl("https://example.invalid/"), "nh-gateway");
+  assert.equal(fileNameFromUrl("https://github.com/o/r/releases/download/studio-v2.0.0/NH-Studio-2.0.0-win-x64.exe"), "NH-Studio-2.0.0-win-x64.exe");
+  assert.equal(fileNameFromUrl("not a url"), "nh-studio");
+  assert.equal(fileNameFromUrl("https://example.invalid/"), "nh-studio");
+  assert.equal(studioAssetName("v2.0.0", "darwin-arm64"), "NH-Studio-2.0.0-mac-arm64.dmg");
+  assert.equal(studioAssetName("2.0.0", "darwin-x64"), "NH-Studio-2.0.0-mac-x64.dmg");
+  assert.equal(studioAssetName("v2.0.0", "win32-x64"), "NH-Studio-2.0.0-win-x64.exe");
+  assert.equal(studioAssetName("v2.0.0", "linux-x64"), "NH-Studio-2.0.0-linux-x86_64.AppImage");
+  assert.equal(studioAssetName("v2.0.0", "android"), "");
+  assert.equal(headlessAssetName("win32-x64"), "nh-studio-headless-win32-x64.exe");
+  assert.equal(headlessAssetName("linux-arm64"), "nh-studio-headless-linux-arm64");
   assert.equal(formatSize(112_345_678), "107 MB");
   assert.equal(formatSize(5_500_000), "5.2 MB");
   assert.equal(formatSize(512), "512 B");

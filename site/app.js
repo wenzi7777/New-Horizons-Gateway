@@ -1,21 +1,22 @@
-// NH Gateway download page: fetches the release manifests from the repo,
-// offers the visitor's build first and lists every build. The decisions
-// (platform, which asset, manifest rules, Python fallback) live in
-// download.js; this file only reads the browser and draws the page.
+// New Horizons download page: fetches each product's release manifest from
+// the repo, highlights the product and build that suit the visitor and lists
+// every build. The decisions (products, platform, which asset, manifest
+// rules) live in download.js; this file only reads the browser and draws.
 import {
-  PLATFORM_KEYS,
   PLATFORM_OS,
-  binManifestUrlFor,
-  decideView,
+  PRODUCTS,
   detectPlatform,
   fileNameFromUrl,
   formatSize,
+  headlessAssetName,
   localizedNotesUrl,
+  manifestUrlFor,
   normalizeChannel,
   osSection,
   pickAssets,
   pickLanguage,
-  pythonManifestUrlFor,
+  productView,
+  recommendedProduct,
   releasePageUrl,
   renderedUrl,
 } from "./download.js?v=__BUILD__";
@@ -66,7 +67,7 @@ let platform = detectPlatform({
   maxTouchPoints: navigator.maxTouchPoints,
   uaData: navigator.userAgentData,
 });
-let view = null; // decideView() result for the current channel
+let views = {}; // product id -> productView() result (absent while loading)
 let loadToken = 0;
 
 // ── i18n ──────────────────────────────────────────────────────────────────
@@ -150,58 +151,38 @@ async function fetchManifest(url) {
   }
 }
 
-async function load() {
+/** Loads every product at once; each card fills in as its manifest arrives. */
+function load() {
   const token = ++loadToken;
-  view = null;
-  showState("loading");
+  views = {};
+  $("state-offline").hidden = true;
   if (navigator.onLine === false) {
-    showState("offline");
+    $("state-offline").hidden = false;
+    render();
     return;
   }
-  const [bin, python] = await Promise.all([fetchManifest(binManifestUrlFor(channel)), fetchManifest(pythonManifestUrlFor(channel))]);
-  if (token !== loadToken) return; // the channel changed meanwhile
-  const decided = decideView(bin, python);
-  if (decided.kind === "error") {
-    if (navigator.onLine === false) showState("offline");
-    else showState("error", decided.error);
-    return;
-  }
-  view = decided;
-  showState(null);
   render();
-  resolveNotesLink(token);
+  for (const product of PRODUCTS) loadProduct(product, token);
 }
 
-function showState(state, error) {
-  $("state-loading").hidden = state !== "loading";
-  $("state-error").hidden = state !== "error";
-  $("state-offline").hidden = state !== "offline";
-  $("status").setAttribute("aria-busy", state === "loading" ? "true" : "false");
-  if (state === "error") {
-    const missing = error === "manifest_not_found";
-    fillText($("state-error-title"), tr(missing ? "noRelease" : "errorTitle"));
-    $("state-error-detail").textContent = missing ? "" : String(error || "");
-  }
-  if (state) {
-    $("bin-view").hidden = true;
-    $("python-view").hidden = true;
-  }
+async function loadProduct(product, token) {
+  delete views[product.id];
+  renderProduct(product);
+  const result = await fetchManifest(manifestUrlFor(product, channel));
+  if (token !== loadToken) return; // the channel changed meanwhile
+  views[product.id] = productView(product, result);
+  renderProduct(product);
+  resolveNotesLink(product, token);
 }
 
 // Release notes: the translated file when there is one (vX.Y.Z.ja.md /
 // .en.md), shown on github.com rather than as raw Markdown.
 const notesCache = new Map();
 
-function notesOriginal() {
-  if (!view) return "";
-  const url = view.manifest.notesUrl;
-  if (view.kind === "bin" && !url) return releasePageUrl(view.manifest.version);
-  return url;
-}
-
-async function resolveNotesLink(token) {
-  const original = notesOriginal();
-  const localized = localizedNotesUrl(original, language);
+async function resolveNotesLink(product, token) {
+  const view = views[product.id];
+  if (!view || view.kind !== "ready") return;
+  const localized = localizedNotesUrl(view.manifest.notesUrl, language);
   if (localized && !notesCache.has(localized)) {
     let ok = false;
     try {
@@ -213,41 +194,80 @@ async function resolveNotesLink(token) {
     notesCache.set(localized, ok);
     if (token !== loadToken) return;
   }
-  renderNotesLink();
+  renderNotesLink(product);
 }
 
-function renderNotesLink() {
-  const original = notesOriginal();
+function renderNotesLink(product) {
+  const view = views[product.id];
+  const link = card(product).querySelector('[data-role="notes"]');
+  const original = view && view.kind === "ready" ? view.manifest.notesUrl : "";
   const localized = localizedNotesUrl(original, language);
   const href = renderedUrl(localized && notesCache.get(localized) ? localized : original);
-  for (const id of ["bin-notes", "py-notes"]) {
-    const link = $(id);
-    if (href) link.href = href;
-    else link.removeAttribute("href");
-    link.hidden = !href;
-  }
+  if (href) link.href = href;
+  else link.removeAttribute("href");
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────
 
+const card = (product) => $(`product-${product.id}`);
+const role = (node, name) => node.querySelector(`[data-role="${name}"]`);
+
 function render() {
   updateChannelControl();
-  if (!view) return;
-  $("bin-view").hidden = view.kind !== "bin";
-  $("python-view").hidden = view.kind !== "python";
-  if (view.kind === "bin") renderBin(view.manifest);
-  else renderPython(view.manifest);
-  renderNotesLink();
+  // The product that suits this device goes first and is marked.
+  const recommended = recommendedProduct(platform);
+  const container = $("products");
+  const ordered = [...PRODUCTS].sort((a, b) => (a.id === recommended ? -1 : b.id === recommended ? 1 : 0));
+  for (const product of ordered) container.append(card(product));
+  $("ios-note").hidden = platform.os !== "ios";
+  // Nothing to migrate on a phone.
+  $("migrate-panel").hidden = platform.os === "android" || platform.os === "ios";
+  setCommand("py-stop", "python3 scripts/stop.py");
+  for (const product of PRODUCTS) renderProduct(product);
+  openInstructions();
 }
 
-function updateChannelControl() {
-  document.querySelectorAll("#channel-control button").forEach((button) => {
-    const active = button.dataset.channel === channel;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-checked", active ? "true" : "false");
-    button.tabIndex = active ? 0 : -1;
-  });
-  $("channel-hint").hidden = channel !== "beta";
+function renderProduct(product) {
+  const node = card(product);
+  const view = views[product.id];
+  const offline = !$("state-offline").hidden;
+  const isRecommended = recommendedProduct(platform) === product.id;
+  role(node, "badge").hidden = !isRecommended;
+  node.classList.toggle("is-recommended", isRecommended);
+  role(node, "loading").hidden = Boolean(view) || offline;
+  role(node, "coming").hidden = !view || view.kind !== "coming";
+  role(node, "error").hidden = !view || view.kind !== "error";
+  role(node, "ready").hidden = !view || view.kind !== "ready";
+  role(node, "version").textContent = view && view.kind === "ready" ? ` · ${tr("versionLabel")} ${view.manifest.version}` : "";
+  if (view && view.kind === "error") role(node, "error-detail").textContent = view.error;
+  if (view && view.kind === "ready") renderReady(product, node, view.manifest);
+  renderCommands(product, view && view.kind === "ready" ? view.manifest : null);
+}
+
+function renderReady(product, node, manifest) {
+  // Only the product meant for this device gets the big buttons; the others
+  // still highlight the visitor's row in their list.
+  const pick = pickAssets(platform, manifest.assets);
+  const isRecommended = recommendedProduct(platform) === product.id;
+  const primary = isRecommended || product.id === "headless" ? pick.primary : [];
+  const actions = role(node, "primary");
+  actions.textContent = "";
+  primary.forEach((key, index) => actions.append(downloadLink(key, manifest.assets[key], index === 0 && isRecommended)));
+  actions.hidden = primary.length === 0;
+
+  const notice = role(node, "notice");
+  const noticeKey = isRecommended ? { mac_arch: "macArchNote", not_built: "notBuiltNote" }[pick.notice] : null;
+  notice.hidden = !noticeKey;
+  if (noticeKey) fillText(notice, tr(noticeKey));
+
+  const list = role(node, "assets");
+  list.textContent = "";
+  for (const key of product.keys) list.append(assetRow(key, manifest.assets[key], manifest.version, primary.includes(key)));
+  if (product.keys.length === 1 && primary.length) list.hidden = true;
+  else list.hidden = false;
+
+  role(node, "release").href = releasePageUrl(product.id, manifest.version);
+  renderNotesLink(product);
 }
 
 function downloadLink(key, asset, primary) {
@@ -258,30 +278,6 @@ function downloadLink(key, asset, primary) {
   link.innerHTML = ICONS.download;
   link.append(primary ? tr("downloadFor", { platform: tr(`platform.${key}`) }) : tr("alsoFor", { platform: tr(`platform.${key}`) }));
   return link;
-}
-
-function renderBin(manifest) {
-  const pick = pickAssets(platform, manifest.assets);
-  const actions = $("primary-actions");
-  actions.textContent = "";
-  pick.primary.forEach((key, index) => actions.append(downloadLink(key, manifest.assets[key], index === 0)));
-  actions.hidden = pick.primary.length === 0;
-
-  const notice = $("primary-notice");
-  const noticeKey = { mac_arch: "macArchNote", ios: "iosNote", not_built: "notBuiltNote", unknown: "unknownNote" }[pick.notice];
-  notice.hidden = !noticeKey;
-  if (noticeKey) fillText(notice, tr(noticeKey));
-
-  const first = pick.primary[0];
-  const meta = [`${tr("versionLabel")} ${manifest.version}`];
-  if (first) meta.push(`${tr("sizeLabel")} ${formatSize(manifest.assets[first].size)}`);
-  $("bin-meta").textContent = meta.join(" · ");
-
-  const list = $("asset-list");
-  list.textContent = "";
-  for (const key of PLATFORM_KEYS) list.append(assetRow(key, manifest.assets[key], manifest.version, pick.primary.includes(key)));
-
-  renderInstall(manifest);
 }
 
 function assetRow(key, asset, version, recommended) {
@@ -386,48 +382,43 @@ function setCommand(name, command) {
   });
 }
 
-let openedSection = false;
-function renderInstall(manifest) {
-  const fileFor = (keys, fallback) => {
-    const key = keys.find((k) => manifest.assets[k]);
-    return key ? fileNameFromUrl(manifest.assets[key].url, fallback) : fallback;
+function renderCommands(product, manifest) {
+  const fileFor = (keys) => {
+    const key = keys.find((k) => manifest && manifest.assets[k]) || keys[0];
+    return manifest && manifest.assets[key] ? fileNameFromUrl(manifest.assets[key].url, key) : null;
   };
-  const macKeys = platform.arch === "x64" ? ["darwin-x64", "darwin-arm64"] : ["darwin-arm64", "darwin-x64"];
-  const linuxKeys = platform.arch === "arm64" ? ["linux-arm64", "linux-x64"] : ["linux-x64", "linux-arm64"];
-  const mac = shellQuote(fileFor(macKeys, "nh-gateway"));
-  const linux = shellQuote(fileFor(linuxKeys, "nh-gateway"));
-  setCommand("mac-chmod", `chmod +x ${mac}`);
-  setCommand("mac-xattr", `xattr -d com.apple.quarantine ${mac}`);
-  setCommand("mac-run", `./${mac}`);
-  setCommand("linux-run", `chmod +x ${linux} && ./${linux}`);
-  setCommand("py-stop", "python3 scripts/stop.py");
-
-  // Open the visitor's own instructions once; after that the visitor decides.
-  if (!openedSection) {
-    openedSection = true;
-    const section = osSection(platform);
-    document.querySelectorAll("details.disclosure[data-os]").forEach((node) => {
-      node.open = node.dataset.os === section;
-    });
+  if (product.id === "studio") {
+    const appImage = shellQuote(fileFor(["linux-x64"]) || "NH-Studio-*.AppImage").replace(/'(NH-Studio-\*\.AppImage)'/, "$1");
+    setCommand("studio-linux", `chmod +x ${appImage} && ./${appImage}`);
+  } else if (product.id === "headless") {
+    const macKeys = platform.arch === "x64" ? ["darwin-x64", "darwin-arm64"] : ["darwin-arm64", "darwin-x64"];
+    const linuxKeys = platform.arch === "arm64" ? ["linux-arm64", "linux-x64"] : ["linux-x64", "linux-arm64"];
+    const mac = shellQuote(fileFor(macKeys) || headlessAssetName(macKeys[0]));
+    const linux = shellQuote(fileFor(linuxKeys) || headlessAssetName(linuxKeys[0]));
+    const win = fileFor(["win32-x64"]) || headlessAssetName("win32-x64");
+    setCommand("mac-chmod", `chmod +x ${mac}`);
+    setCommand("mac-xattr", `xattr -d com.apple.quarantine ${mac}`);
+    setCommand("mac-run", `./${mac}`);
+    setCommand("win-run", `.\\${win}`);
+    setCommand("linux-run", `chmod +x ${linux} && ./${linux}`);
+    const own = platform.os === "windows" ? `.\\${win}` : `./${platform.os === "linux" ? linux : mac}`;
+    setCommand("headless-login", `${own} --login`);
   }
-  // Nothing to migrate on a phone.
-  $("migrate-panel").hidden = platform.os === "android" || platform.os === "ios";
+}
+
+// Open the visitor's own instructions once; after that the visitor decides.
+let openedSection = false;
+function openInstructions() {
+  if (openedSection) return;
+  openedSection = true;
+  const section = osSection(platform);
+  document.querySelectorAll("details.disclosure[data-os]").forEach((node) => {
+    node.open = node.dataset.os === section;
+  });
 }
 
 function shellQuote(name) {
   return /^[A-Za-z0-9._+-]+$/.test(name) ? name : `'${name.replace(/'/g, "'\\''")}'`;
-}
-
-function renderPython(manifest) {
-  $("py-meta").textContent = `${tr("versionLabel")} ${manifest.version}`;
-  $("py-download").href = manifest.zipUrl;
-  $("py-download").setAttribute("download", "");
-  const sha = $("py-sha");
-  sha.textContent = "";
-  if (manifest.sha256) sha.append(shaRow(manifest.sha256, tr("copySha", { platform: "zip" })));
-  setCommand("py-start", "python3 scripts/start.py");
-  setCommand("py-stop", "python3 scripts/stop.py");
-  if (!$("py-download").querySelector("svg")) $("py-download").insertAdjacentHTML("afterbegin", ICONS.download);
 }
 
 // ── Events ────────────────────────────────────────────────────────────────
@@ -451,7 +442,7 @@ function bind() {
     language = pickLanguage(event.target.value, []);
     writeStored(LANGUAGE_KEY, language);
     applyI18n();
-    resolveNotesLink(loadToken);
+    for (const product of PRODUCTS) resolveNotesLink(product, loadToken);
   });
   const control = $("channel-control");
   control.addEventListener("click", (event) => {
@@ -466,13 +457,12 @@ function bind() {
     setChannel(next);
     control.querySelector(`[data-channel="${next}"]`).focus();
   });
-  $("retry").addEventListener("click", load);
+  for (const product of PRODUCTS) {
+    role(card(product), "retry").addEventListener("click", () => loadProduct(product, loadToken));
+  }
   $("retry-offline").addEventListener("click", load);
   window.addEventListener("online", () => {
-    if (!view) load();
-  });
-  window.addEventListener("offline", () => {
-    if (!view) showState("offline");
+    if (!$("state-offline").hidden) load();
   });
 }
 
@@ -505,4 +495,4 @@ load();
 refineArchitecture();
 
 // Exposed for debugging in the console only.
-window.NHGDownload = { platform: () => platform, view: () => view, PLATFORM_OS };
+window.NHGDownload = { platform: () => platform, views: () => views, PLATFORM_OS };

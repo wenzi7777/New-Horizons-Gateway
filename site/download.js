@@ -1,20 +1,34 @@
-// The download page's logic that does not touch the DOM: which platform the
-// visitor is on, which assets to offer, how a manifest is read, and whether
-// to fall back to the Python release. A plain ES module so the browser loads
-// it as is and `node --test site/test/` imports the same file.
+// The download page's logic that does not touch the DOM: the products, which
+// platform the visitor is on, which assets to offer and how a manifest is
+// read. A plain ES module so the browser loads it as is and
+// `node --test site/test/` imports the same file.
 //
-// Manifest rules mirror ts/packages/core/src/update/manifest.ts
-// (parseBinManifest) and the Python Gateway's check(): the same fields, the
-// same Python-style "truthy, str(), strip()" text handling, the same error
-// codes. The page reads every platform at once instead of one, so an asset
-// that would make parseBinManifest throw for its platform is left out of the
-// list (and reported in `rejected`) rather than failing the whole page.
+// Every product publishes the same manifest shape (the shape
+// ts/packages/core/src/update/manifest.ts parseBinManifest reads):
+//   { version, notes_url, assets: { <platform key>: { url, sha256, size } } }
+// with the same Python-style "truthy, str(), strip()" text handling and error
+// codes. The page reads every platform at once, so an asset that would make
+// parseBinManifest throw for its platform is left out (and reported in
+// `rejected`) rather than failing the whole product.
 
-export const MANIFEST_BASE_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases/gateway";
 export const REPO_URL = "https://github.com/wenzi7777/New-Horizons-Gateway";
+export const RELEASES_URL = `${REPO_URL}/releases`;
+export const MANIFEST_BASE_URL = "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/main/releases";
 export const CHANNELS = ["stable", "beta"];
 
-/** Platform keys the release scripts publish, in the order the page lists them. */
+/**
+ * The products, in page order. `manifest` is the file stem under releases/
+ * (<stem>-latest.json / <stem>-beta.json); `keys` the platforms it ships for.
+ */
+export const PRODUCTS = [
+  { id: "studio", manifest: "studio", keys: ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64"] },
+  { id: "headless", manifest: "gateway-bin", keys: ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64", "linux-arm64"] },
+  { id: "pocket", manifest: "pocket", keys: ["android"] },
+];
+
+export const productById = (id) => PRODUCTS.find((product) => product.id === id) || null;
+
+/** Every platform key any product publishes, in list order. */
 export const PLATFORM_KEYS = ["darwin-arm64", "darwin-x64", "win32-x64", "linux-x64", "linux-arm64", "android"];
 
 /** Which install instructions belong to a platform key. */
@@ -32,14 +46,10 @@ export function normalizeChannel(value) {
   return CHANNELS.includes(channel) ? channel : "stable";
 }
 
-/** gateway-bin-latest.json / gateway-bin-beta.json (manifest.ts binManifestUrlFor). */
-export function binManifestUrlFor(channel, baseUrl = MANIFEST_BASE_URL) {
-  return `${baseUrl}${normalizeChannel(channel) === "beta" ? "-bin-beta.json" : "-bin-latest.json"}`;
-}
-
-/** gateway-latest.json / gateway-beta.json, the Python Gateway's (versioning.ts manifestUrlFor). */
-export function pythonManifestUrlFor(channel, baseUrl = MANIFEST_BASE_URL) {
-  return `${baseUrl}${normalizeChannel(channel) === "beta" ? "-beta.json" : "-latest.json"}`;
+/** releases/<stem>-latest.json, or <stem>-beta.json on the beta channel. */
+export function manifestUrlFor(product, channel, baseUrl = MANIFEST_BASE_URL) {
+  const stem = typeof product === "string" ? (productById(product) || { manifest: product }).manifest : product.manifest;
+  return `${baseUrl}/${stem}-${normalizeChannel(channel) === "beta" ? "beta" : "latest"}.json`;
 }
 
 // ── Python-style value handling (ts/packages/core/src/py.ts) ──────────────
@@ -119,19 +129,20 @@ export function parseAsset(entry) {
 }
 
 /**
- * The single-binary manifest, every platform at once:
+ * A product manifest, every platform at once:
  *   { version, notesUrl, assets: { <key>: {url, sha256, size} }, rejected: { <key>: errorCode } }
  * Throws Error('invalid_manifest' | 'manifest_missing_version' | 'manifest_missing_assets').
- * Only the known platform keys are read; null/absent entries mean "not built for it".
+ * Only `keys` are read (default: every key any product uses); null/absent
+ * entries mean "not built for it".
  */
-export function parseBinManifest(body) {
+export function parseManifest(body, keys = PLATFORM_KEYS) {
   const decoded = decode(body);
   const version = text(decoded.version);
   if (!version) throw new Error("manifest_missing_version");
   if (!isPlainObject(decoded.assets)) throw new Error("manifest_missing_assets");
   const assets = {};
   const rejected = {};
-  for (const key of PLATFORM_KEYS) {
+  for (const key of keys) {
     const entry = decoded.assets[key];
     if (entry === undefined || entry === null) continue;
     try {
@@ -144,47 +155,31 @@ export function parseBinManifest(body) {
 }
 
 /**
- * The Python release manifest: { version, zipUrl, sha256, notesUrl }.
- * Throws Error('invalid_manifest' | 'manifest_missing_version' | 'manifest_missing_zip_url').
+ * What one product's card shows, from its fetch:
+ *   { status: "ok", body } | { status: "missing" } (HTTP 404) | { status: "error", error }
+ * Returns { kind: "ready", manifest } when the manifest parses and has at
+ * least one asset; { kind: "coming", issue } when nothing is published yet
+ * (404, or a manifest with no usable asset); { kind: "error", error } else.
  */
-export function parsePythonManifest(body) {
-  const decoded = decode(body);
-  const version = text(decoded.version);
-  if (!version) throw new Error("manifest_missing_version");
-  const zipUrl = text(decoded.zip_url);
-  if (!zipUrl) throw new Error("manifest_missing_zip_url");
-  return { version, zipUrl, sha256: text(decoded.sha256).toLowerCase(), notesUrl: text(decoded.notes_url) };
+export function productView(product, result) {
+  if (!result || result.status === "missing") return { kind: "coming", issue: null };
+  if (result.status !== "ok") return { kind: "error", error: result.error || "fetch_failed" };
+  let manifest;
+  try {
+    manifest = parseManifest(result.body, product.keys);
+  } catch (error) {
+    return { kind: "error", error: error.message };
+  }
+  if (Object.keys(manifest.assets).length === 0) return { kind: "coming", issue: "manifest_no_assets" };
+  return { kind: "ready", manifest };
 }
 
-/**
- * What the page shows, from the two fetches. Each result is
- *   { status: "ok", body } | { status: "missing" } (HTTP 404) | { status: "error", error }
- * Returns { kind: "bin", manifest } when the bin manifest exists, parses and
- * has at least one asset; otherwise { kind: "python", manifest, binIssue } when
- * the Python manifest is usable; otherwise { kind: "error", error }.
- */
-export function decideView(binResult, pythonResult) {
-  let binIssue = null;
-  if (binResult && binResult.status === "ok") {
-    try {
-      const manifest = parseBinManifest(binResult.body);
-      if (Object.keys(manifest.assets).length > 0) return { kind: "bin", manifest };
-      binIssue = "manifest_no_assets";
-    } catch (error) {
-      binIssue = error.message;
-    }
-  } else if (binResult && binResult.status === "error") {
-    binIssue = binResult.error || "fetch_failed";
-  }
-  if (pythonResult && pythonResult.status === "ok") {
-    try {
-      return { kind: "python", manifest: parsePythonManifest(pythonResult.body), binIssue };
-    } catch (error) {
-      return { kind: "error", error: error.message };
-    }
-  }
-  if (pythonResult && pythonResult.status === "missing") return { kind: "error", error: "manifest_not_found" };
-  return { kind: "error", error: (pythonResult && pythonResult.error) || binIssue || "fetch_failed" };
+/** Which product suits the visitor: the phone app on Android, the desktop app on a computer. */
+export function recommendedProduct(platform) {
+  const os = platform && platform.os;
+  if (os === "android") return "pocket";
+  if (os === "mac" || os === "windows" || os === "linux") return "studio";
+  return null;
 }
 
 // ── Platform detection ──────────────────────────────────────────────────
@@ -282,8 +277,28 @@ export function osSection(platform) {
 
 // ── Links and formatting ────────────────────────────────────────────────
 
-export function releasePageUrl(version) {
-  return `${REPO_URL}/releases/tag/${encodeURIComponent(version)}`;
+const bareVersion = (version) => text(version).replace(/^v/i, "");
+
+/**
+ * Where a product's release lives on GitHub. NH Studio is tagged
+ * studio-v<version>; the other products, and an unknown version, get the
+ * list of all releases.
+ */
+export function releasePageUrl(productId, version) {
+  const bare = bareVersion(version);
+  if (productId === "studio" && bare) return `${RELEASES_URL}/tag/${encodeURIComponent(`studio-v${bare}`)}`;
+  return RELEASES_URL;
+}
+
+/** The file electron-builder names an NH Studio build (NH-Studio-2.0.0-mac-arm64.dmg). */
+export function studioAssetName(version, key) {
+  const names = { "darwin-arm64": "mac-arm64.dmg", "darwin-x64": "mac-x64.dmg", "win32-x64": "win-x64.exe", "linux-x64": "linux-x86_64.AppImage" };
+  return names[key] ? `NH-Studio-${bareVersion(version)}-${names[key]}` : "";
+}
+
+/** The file a headless build is published as (nh-studio-headless-win32-x64.exe). */
+export function headlessAssetName(key) {
+  return `nh-studio-headless-${key}${key.startsWith("win32") ? ".exe" : ""}`;
 }
 
 /**
@@ -309,7 +324,7 @@ export function localizedNotesUrl(notesUrl, language) {
 }
 
 /** The file name a download URL saves as (its last path segment). */
-export function fileNameFromUrl(url, fallback = "nh-gateway") {
+export function fileNameFromUrl(url, fallback = "nh-studio") {
   try {
     const path = new URL(url).pathname;
     const name = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1));

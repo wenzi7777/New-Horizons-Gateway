@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Download NH Gateway for macOS, Windows, Linux and Android.">
-  <title>Download NH Gateway</title>
+  <meta name="description" content="Download New Horizons Studio for macOS, Windows and Linux, New Horizons Studio (headless) for servers, and New Horizons Studio Pocket for Android.">
+  <title>Download New Horizons Studio</title>
+  <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
   <script>
     // The theme last shown, before first paint, so a night visit does not
     // flash white (theme.js takes over once loaded). Same as the web UI.
@@ -19,10 +20,11 @@
   <link rel="stylesheet" href="app.css?v=__BUILD__">
 </head>
 <body>
-  <a class="skip-link" href="#main" data-i18n="heroTitle">Download NH Gateway</a>
+  <a class="skip-link" href="#main" data-i18n="skipLink">Skip to downloads</a>
   <header class="topbar">
     <div class="topbar-brand">
-      <span class="topbar-title">NH Gateway</span>
+      <img class="topbar-icon" src="brand/nh-studio-rounded.svg" alt="" width="24" height="24">
+      <span class="topbar-title">New Horizons</span>
       <span class="app-version" data-i18n="brandSub">Download</span>
     </div>
     <div class="topbar-session">
@@ -41,7 +43,7 @@
   <main class="page-shell" id="main" tabindex="-1">
     <section class="hero">
       <div class="hero-text">
-        <h1 data-i18n="heroTitle">Download NH Gateway</h1>
+        <h1 data-i18n="heroTitle">Download New Horizons Studio</h1>
         <p class="dim" data-i18n="heroCopy"></p>
       </div>
       <div class="channel">
@@ -54,55 +56,114 @@
       </div>
     </section>
 
-    <!-- Loading / error / offline. Polite live region: the result is announced. -->
     <div id="status" role="status" aria-live="polite">
-      <div class="panel state" id="state-loading">
-        <span class="spinner" aria-hidden="true"></span>
-        <span data-i18n="loading">Checking the latest release…</span>
-      </div>
-      <div class="notice error state" id="state-error" hidden>
-        <span><strong id="state-error-title" data-i18n="errorTitle"></strong> <span class="mono" id="state-error-detail"></span></span>
-        <button class="button tiny" type="button" id="retry" data-i18n="retry">Try again</button>
-      </div>
       <div class="notice warning state" id="state-offline" hidden>
         <span data-i18n="offline"></span>
         <button class="button tiny" type="button" id="retry-offline" data-i18n="retry">Try again</button>
       </div>
+      <p class="field-note" id="ios-note" data-i18n="iosNote" hidden></p>
     </div>
 
-    <!-- ── Single executables (gateway-bin-*.json) ── -->
-    <section class="view" id="bin-view" hidden>
-      <div class="panel hero-card">
-        <div class="hero-card-head">
-          <h2 data-i18n="recommended">For this device</h2>
-          <p class="meta" id="bin-meta"></p>
+    <div class="products" id="products">
+      <section class="panel product" id="product-studio" data-product="studio" aria-labelledby="studio-name">
+        <div class="product-head">
+          <img class="product-icon" src="brand/nh-studio-rounded.svg" alt="" width="56" height="56">
+          <div class="product-title">
+            <h2 id="studio-name" data-i18n="studioName">New Horizons Studio</h2>
+            <span class="meta"><span data-i18n="studioShort">NH Studio</span><span class="product-version" data-role="version"></span></span>
+          </div>
+          <span class="badge" data-role="badge" data-i18n="recommended" hidden>For this device</span>
         </div>
-        <p class="field-note" id="primary-notice" hidden></p>
-        <div class="actions" id="primary-actions"></div>
-        <a class="link" id="bin-notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
-      </div>
-
-      <div class="panel">
-        <h2 data-i18n="allDownloads">All downloads</h2>
-        <ul class="asset-list" id="asset-list"></ul>
-      </div>
-
-      <div class="panel">
-        <h2 data-i18n="installTitle">Install and start</h2>
-        <p class="dim" data-i18n="installCopy"></p>
+        <p class="dim" data-i18n="studioCopy"></p>
+        <div class="state" data-role="loading"><span class="spinner" aria-hidden="true"></span><span data-i18n="loading">Checking the latest release…</span></div>
+        <div class="notice coming" data-role="coming" hidden>
+          <span><strong data-i18n="comingTitle"></strong> <span data-i18n="comingCopy"></span></span>
+          <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+        </div>
+        <div class="notice error" data-role="error" hidden>
+          <span><strong data-i18n="errorTitle"></strong> <span class="mono" data-role="error-detail"></span></span>
+          <span class="actions">
+            <button class="button tiny" type="button" data-role="retry" data-i18n="retry">Try again</button>
+            <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+          </span>
+        </div>
+        <div class="product-ready" data-role="ready" hidden>
+          <p class="field-note" data-role="notice" hidden></p>
+          <div class="actions" data-role="primary"></div>
+          <ul class="asset-list" data-role="assets"></ul>
+          <div class="actions">
+            <a class="link" data-role="notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
+            <a class="link" data-role="release" target="_blank" rel="noopener" data-i18n="releasePage">Release page</a>
+          </div>
+        </div>
+        <div class="disclosures">
+          <details class="disclosure" data-os="mac">
+            <summary data-i18n="osMac">macOS</summary>
+            <ol class="steps disclosure-body">
+              <li data-i18n="studioMac1"></li>
+              <li data-i18n="studioMac2"></li>
+            </ol>
+          </details>
+          <details class="disclosure" data-os="windows">
+            <summary data-i18n="osWindows">Windows</summary>
+            <ol class="steps disclosure-body">
+              <li data-i18n="studioWin1"></li>
+              <li data-i18n="studioWin2"></li>
+            </ol>
+          </details>
+          <details class="disclosure" data-os="linux">
+            <summary data-i18n="osLinux">Linux</summary>
+            <ol class="steps disclosure-body">
+              <li><span data-i18n="studioLinux1"></span><div class="command" data-cmd="studio-linux"></div></li>
+            </ol>
+          </details>
+        </div>
+        <p class="field-note" data-i18n="studioUpdates"></p>
+      </section>
+      <section class="panel product" id="product-headless" data-product="headless" aria-labelledby="headless-name">
+        <div class="product-head">
+          <img class="product-icon" src="brand/nh-studio-rounded.svg" alt="" width="56" height="56">
+          <div class="product-title">
+            <h2 id="headless-name" data-i18n="headlessName">New Horizons Studio (headless)</h2>
+            <span class="meta"><span data-i18n="headlessShort">nh-studio</span><span class="product-version" data-role="version"></span></span>
+          </div>
+          <span class="badge" data-role="badge" data-i18n="recommended" hidden>For this device</span>
+        </div>
+        <p class="dim" data-i18n="headlessCopy"></p>
+        <div class="state" data-role="loading"><span class="spinner" aria-hidden="true"></span><span data-i18n="loading">Checking the latest release…</span></div>
+        <div class="notice coming" data-role="coming" hidden>
+          <span><strong data-i18n="comingTitle"></strong> <span data-i18n="comingCopy"></span></span>
+          <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+        </div>
+        <div class="notice error" data-role="error" hidden>
+          <span><strong data-i18n="errorTitle"></strong> <span class="mono" data-role="error-detail"></span></span>
+          <span class="actions">
+            <button class="button tiny" type="button" data-role="retry" data-i18n="retry">Try again</button>
+            <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+          </span>
+        </div>
+        <div class="product-ready" data-role="ready" hidden>
+          <p class="field-note" data-role="notice" hidden></p>
+          <div class="actions" data-role="primary"></div>
+          <ul class="asset-list" data-role="assets"></ul>
+          <div class="actions">
+            <a class="link" data-role="notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
+            <a class="link" data-role="release" target="_blank" rel="noopener" data-i18n="releasePage">Release page</a>
+          </div>
+        </div>
         <div class="disclosures">
           <details class="disclosure" data-os="mac">
             <summary data-i18n="osMac">macOS</summary>
             <ol class="steps disclosure-body">
               <li><span data-i18n="macStep1"></span><div class="command" data-cmd="mac-chmod"></div></li>
-              <li><span data-i18n="macStep2"></span><div class="command" data-cmd="mac-xattr"></div><p class="field-note" data-i18n="macStep2Alt"></p></li>
+              <li><span data-i18n="macStep2"></span><div class="command" data-cmd="mac-xattr"></div></li>
               <li><span data-i18n="macStep3"></span><div class="command" data-cmd="mac-run"></div></li>
             </ol>
           </details>
           <details class="disclosure" data-os="windows">
             <summary data-i18n="osWindows">Windows</summary>
             <ol class="steps disclosure-body">
-              <li data-i18n="winStep1"></li>
+              <li><span data-i18n="winStep1"></span><div class="command" data-cmd="win-run"></div></li>
               <li data-i18n="winStep2"></li>
               <li data-i18n="winStep3"></li>
             </ol>
@@ -114,60 +175,58 @@
               <li data-i18n="linuxStep2"></li>
             </ol>
           </details>
-          <details class="disclosure" data-os="android">
-            <summary data-i18n="osAndroid">Android</summary>
-            <ol class="steps disclosure-body">
-              <li data-i18n="androidStep1"></li>
-              <li data-i18n="androidStep2"></li>
-              <li data-i18n="androidStep3"></li>
-              <li data-i18n="androidStep4"></li>
-            </ol>
-          </details>
         </div>
-      </div>
-
-      <div class="panel" id="migrate-panel">
-        <h2 data-i18n="migrateTitle">Coming from the Python Gateway</h2>
-        <p class="dim" data-i18n="migrateCopy"></p>
+        <p class="field-note"><span data-i18n="headlessLogin"></span></p>
+        <div class="command" data-cmd="headless-login"></div>
+        <p class="field-note" data-i18n="headlessTakeover"></p>
+      </section>
+      <section class="panel product" id="product-pocket" data-product="pocket" aria-labelledby="pocket-name">
+        <div class="product-head">
+          <img class="product-icon" src="brand/nh-pocket-rounded.svg" alt="" width="56" height="56">
+          <div class="product-title">
+            <h2 id="pocket-name" data-i18n="pocketName">New Horizons Studio Pocket</h2>
+            <span class="meta"><span data-i18n="pocketShort">NH Pocket</span><span class="product-version" data-role="version"></span></span>
+          </div>
+          <span class="badge" data-role="badge" data-i18n="recommended" hidden>For this device</span>
+        </div>
+        <p class="dim" data-i18n="pocketCopy"></p>
+        <div class="state" data-role="loading"><span class="spinner" aria-hidden="true"></span><span data-i18n="loading">Checking the latest release…</span></div>
+        <div class="notice coming" data-role="coming" hidden>
+          <span><strong data-i18n="comingTitle"></strong> <span data-i18n="comingCopy"></span></span>
+          <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+        </div>
+        <div class="notice error" data-role="error" hidden>
+          <span><strong data-i18n="errorTitle"></strong> <span class="mono" data-role="error-detail"></span></span>
+          <span class="actions">
+            <button class="button tiny" type="button" data-role="retry" data-i18n="retry">Try again</button>
+            <a class="button tiny" href="https://github.com/wenzi7777/New-Horizons-Gateway/releases" target="_blank" rel="noopener" data-i18n="seeReleases">See all releases</a>
+          </span>
+        </div>
+        <div class="product-ready" data-role="ready" hidden>
+          <p class="field-note" data-role="notice" hidden></p>
+          <div class="actions" data-role="primary"></div>
+          <ul class="asset-list" data-role="assets"></ul>
+          <div class="actions">
+            <a class="link" data-role="notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
+            <a class="link" data-role="release" target="_blank" rel="noopener" data-i18n="releasePage">Release page</a>
+          </div>
+        </div>
         <ol class="steps">
-          <li data-i18n="migrateStep1"></li>
-          <li><span data-i18n="migrateStep2"></span><div class="command" data-cmd="py-stop"></div><p class="field-note" data-i18n="migrateStep2Win"></p></li>
-          <li data-i18n="migrateStep3"></li>
-          <li data-i18n="migrateStep4"></li>
+          <li data-i18n="pocketStep1"></li>
+          <li data-i18n="pocketStep2"></li>
+          <li data-i18n="pocketStep3"></li>
         </ol>
-      </div>
-    </section>
+      </section>
+    </div>
 
-    <!-- ── Python release (gateway-*.json), until the executables ship ── -->
-    <section class="view" id="python-view" hidden>
-      <div class="notice coming">
-        <span><strong data-i18n="pyComingTitle"></strong> <span data-i18n="pyComingCopy"></span></span>
-      </div>
-
-      <div class="panel hero-card">
-        <div class="hero-card-head">
-          <h2 data-i18n="pyTitle">NH Gateway for Python</h2>
-          <p class="meta" id="py-meta"></p>
-        </div>
-        <p class="field-note" data-i18n="pyRequires"></p>
-        <div class="actions">
-          <a class="button primary large" id="py-download" data-i18n="pyDownload">Download .zip</a>
-          <a class="button large" id="py-notes" target="_blank" rel="noopener" data-i18n="releaseNotes">Release notes</a>
-        </div>
-        <div class="sha-row" id="py-sha"></div>
-      </div>
-
-      <div class="panel">
-        <h2 data-i18n="pyStepsTitle">Start it</h2>
-        <ol class="steps">
-          <li data-i18n="pyStep1"></li>
-          <li><span data-i18n="pyStep2"></span><div class="command" data-cmd="py-start"></div></li>
-          <li data-i18n="pyStep3"></li>
-        </ol>
-        <p class="field-note"><span data-i18n="pyStop"></span></p>
-        <div class="command" data-cmd="py-stop"></div>
-        <p class="field-note" data-i18n="pyWindowsNote"></p>
-      </div>
+    <section class="panel" id="migrate-panel">
+      <h2 data-i18n="migrateTitle">Coming from NH Gateway</h2>
+      <p class="dim" data-i18n="migrateCopy"></p>
+      <ol class="steps">
+        <li data-i18n="migrateStep1"></li>
+        <li><span data-i18n="migrateStep2"></span><div class="command" data-cmd="py-stop"></div><p class="field-note" data-i18n="migrateStep2Win"></p></li>
+        <li data-i18n="migrateStep3"></li>
+      </ol>
     </section>
 
     <footer class="footer">
