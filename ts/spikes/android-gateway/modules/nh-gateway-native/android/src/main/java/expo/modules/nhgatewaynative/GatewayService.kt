@@ -25,6 +25,7 @@ class GatewayService : Service() {
 
   private var wakeLock: PowerManager.WakeLock? = null
   private var multicastLock: WifiManager.MulticastLock? = null
+  private var wifiLock: WifiManager.WifiLock? = null
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -46,6 +47,20 @@ class GatewayService : Service() {
       setReferenceCounted(false)
       acquire()
     }
+    // As a Wi-Fi client (phone and devices on the same pocket Wi-Fi), radio
+    // power save batches incoming frames while the screen is off. Low-latency
+    // mode (API 29+) only holds while the app is in front with the screen on;
+    // the screen-off test shows how much that matters.
+    @Suppress("DEPRECATION")
+    val wifiMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+    } else {
+      WifiManager.WIFI_MODE_FULL_HIGH_PERF
+    }
+    wifiLock = wifi.createWifiLock(wifiMode, "NhGateway::udp").apply {
+      setReferenceCounted(false)
+      acquire()
+    }
     UdpHub.start(listOf(UdpHub.STREAM_PORT, UdpHub.DISCOVERY_PORT))
   }
 
@@ -53,6 +68,7 @@ class GatewayService : Service() {
 
   override fun onDestroy() {
     UdpHub.stop()
+    wifiLock?.release()
     multicastLock?.release()
     wakeLock?.release()
     super.onDestroy()

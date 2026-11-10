@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "NH Pocket",
+    "slug": "nh-pocket",
+    "scheme": "nhpocket",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "jp.ac.uaizu.newhorizons.pocket"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1f6b54",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "jp.ac.uaizu.newhorizons.pocket",
+      "versionCode": 1
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "owner": "nickhsu",
+    "plugins": [
+      "expo-router",
+      "expo-sharing"
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "78b78e58-30a4-4b38-a55f-8dbda1f4ca7f"
+      }
+    }
+  }
+}
