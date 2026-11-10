@@ -74,7 +74,6 @@ const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
 const NOTIFY_INTERVAL_MS = 250;
 /** A relay id of NH Studio / NH Pocket (`<clientType>-<8 hex>`, see newRelayId). */
-const APP_RELAY_ID = /^(studio|pocket)-[0-9a-f]{8}$/;
 
 /** Where the app's config and label documents live, when not beside the recordings. */
 export interface HostDocuments {
@@ -605,13 +604,15 @@ export class AppHost implements HostStore {
 
   /**
    * One owner per device: a device this host manages that says it is attached to
-   * another NH Studio / NH Pocket (its FindMe `current_gateway_id`) was adopted
-   * there, so it leaves this host's managed list. Other kinds of relay (the
-   * server's own FindMe responder, a Hub) do not take ownership.
+   * another relay (its FindMe `current_gateway_id`) was adopted there, so it
+   * leaves this host's managed list. Any id counts, not just studio-/pocket-
+   * ones: a Studio that took over an old Gateway's config keeps that id. The
+   * Backend's FindMe responder never offers to an attached device and Hubs do
+   * not speak FindMe, so nothing else can show up here.
    */
   private yieldToOtherHost(runtime: GatewayRuntime, uid: string, otherId: string): void {
     const store = runtime.configStore;
-    if (!APP_RELAY_ID.test(otherId) || store.offerPolicy() !== 'managed' || !store.isManaged(uid)) return;
+    if (store.offerPolicy() !== 'managed' || !store.isManaged(uid)) return;
     this.logger.info(`${uid} is now attached to ${otherId}: removed from this host's devices`);
     void (async () => {
       if (this.run_?.service.recordingEnabled(uid)) await this.setRecording(uid, false).catch(() => undefined);

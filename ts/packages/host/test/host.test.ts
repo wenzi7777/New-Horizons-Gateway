@@ -125,7 +125,7 @@ describe('AppHost (pocket)', () => {
     expect(host.recordings()).toHaveLength(0);
   });
 
-  it('a device adopted by another Studio / Pocket leaves this host\'s devices; other relays do not take it', async () => {
+  it('a device adopted by another relay leaves this host\'s devices, whatever that relay's id is', async () => {
     const native = new FakeNative();
     const { host } = makeHost(native);
     await host.start();
@@ -135,14 +135,11 @@ describe('AppHost (pocket)', () => {
     const probeReply = (current: string) => ({ type: 'findme_discover', device_uid: UID, current_gateway_id: current });
     native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }), dev);
     expect(host.devices().map((d) => d.uid)).toEqual([UID]);
-    native.receive(22346, enc(probeReply('hub-1')), dev); // not an app relay: ownership stays
-    await settle();
-    expect(host.devices().map((d) => d.uid)).toEqual([UID]);
-    native.receive(22346, enc(probeReply('studio-0a1b2c3d')), dev);
+    native.receive(22346, enc(probeReply('my-old-gateway')), dev); // any other relay id counts, not only studio-/pocket-
     await settle();
     expect(host.devices()).toEqual([]);
     expect(JSON.parse(native.text(PATHS.config)!).managed_devices).toEqual([]);
-    expect(host.nearby().map((d) => [d.uid, d.attachedTo])).toEqual([[UID, 'studio-0a1b2c3d']]);
+    expect(host.nearby().map((d) => [d.uid, d.attachedTo])).toEqual([[UID, 'my-old-gateway']]);
   });
 
   it('a killed recording is rebuilt from its .nhraw on the next start', async () => {
