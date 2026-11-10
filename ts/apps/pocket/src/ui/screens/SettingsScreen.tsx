@@ -58,7 +58,7 @@ function UpdateCard() {
     state.phase === 'checking' ? t('updateChecking')
     : state.phase === 'none' ? t('updateNone')
     : state.phase === 'upToDate' ? t('updateUpToDate')
-    : state.phase === 'available' ? t('updateAvailable', { version: state.latestVersion })
+    : state.phase === 'available' ? t('pocketUpdateAvailable', { version: state.latestVersion })
     : state.phase === 'downloading' ? t('updateDownloading', { percent: state.totalBytes ? Math.floor((state.receivedBytes / state.totalBytes) * 100) : 0 })
     : state.phase === 'needsPermission' ? t('updateNeedsPermission')
     : state.phase === 'installing' ? t('updateInstalling')
@@ -69,7 +69,7 @@ function UpdateCard() {
       <FactRow label={t('updateCurrent')} value={state.currentVersion} mono />
       <Divider />
       <SegmentedControl<'stable' | 'beta'>
-        accessibilityLabel={t('updateChannel')}
+        accessibilityLabel={t('pocketUpdateChannel')}
         options={[
           { value: 'stable', label: t('updateStable') },
           { value: 'beta', label: t('updateBeta') },
