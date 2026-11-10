@@ -437,26 +437,15 @@ export class AppHost implements HostStore {
     const run = this.run_;
     if (run === null) return [];
     const now = this.clock.monotonicMs();
-    const known = new Set<string>();
-    const views = run.service
+    return run.service
       .listDevices()
       .filter((entry) => this.isMine(str(entry.device_uid)))
       .map((entry) => {
         const view = deviceView(entry, now);
-        known.add(view.uid);
         // The table's flag lags a capture that is still draining.
         const recorder = run.service.recorders.get(view.uid);
         return recorder ? { ...view, recording: { ...view.recording, finishing: recorder.finishing } } : view;
       });
-    // A device just added has not sent its first heartbeat yet (it still has to switch to this
-    // host), and is no longer "nearby": show it as connecting instead of in neither list.
-    for (const item of run.service.nearby()) {
-      const uid = str(item.device_uid);
-      if (!uid || known.has(uid) || item.released === true || !this.isMine(uid)) continue;
-      known.add(uid);
-      views.push(deviceView({ device_uid: uid, device_name: item.device_name, gateway_connected: false, last_seen_at: item.last_findme_at }, now));
-    }
-    return views;
   }
 
   private buildNearby(): NearbyDeviceView[] {
@@ -873,7 +862,6 @@ export class AppHost implements HostStore {
     const run = this.run_;
     if (run === null) return fail('not_running');
     const result = await run.runtime.operations().adopt(uid);
-    this.logger.info(`adopt ${uid}: ${result.ok ? `switch ${plainJson(result.data) && dict(plainJson(result.data)).switch_sent === true ? 'sent' : 'not sent (no address yet; the next FindMe offer carries it)'}` : result.error}`);
     this.changed();
     return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };
   }

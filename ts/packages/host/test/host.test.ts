@@ -142,27 +142,6 @@ describe('AppHost (pocket)', () => {
     expect(host.nearby().map((d) => [d.uid, d.attachedTo])).toEqual([[UID, 'my-old-gateway']]);
   });
 
-  it('a device just added shows in My devices (connecting) before its first heartbeat', async () => {
-    const native = new FakeNative();
-    const { host } = makeHost(native);
-    await host.start();
-    const enc = (o: object) => new TextEncoder().encode(JSON.stringify(o));
-    const dev = { ip: '192.168.1.4', port: 5000 };
-    const discover = { type: 'findme_discover', device_uid: UID, device_name: `NHOS-${UID}`, udp_port: 13250 };
-    native.receive(22346, enc(discover), dev);
-    await settle();
-    expect(host.nearby().map((d) => d.uid)).toEqual([UID]);
-    expect(host.devices()).toEqual([]);
-    await host.adopt(UID);
-    native.receive(22346, enc(discover), dev);
-    await settle();
-    expect(host.nearby()).toEqual([]);
-    expect(host.devices().map((d) => [d.uid, d.online])).toEqual([[UID, false]]);
-    native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }), dev);
-    await settle();
-    expect(host.devices().map((d) => [d.uid, d.online])).toEqual([[UID, true]]);
-  });
-
   it('a killed recording is rebuilt from its .nhraw on the next start', async () => {
     const native = new FakeNative();
     const first = makeHost(native).host;
