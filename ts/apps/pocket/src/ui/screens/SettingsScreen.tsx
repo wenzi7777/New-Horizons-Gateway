@@ -1,3 +1,4 @@
+import NhGatewayNative from '../../../modules/nh-gateway-native/src/NhGatewayNativeModule';
 import Constants from 'expo-constants';
 import { MonitorSmartphone, BatteryWarning, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -372,6 +373,14 @@ function BackgroundCard() {
       {ignored !== true ? (
         <Button label={t('batteryOptButton')} variant="primary" onPress={() => store.requestIgnoreBatteryOptimizations()} />
       ) : null}
+      <Caption>{t('quitCopy')}</Caption>
+      <Button
+        label={t('quitButton')}
+        variant="secondary"
+        onPress={() => {
+          void store.stop().catch(() => undefined).finally(() => NhGatewayNative?.quitApp());
+        }}
+      />
     </Card>
   );
 }

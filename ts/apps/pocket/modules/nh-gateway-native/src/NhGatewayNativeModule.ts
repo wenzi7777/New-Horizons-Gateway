@@ -5,6 +5,8 @@ import type { NativeFileInfo, NativeStats, NetworkInterfaceInfo, NhGatewayNative
 declare class NhGatewayNativeModule extends NativeModule<NhGatewayNativeEvents> {
   startService(): boolean;
   stopService(): boolean;
+  /** Stops the relay service and ends the process (swiping away does not). */
+  quitApp(): boolean;
   isRunning(): boolean;
   send(localPort: number, ip: string, dstPort: number, base64: string): void;
   nowEpochUs(): number;

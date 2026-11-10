@@ -73,6 +73,8 @@ export const COMMAND_RESULT_TIMEOUT_MS = 20_000;
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
 const NOTIFY_INTERVAL_MS = 250;
+/** A relay id of NH Studio / NH Pocket (`<clientType>-<8 hex>`, see newRelayId). */
+const APP_RELAY_ID = /^(studio|pocket)-[0-9a-f]{8}$/;
 
 /** Where the app's config and label documents live, when not beside the recordings. */
 export interface HostDocuments {
@@ -316,14 +318,14 @@ export class AppHost implements HostStore {
 
   /** Raw values of the host config (the sync client keeps its token and switches there); loads the file if not started. */
   async appConfig(): Promise<Record<string, unknown>> {
-    const store = this.configStore ?? (await this.loadConfig());
+    const store = this.activeStore() ?? (await this.loadConfig());
     this.configStore = store;
     return { ...store.snapshot() };
   }
 
   /** Saves app keys into the host config; a changed sync token re-authenticates the relay link. */
   async saveAppConfig(patch: Record<string, unknown>): Promise<void> {
-    const store = this.configStore ?? (await this.loadConfig());
+    const store = this.activeStore() ?? (await this.loadConfig());
     this.configStore = store;
     const before = relayToken(store.snapshot());
     const config = await store.save(patch);
@@ -400,8 +402,13 @@ export class AppHost implements HostStore {
     };
   }
 
+  /** The config store in use: the running relay's own (one instance, so the UI never disagrees with the offers). */
+  private activeStore(): GatewayConfigStore | null {
+    return this.run_?.configStore ?? this.configStore;
+  }
+
   private isMine(uid: string): boolean {
-    const store = this.configStore;
+    const store = this.activeStore();
     if (store === null || store.offerPolicy() === 'all') return true;
     return store.isManaged(uid);
   }
@@ -591,6 +598,23 @@ export class AppHost implements HostStore {
     this.changed();
   }
 
+  /**
+   * One owner per device: a device this host manages that says it is attached to
+   * another NH Studio / NH Pocket (its FindMe `current_gateway_id`) was adopted
+   * there, so it leaves this host's managed list. Other kinds of relay (the
+   * server's own FindMe responder, a Hub) do not take ownership.
+   */
+  private yieldToOtherHost(runtime: GatewayRuntime, uid: string, otherId: string): void {
+    const store = runtime.configStore;
+    if (!APP_RELAY_ID.test(otherId) || store.offerPolicy() !== 'managed' || !store.isManaged(uid)) return;
+    this.logger.info(`${uid} is now attached to ${otherId}: removed from this host's devices`);
+    void (async () => {
+      if (this.run_?.service.recordingEnabled(uid)) await this.setRecording(uid, false).catch(() => undefined);
+      await store.save({ managed_devices: store.managedDevices().filter((item) => item !== uid) });
+      this.changed();
+    })().catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorText(error)}`));
+  }
+
   /** Engine hooks the host adds: the FindMe count, raw capture of control replies and app_events requests. */
   private wrapRuntimeHooks(runtime: GatewayRuntime, service: DeviceService): void {
     const base = service.observer();
@@ -601,8 +625,10 @@ export class AppHost implements HostStore {
         const uid = str(request.device_uid).trim().toUpperCase();
         const current = str(request.current_gateway_id);
         if (uid) {
-          if (current && current !== runtime.configStore.snapshot().gateway_id) this.attachedTo.set(uid, current);
-          else this.attachedTo.delete(uid);
+          if (current && current !== runtime.configStore.snapshot().gateway_id) {
+            this.attachedTo.set(uid, current);
+            this.yieldToOtherHost(runtime, uid, current);
+          } else this.attachedTo.delete(uid);
         }
         base.onFindmeRequest?.(request, from, accepted, reason);
         this.changed();
@@ -723,7 +749,24 @@ export class AppHost implements HostStore {
     }
     for (const [uid, error] of Object.entries(this.captures.errors())) this.logger.warn(`nhraw ${uid}: ${error}`);
     this.catalog.refresh(this.inProgressIds(), Date.now());
+    this.probeForMovedDevices();
     this.changed();
+  }
+
+  /**
+   * A managed device that went quiet may have been adopted by another host
+   * (an attached device no longer broadcasts FindMe, so nothing else would
+   * tell us). A probe makes it answer with the relay it is attached to, which
+   * yieldToOtherHost then acts on.
+   */
+  private probeForMovedDevices(): void {
+    const run = this.run_;
+    if (run === null || this.configStore?.offerPolicy() !== 'managed') return;
+    const quiet = run.service.listDevices().some((entry) => {
+      const uid = str(entry.device_uid);
+      return this.isMine(uid) && entry.gateway_connected !== true;
+    });
+    if (quiet) run.runtime.operations().discover();
   }
 
   async stop(): Promise<void> {
@@ -763,7 +806,7 @@ export class AppHost implements HostStore {
   // -- settings -------------------------------------------------------------------
 
   async updateSettings(patch: Partial<HostSettings>): Promise<void> {
-    const store = this.configStore ?? (await this.loadConfig());
+    const store = this.activeStore() ?? (await this.loadConfig());
     this.configStore = store;
     const tokenBefore = relayToken(store.snapshot());
     const config = await store.save(configPatchFromSettings(patch, this.productName));

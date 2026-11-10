@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Base64
@@ -52,6 +55,17 @@ class NhGatewayNativeModule : Module(), UdpHub.Listener {
 
     Function("stopService") {
       context.stopService(Intent(context, GatewayService::class.java))
+      true
+    }
+
+    // Ends the whole app: the relay service, the screen and the process. Swiping
+    // the app away leaves the foreground service (and its state) running.
+    Function("quitApp") {
+      RawCapture.stopAll()
+      NhFiles.closeAll()
+      context.stopService(Intent(context, GatewayService::class.java))
+      appContext.currentActivity?.finishAndRemoveTask()
+      Handler(Looper.getMainLooper()).postDelayed({ Process.killProcess(Process.myPid()) }, 400)
       true
     }
 
