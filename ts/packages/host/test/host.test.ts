@@ -125,7 +125,7 @@ describe('AppHost (pocket)', () => {
     expect(host.recordings()).toHaveLength(0);
   });
 
-  it('a device adopted by another relay leaves this host\'s devices, whatever that relay's id is', async () => {
+  it("a device adopted by another relay leaves this host's devices, whatever that relay's id is", async () => {
     const native = new FakeNative();
     const { host } = makeHost(native);
     await host.start();

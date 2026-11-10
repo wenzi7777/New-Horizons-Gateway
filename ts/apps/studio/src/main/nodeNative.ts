@@ -81,6 +81,22 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** The directed broadcast address (address | ~netmask) of each external IPv4 interface. */
+function directedBroadcasts(): string[] {
+  const out = new Set<string>();
+  for (const list of Object.values(networkInterfaces())) {
+    for (const item of list ?? []) {
+      if (item.family !== 'IPv4' || item.internal) continue;
+      const ip = item.address.split('.').map(Number);
+      const mask = item.netmask.split('.').map(Number);
+      if (ip.length !== 4 || mask.length !== 4 || ip.some(Number.isNaN) || mask.some(Number.isNaN)) continue;
+      const broadcast = ip.map((octet, i) => (octet | (~mask[i]! & 255)) & 255).join('.');
+      if (broadcast !== '255.255.255.255' && !broadcast.endsWith('.255.255.255')) out.add(broadcast);
+    }
+  }
+  return [...out];
+}
+
 export class NodeNative extends NodeFiles implements HostNative {
   private readonly clock: Clock;
   private readonly logger: Logger;
@@ -266,6 +282,9 @@ export class NodeNative extends NodeFiles implements HostNative {
     try {
       socket.send(bytes, { ip, port: dstPort });
       this.counters.datagramsOut += 1;
+      // The limited broadcast can fail with EHOSTUNREACH on macOS for minutes (a stale cloned
+      // route); each network's own broadcast address keeps FindMe probes reaching the LAN.
+      if (ip === '255.255.255.255') for (const directed of directedBroadcasts()) socket.send(bytes, { ip: directed, port: dstPort });
     } catch (error) {
       this.counters.sendErrors += 1;
       this.counters.lastError = `send ${ip}:${dstPort}: ${errorText(error)}`;
