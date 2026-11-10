@@ -12,6 +12,9 @@
 // download links; size and sha256 are computed here from the actual files.
 //
 //   node ts/scripts/release-manifests.mjs --tag studio-v2.0.0 --dir /tmp/assets
+//
+// With the virustotal workflow's virustotal.json among the files, each
+// scanned asset also gets `virustotal: {url, malicious, suspicious, scanned_at}`.
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -31,15 +34,18 @@ const dir = resolve(values.dir);
 const outDir = resolve(values['out-dir'] ?? join(import.meta.dirname, '..', '..', 'releases'));
 const notesUrl = `https://raw.githubusercontent.com/${REPO}/${tag}/releases/notes/${tag}.md`;
 const files = new Set(readdirSync(dir));
+// From the virustotal workflow (ts/scripts/virustotal-scan.mjs), when it ran.
+const scans = files.has('virustotal.json') ? JSON.parse(readFileSync(join(dir, 'virustotal.json'), 'utf8')) : {};
 
 function asset(name) {
   if (!files.has(name)) return null;
   const path = join(dir, name);
-  return {
-    url: `https://github.com/${REPO}/releases/download/${tag}/${encodeURIComponent(name)}`,
-    sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
-    size: statSync(path).size,
-  };
+  const sha256 = createHash('sha256').update(readFileSync(path)).digest('hex');
+  const out = { url: `https://github.com/${REPO}/releases/download/${tag}/${encodeURIComponent(name)}`, sha256, size: statSync(path).size };
+  const scan = scans[name];
+  // Only a scan of these very bytes.
+  if (scan && scan.sha256 === sha256) out.virustotal = { url: scan.url, malicious: scan.malicious, suspicious: scan.suspicious, scanned_at: scan.scanned_at };
+  return out;
 }
 
 function manifest(map) {

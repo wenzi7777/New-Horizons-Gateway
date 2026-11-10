@@ -1,0 +1,40 @@
+name: virustotal
+
+# Scans a studio-vX.Y.Z release's files with VirusTotal and attaches the
+# results as virustotal.json (read by ts/scripts/release-manifests.mjs, shown
+# as a badge on the download page). Run it after every file is on the
+# release (Pocket's APK is uploaded by hand): Actions -> virustotal -> Run.
+# Needs the VIRUSTOTAL_API_KEY repository secret; without it, it does nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "studio-vX.Y.Z to scan"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+      - name: Download the release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ inputs.tag }}" -D assets --clobber
+      - name: Scan
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: node ts/scripts/virustotal-scan.mjs --dir assets
+      - name: Attach virustotal.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f assets/virustotal.json ]; then gh release upload "${{ inputs.tag }}" assets/virustotal.json --clobber; fi

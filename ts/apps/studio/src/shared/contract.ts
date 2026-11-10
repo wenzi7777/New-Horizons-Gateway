@@ -95,8 +95,19 @@ export interface StudioApi {
   onAreaEvent(area: AreaName, event: string, listener: (payload: unknown) => void): () => void;
 }
 
+/** Windows / Linux title bar buttons (absent on macOS's own title bar, and in the browser preview). */
+export interface StudioWindowControls {
+  platform: string;
+  minimize(): Promise<boolean>;
+  toggleMaximize(): Promise<boolean>;
+  close(): Promise<boolean>;
+  isMaximized(): Promise<boolean>;
+  onMaximized(listener: (maximized: boolean) => void): () => void;
+}
+
 declare global {
   interface Window {
     nhStudio: StudioApi;
+    nhStudioWindow?: StudioWindowControls;
   }
 }

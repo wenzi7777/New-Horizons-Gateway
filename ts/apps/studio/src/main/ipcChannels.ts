@@ -29,3 +29,11 @@ export const CH = {
 } as const;
 
 export type Channel = (typeof CH)[keyof typeof CH];
+
+/** Windows / Linux title bar (handled in main.ts, not registerStudioIpc). */
+export const WINDOW_CH = {
+  /** ('minimize' | 'toggleMaximize' | 'close' | 'isMaximized') -> isMaximized */
+  control: 'nh-studio:window-control',
+  /** push: isMaximized changed */
+  maximized: 'nh-studio:window-maximized',
+} as const;

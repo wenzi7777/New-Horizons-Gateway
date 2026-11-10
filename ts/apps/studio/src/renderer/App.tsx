@@ -2,6 +2,8 @@
 // Settings at the bottom), the top bar (connection status, the global record
 // indicator, theme, operation log) and the routed page.
 
+import { TitleBarControls } from './components/TitleBarControls';
+import { syncBaseUrl } from '../../../../packages/host/src/sync/config';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   AppWindow,
@@ -10,6 +12,7 @@ import {
   FolderOpen,
   LayoutGrid,
   ListChecks,
+  MonitorSmartphone,
   Moon,
   Activity,
   Settings,
@@ -76,7 +79,7 @@ function areaRoute(area: AreaId): Route {
 }
 
 export function App() {
-  const { t, snapshot, source, platform, theme, updateSettings, locale } = useStudio();
+  const { t, snapshot, source, platform, theme, updateSettings, locale, api } = useStudio();
   const [route, navigate] = useHashRoute();
   const [logOpen, setLogOpen] = useState(false);
 
@@ -84,6 +87,8 @@ export function App() {
   const recordingCount = activeRecordingCount(devices);
   const upstream = snapshot?.status.upstream ?? 'offline';
   const relayEnabled = snapshot?.settings.relayEnabled ?? true;
+  // The Desktop web app of the server chosen in Settings (opened in the browser).
+  const desktopUrl = snapshot ? syncBaseUrl({ serverTarget: snapshot.settings.serverTarget, manualUrl: snapshot.settings.manualUrl }) : '';
   const connState = !relayEnabled ? 'disabled' : upstream === 'online' ? 'online' : upstream === 'connecting' ? 'connecting' : 'offline';
   const connLabel = !relayEnabled ? t('connRelayOff') : upstream === 'online' ? t('connOnline') : upstream === 'connecting' ? t('connConnecting') : t('connOffline');
 
@@ -160,6 +165,11 @@ export function App() {
                 {t('recIndicator', { count: recordingCount })}
               </button>
             ) : null}
+            {desktopUrl ? (
+              <button type="button" className="icon-button" aria-label={t('openDesktop')} title={`${t('openDesktop')} — ${desktopUrl}`} onClick={() => void api.openExternal(`${desktopUrl}/`)}>
+                <MonitorSmartphone size={17} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            ) : null}
             <button type="button" className="status-pill conn-pill" onClick={() => navigate({ area: 'settings', section: 'connection' })} title={snapshot?.status.serverUrl || connLabel}>
               <StatusDot state={connState} />
               <span>{connLabel}</span>
@@ -185,6 +195,7 @@ export function App() {
               <ListChecks size={17} strokeWidth={1.8} aria-hidden="true" />
             </button>
           </div>
+          <TitleBarControls />
         </header>
         {snapshot?.status.serviceError ? (
           <div className="service-error" role="alert">

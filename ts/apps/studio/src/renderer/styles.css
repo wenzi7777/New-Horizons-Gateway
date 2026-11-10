@@ -751,3 +751,25 @@ table.data-table .num-text { font-variant-numeric: tabular-nums; }
 .about-lab:active, .about-university:active { transform: scale(0.98); }
 .about-lab:focus-visible, .about-university:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .about-uaizu-logo { width: 110px; height: auto; color: color-mix(in srgb, #008580 70%, var(--text)); }
+
+/* ── Windows / Linux: the drawn title bar's window buttons (macOS keeps its own) ── */
+.window-controls { display: inline-flex; align-self: stretch; margin: -8px -18px -8px 4px; }
+.window-control {
+  display: grid; place-items: center; width: 46px; min-height: var(--topbar-height);
+  border: 0; background: transparent; color: var(--text-dim); cursor: default;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.window-control:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.window-control:active { background: color-mix(in srgb, var(--text) 16%, transparent); }
+.window-control.close:hover { background: #c42b1c; color: #fff; }
+.window-control:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Icon sizes: one scale for every icon button, whatever size an icon was
+   given where it is used (they were 12–15 px in places, too small to hit). ── */
+.icon-button,
+.button.icon-button { width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; }
+.icon-button.small { width: 30px; height: 30px; min-width: 30px; min-height: 30px; }
+.icon-button svg { width: 18px; height: 18px; flex: none; }
+.icon-button.small svg { width: 16px; height: 16px; }
+.button svg { width: 16px; height: 16px; flex: none; }
+.button.tiny svg { width: 15px; height: 15px; }

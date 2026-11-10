@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { BatteryWarning, Check, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
+import { MonitorSmartphone, BatteryWarning, Check, CloudUpload, Download, RefreshCw, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -29,6 +29,7 @@ import {
 import { formatBytes, formatTime, isValidPocketId, isValidServerUrl } from '../format';
 import { useI18n } from '../i18n';
 import { syncErrorCode } from '../../host/sync';
+import { syncBaseUrl } from '@nhgw/host';
 import { usePocketSync, usePocketUpdater, useSettings, useStatus, useStore } from '../store';
 import { useTheme } from '../theme';
 
@@ -441,6 +442,8 @@ export function SettingsScreen() {
   const status = useStatus();
   const save = useSave();
   const version = Constants.expoConfig?.version ?? '-';
+  // The Desktop web app of the chosen server, opened in the browser.
+  const desktopUrl = syncBaseUrl({ serverTarget: settings.serverTarget, manualUrl: settings.manualUrl });
   // The About icon's planet rises once each time this screen is entered.
   const [aboutPlay, setAboutPlay] = useState(0);
   useFocusEffect(useCallback(() => setAboutPlay((n) => n + 1), []));
@@ -449,6 +452,9 @@ export function SettingsScreen() {
     <Screen title={t('tabSettings')}>
       <SectionHeader title={t('sectionConnection')} />
       <ConnectionCard />
+      {desktopUrl ? (
+        <Button label={t('openDesktop')} icon={MonitorSmartphone} compact onPress={() => void Linking.openURL(`${desktopUrl}/`)} style={{ alignSelf: 'flex-start', marginTop: 8 }} />
+      ) : null}
 
       <NetworkSection />
 

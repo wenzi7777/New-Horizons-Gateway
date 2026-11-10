@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type { LiveFrame, StudioApi, StudioSnapshot } from '../shared/contract';
 import { AREA_CALL, AREA_EVENT, type AreaName } from '../shared/areas';
-import { CH } from '../main/ipcChannels';
+import { CH, WINDOW_CH } from '../main/ipcChannels';
 
 const snapshotListeners = new Set<(snapshot: StudioSnapshot) => void>();
 const liveListeners = new Map<number, (frame: LiveFrame) => void>();
@@ -84,3 +84,22 @@ const api: StudioApi = {
 };
 
 contextBridge.exposeInMainWorld('nhStudio', api);
+
+// The drawn title bar on Windows / Linux (macOS keeps its own).
+const maximizedListeners = new Set<(maximized: boolean) => void>();
+ipcRenderer.on(WINDOW_CH.maximized, (_event: IpcRendererEvent, maximized: boolean) => {
+  for (const listener of [...maximizedListeners]) listener(maximized);
+});
+contextBridge.exposeInMainWorld('nhStudioWindow', {
+  platform: process.platform,
+  minimize: () => invoke<boolean>(WINDOW_CH.control, 'minimize'),
+  toggleMaximize: () => invoke<boolean>(WINDOW_CH.control, 'toggleMaximize'),
+  close: () => invoke<boolean>(WINDOW_CH.control, 'close'),
+  isMaximized: () => invoke<boolean>(WINDOW_CH.control, 'isMaximized'),
+  onMaximized(listener: (maximized: boolean) => void) {
+    maximizedListeners.add(listener);
+    return () => {
+      maximizedListeners.delete(listener);
+    };
+  },
+});

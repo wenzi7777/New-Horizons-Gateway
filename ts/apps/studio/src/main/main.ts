@@ -32,6 +32,7 @@ import type { SplashPrompt } from '../shared/areas/app';
 import { AREA_MODULES, AreaRegistry } from './areas';
 import { appService, configureAppArea } from './areas/app';
 import { QuitRequested, StartupSequence, waitFor, type StepBody, type StepResult } from './app/startup';
+import { WINDOW_CH } from './ipcChannels';
 import { registerStudioIpc, type DesktopPorts, type IpcEventLike } from './ipc';
 import { HostLogger, NodeWsConnector } from './nodeAdapters';
 import { APP_ENTRY, APP_SCHEME, SPLASH_ENTRY, contentSecurityPolicy, isExternalWebUrl, isRendererUrl, serveAppRequest } from './security';
@@ -134,7 +135,9 @@ function main(): void {
       title: PRODUCT_NAME,
       show: false,
       backgroundColor: backgroundColor(),
-      ...(IS_MAC ? { titleBarStyle: 'hiddenInset' as const } : {}),
+      // macOS keeps its own title bar (traffic lights over the top bar); Windows and
+      // Linux draw theirs in the renderer (TitleBarControls), without a menu bar.
+      ...(IS_MAC ? { titleBarStyle: 'hiddenInset' as const } : { frame: false }),
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,
@@ -158,6 +161,11 @@ function main(): void {
     window.on('closed', () => {
       if (mainWindow === window) mainWindow = null;
     });
+    const pushMaximized = () => {
+      if (!window.isDestroyed()) window.webContents.send(WINDOW_CH.maximized, window.isMaximized());
+    };
+    window.on('maximize', pushMaximized);
+    window.on('unmaximize', pushMaximized);
     void (DEV_SERVER_URL ? window.loadURL(DEV_SERVER_URL) : window.loadURL(APP_ENTRY)).catch((error: unknown) => {
       logger?.error(`renderer load: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -268,7 +276,8 @@ function main(): void {
           { role: 'windowMenu' },
           { role: 'help', submenu: [{ label: `About ${PRODUCT_NAME}`, click: about }] },
         ];
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    // Windows / Linux: no menu bar (the window draws its own title bar).
+    Menu.setApplicationMenu(IS_MAC ? Menu.buildFromTemplate(template) : null);
   };
 
   /**
@@ -382,6 +391,18 @@ function main(): void {
       connector: new NodeWsConnector({ logger }),
     });
     registerStudioIpc(ipcMain, controller, desktopPorts(), { isTrustedSender, logger });
+    ipcMain.handle(WINDOW_CH.control, (event, action: unknown) => {
+      if (!isTrustedSender(event as unknown as IpcEventLike)) throw new Error('untrusted_sender');
+      const window = BrowserWindow.fromWebContents(event.sender);
+      if (!window) return false;
+      if (action === 'minimize') window.minimize();
+      else if (action === 'toggleMaximize') {
+        if (window.isMaximized()) window.unmaximize();
+        else window.maximize();
+      } else if (action === 'close') window.close();
+      else if (action !== 'isMaximized') throw new Error('unknown_action');
+      return window.isMaximized();
+    });
     areas = new AreaRegistry(
       { controller, logger, userDataDir: userData, version: `v${app.getVersion()}` },
       {
