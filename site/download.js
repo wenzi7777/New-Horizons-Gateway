@@ -6,6 +6,9 @@
 // Every product publishes the same manifest shape (the shape
 // ts/packages/core/src/update/manifest.ts parseBinManifest reads):
 //   { version, notes_url, assets: { <platform key>: { url, sha256, size } } }
+// An asset may also carry the release workflow's VirusTotal result,
+//   virustotal: { url, sha256, malicious, scanned_at }
+// which the page shows as a badge; parseBinManifest ignores it.
 // with the same Python-style "truthy, str(), strip()" text handling and error
 // codes. The page reads every platform at once, so an asset that would make
 // parseBinManifest throw for its platform is left out (and reported in
@@ -125,7 +128,28 @@ export function parseAsset(entry) {
     throw new Error("manifest_missing_size");
   }
   if (!Number.isInteger(size) || size <= 0) throw new Error("manifest_missing_size");
-  return { url, sha256, size };
+  const virustotal = parseVirusTotal(entry.virustotal);
+  return virustotal ? { url, sha256, size, virustotal } : { url, sha256, size };
+}
+
+/**
+ * An asset's VirusTotal scan: { url, sha256, malicious, scannedAt } or null
+ * when absent or unusable (no https report link, or a detection count that
+ * is not a whole number >= 0). Never throws: a bad scan entry hides the
+ * badge, it does not hide the download.
+ */
+export function parseVirusTotal(entry) {
+  if (!isPlainObject(entry)) return null;
+  const url = text(entry.url);
+  if (!/^https:\/\/(www\.)?virustotal\.com\//i.test(url)) return null;
+  let malicious;
+  try {
+    malicious = pyFloat(entry.malicious);
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(malicious) || malicious < 0) return null;
+  return { url, sha256: text(entry.sha256).toLowerCase(), malicious, scannedAt: text(entry.scanned_at) };
 }
 
 /**
@@ -360,4 +384,41 @@ export function pickLanguage(stored, browserLanguages) {
     if (lang.startsWith("en")) return "en";
   }
   return "en";
+}
+
+/**
+ * The "Scanned by VirusTotal" badge for an asset, or null when the asset has
+ * no usable scan (then nothing is shown):
+ *   { href, tone: "clean" | "flagged", labelKey, titleKey, vars }
+ * `labelKey`/`titleKey` are i18n keys; `vars` fills their placeholders.
+ */
+export function virusTotalBadge(asset) {
+  const scan = asset && asset.virustotal;
+  if (!scan) return null;
+  const clean = scan.malicious === 0;
+  const date = /^\d{4}-\d{2}-\d{2}/.test(scan.scannedAt) ? scan.scannedAt.slice(0, 10) : "";
+  return {
+    href: scan.url,
+    tone: clean ? "clean" : "flagged",
+    labelKey: clean ? "vtClean" : "vtFlagged",
+    titleKey: date ? "vtTitleDated" : "vtTitle",
+    vars: { count: scan.malicious, date },
+  };
+}
+
+/** Whether the "open on your phone" QR code suits the visitor: computers only. */
+export function showsPhoneQr(platform) {
+  const os = platform && platform.os;
+  return os === "mac" || os === "windows" || os === "linux" || os === "chromeos";
+}
+
+/** The address the QR code holds: this page as opened, without the #fragment. */
+export function phoneQrUrl(href) {
+  try {
+    const url = new URL(href);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return "";
+  }
 }

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const SITE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = resolve(SITE_DIR, "..");
 
-export const SOURCES = ["index.html", "app.js", "app.css", "download.js", "i18n.js"];
+export const SOURCES = ["index.html", "app.js", "app.css", "download.js", "i18n.js", "qr.js"];
 export const SHARED = {
   "tokens.css": join(REPO_DIR, "ts/packages/ui-tokens/src/tokens.css"),
   "theme.js": join(REPO_DIR, "ts/packages/node/webui/theme.js"),

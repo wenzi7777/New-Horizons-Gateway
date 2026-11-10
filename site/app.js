@@ -17,9 +17,13 @@ import {
   pickLanguage,
   productView,
   recommendedProduct,
+  phoneQrUrl,
   releasePageUrl,
   renderedUrl,
+  showsPhoneQr,
+  virusTotalBadge,
 } from "./download.js?v=__BUILD__";
+import { qrSvg } from "./qr.js?v=__BUILD__";
 import { STRINGS } from "./i18n.js?v=__BUILD__";
 
 const LANGUAGE_KEY = "nh-download-language";
@@ -38,6 +42,7 @@ const ICONS = {
   download: `<svg ${ICON_ATTRS}><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>`,
   copy: `<svg ${ICON_ATTRS}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
   check: `<svg ${ICON_ATTRS} stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg>`,
+  shield: `<svg ${ICON_ATTRS}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`,
 };
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -223,6 +228,7 @@ function render() {
   // Nothing to migrate on a phone.
   $("migrate-panel").hidden = platform.os === "android" || platform.os === "ios";
   setCommand("py-stop", "python3 scripts/stop.py");
+  renderPhoneQr();
   for (const product of PRODUCTS) renderProduct(product);
   openInstructions();
 }
@@ -265,6 +271,9 @@ function renderReady(product, node, manifest) {
   for (const key of product.keys) list.append(assetRow(key, manifest.assets[key], manifest.version, primary.includes(key)));
   if (product.keys.length === 1 && primary.length) list.hidden = true;
   else list.hidden = false;
+  // The list carries each build's scan badge; when it is hidden (Pocket on
+  // Android), the badge goes beside the big button instead.
+  if (list.hidden) for (const key of primary) appendScanBadge(actions, manifest.assets[key]);
 
   role(node, "release").href = releasePageUrl(product.id, manifest.version);
   renderNotesLink(product);
@@ -292,6 +301,7 @@ function assetRow(key, asset, version, recommended) {
   meta.className = "meta";
   meta.textContent = asset ? [version, formatSize(asset.size), fileNameFromUrl(asset.url)].join(" · ") : tr("notBuilt");
   info.append(name, meta);
+  if (asset) appendScanBadge(info, asset);
   if (asset) info.append(shaRow(asset.sha256, tr("copySha", { platform: tr(`platform.${key}`) })));
   row.append(info);
 
@@ -306,6 +316,38 @@ function assetRow(key, asset, version, recommended) {
     row.append(link);
   }
   return row;
+}
+
+/** "Scanned by VirusTotal" linking to the report; nothing when the manifest has no scan. */
+function appendScanBadge(parent, asset) {
+  const badge = virusTotalBadge(asset);
+  if (!badge) return;
+  const link = document.createElement("a");
+  link.className = `scan-badge ${badge.tone}`;
+  link.href = badge.href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.title = tr(badge.titleKey, badge.vars);
+  link.innerHTML = ICONS.shield;
+  link.append(tr(badge.labelKey, badge.vars));
+  parent.append(link);
+}
+
+// The page's own address as a QR code, so a phone can open it (computers only).
+let qrRendered = "";
+function renderPhoneQr() {
+  const panel = $("phone-qr");
+  const href = showsPhoneQr(platform) ? phoneQrUrl(window.location.href) : "";
+  panel.hidden = !href;
+  if (!href) return;
+  const key = `${href}|${language}`;
+  if (qrRendered === key) return;
+  qrRendered = key;
+  try {
+    $("phone-qr-code").innerHTML = qrSvg(href, { label: tr("qrLabel") });
+  } catch {
+    panel.hidden = true; // an address too long for the encoder: no code
+  }
 }
 
 function shaRow(sha256, copyLabel) {
@@ -402,7 +444,7 @@ function renderCommands(product, manifest) {
     setCommand("win-run", `.\\${win}`);
     setCommand("linux-run", `chmod +x ${linux} && ./${linux}`);
     const own = platform.os === "windows" ? `.\\${win}` : `./${platform.os === "linux" ? linux : mac}`;
-    setCommand("headless-login", `${own} --login`);
+    setCommand("headless-bench", `${own} --bench`);
   }
 }
 
@@ -443,6 +485,7 @@ function setChannel(next) {
   else url.searchParams.delete("channel");
   window.history.replaceState(null, "", url);
   updateChannelControl();
+  renderPhoneQr(); // the code follows the address (?channel=beta)
   load();
 }
 

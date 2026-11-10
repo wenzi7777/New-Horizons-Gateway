@@ -54,6 +54,13 @@
         </div>
         <span class="field-note" id="channel-hint" data-i18n="channelBetaHint" hidden></span>
       </div>
+      <aside class="phone-qr" id="phone-qr" aria-labelledby="phone-qr-title" hidden>
+        <div class="phone-qr-code" id="phone-qr-code"></div>
+        <div class="phone-qr-text">
+          <strong id="phone-qr-title" data-i18n="qrTitle">Open on your phone</strong>
+          <span class="field-note" data-i18n="qrCopy"></span>
+        </div>
+      </aside>
     </section>
 
     <div id="status" role="status" aria-live="polite">
@@ -102,6 +109,8 @@
             <ol class="steps disclosure-body">
               <li data-i18n="studioMac1"></li>
               <li data-i18n="studioMac2"></li>
+              <li data-i18n="studioMac3"></li>
+              <li data-i18n="studioMac4"></li>
             </ol>
           </details>
           <details class="disclosure" data-os="windows">
@@ -176,8 +185,8 @@
             </ol>
           </details>
         </div>
-        <p class="field-note"><span data-i18n="headlessLogin"></span></p>
-        <div class="command" data-cmd="headless-login"></div>
+        <p class="field-note"><span data-i18n="headlessBench"></span></p>
+        <div class="command" data-cmd="headless-bench"></div>
         <p class="field-note" data-i18n="headlessTakeover"></p>
       </section>
       <section class="panel product" id="product-pocket" data-product="pocket" aria-labelledby="pocket-name">

@@ -45,7 +45,7 @@ test("the page shows the full product names and drops the old product", () => {
     assert.equal(STRINGS[lang].headlessName, "New Horizons Studio (headless)");
     assert.equal(STRINGS[lang].pocketName, "New Horizons Studio Pocket");
     assert.match(STRINGS[lang].migrateCopy, /v1\.2\.0/);
-    assert.match(STRINGS[lang].macStep2 + STRINGS[lang].headlessLogin, /--login/);
+    assert.match(STRINGS[lang].headlessBench, /--bench/);
   }
   assert.doesNotMatch(html, /python-view|NH Gateway for Python/);
 });
