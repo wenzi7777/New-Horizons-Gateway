@@ -4,7 +4,7 @@
 // Studio counts wired and Wi-Fi alike: the network is never metered here.
 import { hostname } from 'node:os';
 
-import { FetchSyncHttp, SyncClient, SyncError, type SyncHttp } from '@nhgw/host';
+import { estimateCapacity, FetchSyncHttp, runCpuBench, SyncClient, SyncError, type SyncHttp } from '@nhgw/host';
 
 import type { SyncAreaStatus } from '../../shared/areas/sync';
 import type { AreaContext, AreaModule } from './registry';
@@ -75,6 +75,12 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
         resume: () => guarded(async (c) => (await c.resume(), plain(c.status()))),
         syncLabelsNow: () => guarded((c) => c.syncLabelsNow()),
         syncProfilesNow: () => guarded((c) => c.syncProfilesNow()),
+        relayBench: () =>
+          guarded(async (c) => {
+            const cpu = await runCpuBench({ durationMs: 3000 });
+            const link = await c.benchLink();
+            return { framesPerSecond: cpu.framesPerSecond, packetBytes: cpu.packetBytes, link, estimate: estimateCapacity({ cpu, link }) };
+          }),
       };
     },
     async dispose() {

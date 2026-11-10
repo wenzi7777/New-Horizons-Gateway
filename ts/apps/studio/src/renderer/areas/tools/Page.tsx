@@ -3,8 +3,9 @@
 //   #/tools/terminal[/<uid>]            device terminal
 //   #/tools/files[/<uid>]               device files
 //   #/tools/timestamp                   timestamp converter
+//   #/tools/bench                       relay performance test
 //   #/tools/pressure                    lab pressure chamber
-import { ArrowLeft, ChartLine, FolderTree, Gauge, SquareTerminal, Timer } from 'lucide-react';
+import { Activity, ArrowLeft, ChartLine, FolderTree, Gauge, SquareTerminal, Timer } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Card, Notice } from '../../components/ui';
@@ -14,6 +15,7 @@ import { RecordingAnalysisTool } from './analysis/RecordingAnalysisTool';
 import { TimestampConverter } from './analysis/TimestampConverter';
 import { DeviceFilesTool } from './DeviceFilesTool';
 import { PressureControlTool } from './PressureControlTool';
+import { RelayBenchTool } from './RelayBenchTool';
 import { TerminalTool } from './TerminalTool';
 import { toolsStrings, type ToolsStringsKey } from './toolsStrings';
 import './tools-analysis.css';
@@ -25,6 +27,7 @@ const TOOLS: { id: string; title: ToolsStringsKey; copy: ToolsStringsKey; icon: 
   { id: 'terminal', title: 'toolTerminal', copy: 'toolTerminalCopy', icon: <SquareTerminal size={16} aria-hidden="true" /> },
   { id: 'files', title: 'toolFiles', copy: 'toolFilesCopy', icon: <FolderTree size={16} aria-hidden="true" /> },
   { id: 'timestamp', title: 'toolTimestamp', copy: 'toolTimestampCopy', icon: <Timer size={16} aria-hidden="true" /> },
+  { id: 'bench', title: 'toolBench', copy: 'toolBenchCopy', icon: <Activity size={16} aria-hidden="true" /> },
   { id: 'pressure', title: 'toolPressure', copy: 'toolPressureCopy', icon: <Gauge size={16} aria-hidden="true" /> },
 ];
 
@@ -88,6 +91,13 @@ export default function ToolsPage({ route, navigate }: ToolsPageProps) {
           <Card title={t('toolTimestamp')}>
             <TimestampConverter recordingRange={null} />
           </Card>
+        </div>
+      );
+    case 'bench':
+      return (
+        <div className="stack">
+          {back}
+          <RelayBenchTool />
         </div>
       );
     case 'pressure':

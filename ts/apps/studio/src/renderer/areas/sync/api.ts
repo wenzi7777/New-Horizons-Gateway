@@ -19,6 +19,7 @@ export function syncApi(api: StudioApi) {
     resume: () => call('resume'),
     syncLabelsNow: () => call('syncLabelsNow'),
     syncProfilesNow: () => call('syncProfilesNow'),
+    relayBench: () => call('relayBench'),
   };
   return {
     ...methods,

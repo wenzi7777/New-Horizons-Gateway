@@ -59,6 +59,21 @@ export interface SyncAreaStatus {
   profiles: SyncMetadataResult | null;
 }
 
+export interface RelayBenchReport {
+  framesPerSecond: number;
+  packetBytes: number;
+  link: { ok: boolean; error: string; rttMs: number | null; uploadBytesPerSecond: number | null };
+  estimate: {
+    fps: number;
+    sensors: number;
+    bytesPerDevicePerSecond: number;
+    devicesByMachine: number;
+    devicesByNetwork: number | null;
+    devices: number;
+    bottleneck: 'machine' | 'network' | 'unknown';
+  };
+}
+
 export interface SyncAreaApi {
   status(): SyncAreaStatus;
   /** Signs in with a Desktop account (the password is sent once, never kept), stores the app token it yields, tests the connection. */
@@ -75,6 +90,8 @@ export interface SyncAreaApi {
   pause(): SyncAreaStatus;
   resume(): SyncAreaStatus;
   syncLabelsNow(): SyncMetadataResult;
+  /** Relay performance test: this computer (3 s), then the server link. */
+  relayBench(): RelayBenchReport;
   syncProfilesNow(): SyncMetadataResult;
 }
 

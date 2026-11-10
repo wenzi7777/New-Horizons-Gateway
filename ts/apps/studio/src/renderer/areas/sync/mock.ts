@@ -57,6 +57,15 @@ export const syncMock: AreaMock = (emit) => {
       changed();
       return status;
     },
+    relayBench: async () => {
+      await new Promise((r) => setTimeout(r, 1200));
+      return {
+        framesPerSecond: 180_000,
+        packetBytes: 472,
+        link: { ok: true, error: '', rttMs: 18, uploadBytesPerSecond: status.configured ? 3_000_000 : null },
+        estimate: { fps: 60, sensors: 112, bytesPerDevicePerSecond: 39_180, devicesByMachine: 1800, devicesByNetwork: status.configured ? 45 : null, devices: status.configured ? 45 : 1800, bottleneck: status.configured ? 'network' : 'unknown' },
+      };
+    },
     testConnection: () => (status.connection = ok()),
     uploadNow: () => status,
     retry: () => status,
