@@ -7,7 +7,9 @@ Desktop lists it under NH Studio / NH Pocket (`client_type: "studio"`).
 - Dropped into the old Gateway folder (or started beside it) it takes the
   Python Gateway's config over, `gateway_id` included, so the server sees the
   same relay (`src/legacyImport.ts`).
-- App token (made on the server's Relays page): `nh-studio --set-token`
+- Server account: `nh-studio --login` (asks for a Desktop user name and
+  password; only the key the server returns is kept), `--logout`; or
+  `nh-studio --set-token`
   reads it from stdin (`--clear-token`, `--token-status`), or the web UI's
   Connection page from this machine (127.0.0.1 only). It is stored with the
   server it was entered for and sent only there; `/api/status` shows it

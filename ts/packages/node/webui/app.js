@@ -452,22 +452,38 @@
     renderAppToken(data.app_token);
   }
 
-  // The NH Studio app token: only a masked form ever reaches this page.
+  // The server account: only a masked form of the key ever reaches this page.
   function renderAppToken(info) {
     const token = info || {};
     let text = tr("appTokenNone");
-    if (token.set) text = fmt(token.active ? "appTokenActive" : "appTokenInactive", { token: token.masked || "", server: token.server || "-" });
+    if (token.set && token.account) text = fmt(token.active ? "appSignedInAs" : "appSignedInElsewhere", { account: token.account, server: token.server || "-" });
+    else if (token.set) text = fmt(token.active ? "appTokenActive" : "appTokenInactive", { token: token.masked || "", server: token.server || "-" });
     setText("app-token-status", text, "");
-    show("clear-app-token", Boolean(token.set));
+    const signedIn = Boolean(token.set);
+    show("app-logout", signedIn);
+    show("app-login", !signedIn);
+    show("app-login-user-field", !signedIn);
+    show("app-login-password-field", !signedIn);
   }
 
-  async function saveAppToken(token) {
-    const payload = token === null ? await post("/api/app-token/clear") : await post("/api/app-token", { token });
-    $("app-token-input").value = "";
+  async function signIn(username, password) {
+    try {
+      const payload = await post("/api/app-token/login", { username, password });
+      renderAppToken(payload.app_token);
+      toast(tr("appSignedIn"));
+      refresh();
+    } finally {
+      $("app-login-password").value = "";
+    }
+  }
+
+  async function signOut() {
+    const payload = await post("/api/app-token/logout");
     renderAppToken(payload.app_token);
-    toast(tr(token === null ? "appTokenCleared" : "appTokenSaved"));
+    toast(tr("appSignedOut"));
     refresh();
   }
+
 
   // Settings carried over from the previous (Python) Gateway: said once,
   // quietly, until dismissed in this browser.
@@ -1081,12 +1097,13 @@
     });
     $("app-token-form").addEventListener("submit", (event) => {
       event.preventDefault();
-      const token = $("app-token-input").value.trim();
-      if (!token) return;
-      withBusy($("save-app-token"), () => saveAppToken(token).catch((error) => toast(errorText(error), "error")));
+      const username = $("app-login-user").value.trim();
+      const password = $("app-login-password").value;
+      if (!username || !password) return;
+      withBusy($("app-login"), () => signIn(username, password).catch((error) => toast(errorText(error), "error")));
     });
-    $("clear-app-token").addEventListener("click", (event) =>
-      withBusy(event.currentTarget, () => saveAppToken(null).catch((error) => toast(errorText(error), "error"))),
+    $("app-logout").addEventListener("click", (event) =>
+      withBusy(event.currentTarget, () => signOut().catch((error) => toast(errorText(error), "error"))),
     );
     $("target-mode").addEventListener("click", (event) => {
       const button = event.target.closest("button[data-mode]");

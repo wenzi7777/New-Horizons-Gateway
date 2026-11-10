@@ -305,7 +305,7 @@ describe('web API', () => {
     expect((await api(base, '/api/app-token', { token: 'nope' })).json).toEqual({ ok: false, error: 'invalid_app_token' });
     const saved = await api(base, '/api/app-token', { token });
     expect(saved.status).toBe(200);
-    expect(saved.json.app_token).toEqual({ set: true, masked: 'nhapp_0123456789ab_…SSSS', server: 'http://127.0.0.1:5051/newhorizons', active: true });
+    expect(saved.json.app_token).toEqual({ set: true, masked: 'nhapp_0123456789ab_…SSSS', server: 'http://127.0.0.1:5051/newhorizons', active: true, account: '' });
     await waitFor(() => connector.headers.length > 1, 5000);
     expect(connector.headers.at(-1)).toEqual({ Authorization: `Bearer ${token}` });
     const status = await api(base, '/api/status');
