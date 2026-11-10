@@ -2,8 +2,10 @@
 // app.css): cards, segmented controls, switches, disclosures, status dots,
 // confirm dialogs, toasts, the battery indicator and the brand mark.
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, BatteryCharging, Check, CircleAlert, Info, X } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
+import { AlertTriangle, BatteryCharging, Check, ChevronDown, ChevronUp, CircleAlert, Info, X } from 'lucide-react';
+
+export { Select, type SelectChangeEvent } from './Select';
 
 import brandUrl from '../assets/nh-studio-rounded.svg';
 import { useStudio } from '../state/studio';
@@ -100,7 +102,7 @@ export function SwitchRow({ checked, onChange, title, copy, disabled }: { checke
   const id = useId();
   return (
     <label className="switch-row" htmlFor={id}>
-      <input id={id} type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <input id={id} className="nh-switch" type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       <strong>{title}</strong>
       {copy ? <small>{copy}</small> : null}
     </label>
@@ -265,5 +267,83 @@ export function Toasts() {
         </div>
       ))}
     </div>
+  );
+}
+
+// ---- Form controls (no native look) -----------------------------------------------
+
+type BaseInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>;
+
+/** A checkbox with the app's own mark (the native input stays for a11y, drawn with appearance: none). */
+export function Checkbox({ className = '', label, ...rest }: BaseInputProps & { label?: ReactNode }) {
+  const box = <input {...rest} type="checkbox" className={`nh-checkbox ${className}`.trim()} />;
+  if (label === undefined) return box;
+  return (
+    <label className="nh-checkbox-label">
+      {box}
+      <span>{label}</span>
+    </label>
+  );
+}
+
+/** A switch (role="switch") drawn as a pill toggle. */
+export function Switch({ className = '', ...rest }: BaseInputProps) {
+  return <input {...rest} type="checkbox" role="switch" className={`nh-switch ${className}`.trim()} />;
+}
+
+/** A radio button with the app's own mark. */
+export function Radio({ className = '', ...rest }: BaseInputProps) {
+  return <input {...rest} type="radio" className={`nh-radio ${className}`.trim()} />;
+}
+
+/** A range slider with a custom track and thumb. */
+export function Slider({ className = '', ...rest }: BaseInputProps) {
+  return <input {...rest} type="range" className={`nh-range ${className}`.trim()} />;
+}
+
+/** Text-like input (text, password, search, url) with the app's field look. */
+export function TextInput({ type = 'text', className = '', ...rest }: BaseInputProps & { type?: 'text' | 'password' | 'search' | 'url' | 'email' }) {
+  return <input {...rest} type={type} className={`nh-input ${className}`.trim()} />;
+}
+
+function decimals(step: number): number {
+  const text = String(step);
+  const dot = text.indexOf('.');
+  return dot < 0 ? 0 : text.length - dot - 1;
+}
+
+/**
+ * A number field: native spinners hidden, our own up/down steppers. Arrow
+ * keys still step (the browser does that for type="number"); the buttons fire
+ * a synthetic change by setting the value through the native setter.
+ */
+export function NumberInput({ className = '', step, min, max, disabled, readOnly, ...rest }: BaseInputProps) {
+  const ref = useRef<HTMLInputElement | null>(null);
+  const bump = (direction: 1 | -1) => {
+    const input = ref.current;
+    if (!input || disabled || readOnly) return;
+    const stepNum = step === undefined || step === 'any' ? 1 : Number(step) || 1;
+    const current = input.value === '' ? 0 : Number(input.value);
+    let next = (Number.isFinite(current) ? current : 0) + direction * stepNum;
+    if (min !== undefined && min !== '' && next < Number(min)) next = Number(min);
+    if (max !== undefined && max !== '' && next > Number(max)) next = Number(max);
+    const text = next.toFixed(decimals(stepNum));
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  };
+  return (
+    <span className={`nh-number${disabled ? ' disabled' : ''} ${className}`.trim()}>
+      <input {...rest} ref={ref} type="number" step={step} min={min} max={max} disabled={disabled} readOnly={readOnly} />
+      <span className="nh-number-steppers" aria-hidden="true">
+        <button type="button" tabIndex={-1} disabled={disabled || readOnly} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(1)}>
+          <ChevronUp size={11} strokeWidth={2.4} />
+        </button>
+        <button type="button" tabIndex={-1} disabled={disabled || readOnly} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(-1)}>
+          <ChevronDown size={11} strokeWidth={2.4} />
+        </button>
+      </span>
+    </span>
   );
 }

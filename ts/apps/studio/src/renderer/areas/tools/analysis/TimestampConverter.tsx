@@ -9,6 +9,7 @@ import {
   timestampToEpochMs,
   type TimestampUnit,
 } from "../lib/recordingAnalysis";
+import { Select, TextInput } from '../../../components/ui';
 
 const UNITS: TimestampUnit[] = ["s", "ms", "us", "ns"];
 const UNIT_KEYS: Record<TimestampUnit, ToolsStringsKey> = {
@@ -60,7 +61,7 @@ export function TimestampConverter({ recordingRange }: TimestampConverterProps) 
         <div className="analysis-converter-inputs">
           <label className="analysis-field grow">
             <span>{t("analysisConvertInput")}</span>
-            <input
+            <TextInput
               type="text"
               inputMode="decimal"
               value={value}
@@ -70,10 +71,10 @@ export function TimestampConverter({ recordingRange }: TimestampConverterProps) 
           </label>
           <label className="analysis-field">
             <span>{t("analysisConvertUnit")}</span>
-            <select value={unit} onChange={(event) => setUnit(event.target.value as TimestampUnit | "auto")}>
+            <Select value={unit} onChange={(event) => setUnit(event.target.value as TimestampUnit | "auto")}>
               <option value="auto">{t("analysisUnitAuto")}</option>
               {UNITS.map((item) => <option key={item} value={item}>{t(UNIT_KEYS[item])}</option>)}
-            </select>
+            </Select>
           </label>
           <button type="button" className="button compact" onClick={() => setValue(String(Date.now()))}>
             {t("analysisConvertNow")}
@@ -126,11 +127,11 @@ export function TimestampConverter({ recordingRange }: TimestampConverterProps) 
         <div className="analysis-converter-inputs">
           <label className="analysis-field grow">
             <span>{t("analysisConvertFrom")}</span>
-            <input type="text" inputMode="decimal" value={from} onChange={(event) => setFrom(event.target.value)} />
+            <TextInput type="text" inputMode="decimal" value={from} onChange={(event) => setFrom(event.target.value)} />
           </label>
           <label className="analysis-field grow">
             <span>{t("analysisConvertTo")}</span>
-            <input type="text" inputMode="decimal" value={to} onChange={(event) => setTo(event.target.value)} />
+            <TextInput type="text" inputMode="decimal" value={to} onChange={(event) => setTo(event.target.value)} />
           </label>
           {recordingRange ? (
             <button

@@ -11,7 +11,7 @@ import { appApi } from '../areas/app/api';
 import { useAreaT } from '../areas/i18n';
 import SyncSettingsSection from '../areas/sync/SettingsSection';
 import { AnimatedBrandMark, UAizuLogo } from '../components/BrandArt';
-import { Card, Disclosure, Facts, Field, Notice, Segmented, StatusDot, SwitchRow, useConfirm } from '../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, Segmented, StatusDot, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../components/ui';
 import { formatBytes, formatDateTime, formatTime, isValidServerUrl, isValidStudioId } from '../lib/format';
 import { LANGUAGE_NAMES, LOCALE_SETTINGS, type LocaleSetting } from '../lib/locale';
 import type { Route } from '../lib/navigation';
@@ -109,10 +109,10 @@ function GeneralSection({ st }: { st: ST }) {
           }}
         >
           <Field label={t('studioNameLabel')} hint={t('studioNameHint')}>
-            {(id) => <input id={id} type="text" maxLength={64} value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} />}
+            {(id) => <TextInput id={id} type="text" maxLength={64} value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} />}
           </Field>
           <Field label={t('studioIdLabel')} hint={t('gatewayIdHint')} error={!idValid ? t('err_gateway_id_invalid') : undefined}>
-            {(id) => <input id={id} type="text" className={`mono${idValid ? '' : ' invalid'}`} spellCheck={false} aria-invalid={!idValid} value={identity.id} onChange={(e) => setIdentity({ ...identity, id: e.target.value })} />}
+            {(id) => <TextInput id={id} type="text" className={`mono${idValid ? '' : ' invalid'}`} spellCheck={false} aria-invalid={!idValid} value={identity.id} onChange={(e) => setIdentity({ ...identity, id: e.target.value })} />}
           </Field>
           <div className="form-footer span-all">
             {dirty ? <span className="dirty-indicator">{t('unsavedChanges')}</span> : null}
@@ -139,13 +139,13 @@ function GeneralSection({ st }: { st: ST }) {
         </div>
         <Field label={t('language')}>
           {(id) => (
-            <select id={id} value={settings.locale} onChange={(e) => void updateSettings({ locale: e.target.value as LocaleSetting })}>
+            <Select id={id} value={settings.locale} onChange={(e) => void updateSettings({ locale: e.target.value as LocaleSetting })}>
               {LOCALE_SETTINGS.map((value) => (
                 <option key={value} value={value}>
                   {value === 'system' ? `${t('languageSystem')} (${LANGUAGE_NAMES[locale]})` : LANGUAGE_NAMES[value]}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
       </Card>
@@ -215,7 +215,7 @@ function ConnectionSection({ st }: { st: ST }) {
           >
             <Field label={t('manualUrlLabel')} error={manualUrl && !urlValid ? t('err_invalid_manual_url') : undefined}>
               {(id) => (
-                <input id={id} type="text" value={manualUrl} placeholder="wss://example.org/newhorizons/gateway/ws" spellCheck={false} aria-invalid={Boolean(manualUrl) && !urlValid} className={manualUrl && !urlValid ? 'invalid' : ''} onChange={(e) => setManualUrl(e.target.value)} />
+                <TextInput id={id} type="text" value={manualUrl} placeholder="wss://example.org/newhorizons/gateway/ws" spellCheck={false} aria-invalid={Boolean(manualUrl) && !urlValid} className={manualUrl && !urlValid ? 'invalid' : ''} onChange={(e) => setManualUrl(e.target.value)} />
               )}
             </Field>
             <button className="button primary" type="submit" disabled={!urlValid || manualUrl.trim() === settings.manualUrl}>
@@ -295,7 +295,7 @@ function DevicesSection({ st }: { st: ST }) {
                     void exec(st('rename'), () => api.setNickname(device.uid, name), { success: false });
                   }}
                 >
-                  <input aria-label={st('renameLabel', { device: device.displayName })} autoFocus maxLength={64} value={editing.name} onChange={(e) => setEditing({ uid: device.uid, name: e.target.value })} onKeyDown={(e) => e.key === 'Escape' && setEditing(null)} />
+                  <TextInput aria-label={st('renameLabel', { device: device.displayName })} autoFocus maxLength={64} value={editing.name} onChange={(e) => setEditing({ uid: device.uid, name: e.target.value })} onKeyDown={(e) => e.key === 'Escape' && setEditing(null)} />
                   <button className="button primary" type="submit">
                     {t('save')}
                   </button>
@@ -389,7 +389,7 @@ function RecordingSection({ st }: { st: ST }) {
       <Card title={st('cleanupTitle')} copy={st('cleanupCopy')}>
         <div className="field-row-form">
           <Field label={st('olderThan')}>
-            {(id) => <input id={id} type="number" min={1} max={3650} value={days} onChange={(e) => setDays(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />}
+            {(id) => <NumberInput id={id} min={1} max={3650} value={days} onChange={(e) => setDays(Math.max(1, Math.floor(Number(e.target.value) || 1)))} />}
           </Field>
           <button
             type="button"

@@ -7,7 +7,7 @@ import { ArrowLeft, Copy, Download, FilePlus2, ImagePlus, Pencil, Save, Trash2, 
 
 import type { Profile, ProfileSensor } from '../../../shared/areas/profiles';
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Field, Notice, Segmented, SwitchRow, useConfirm } from '../../components/ui';
+import { Card, Field, Notice, Segmented, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
 import type { Route } from '../../lib/navigation';
 import { useLiveFrame, useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
@@ -75,7 +75,7 @@ function ProfileList({ navigate }: { navigate: (route: Route) => void }) {
           client.create(newName.trim() || 'new_profile').then(open, fail);
         }}
       >
-        <Field label={pt('newName')}>{(id) => <input id={id} value={newName} placeholder="new_profile" onChange={(e) => setNewName(e.target.value)} />}</Field>
+        <Field label={pt('newName')}>{(id) => <TextInput id={id} value={newName} placeholder="new_profile" onChange={(e) => setNewName(e.target.value)} />}</Field>
         <button className="button primary" type="submit" disabled={editable !== true}>
           <FilePlus2 size={14} aria-hidden="true" />
           {pt('create')}
@@ -250,7 +250,7 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
               run().catch(fail);
             }}
           >
-            <Field label={pt('renameTo')}>{(id) => <input id={id} autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)} />}</Field>
+            <Field label={pt('renameTo')}>{(id) => <TextInput id={id} autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)} />}</Field>
             <button className="button primary" type="submit">{pt('rename')}</button>
           </form>
         ) : (
@@ -331,14 +331,14 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
           <Card title={pt('preview')}>
             <Field label={pt('previewDevice')}>
               {(id) => (
-                <select id={id} value={previewUid ?? ''} onChange={(e) => setPreviewUid(e.target.value || null)}>
+                <Select id={id} value={previewUid ?? ''} onChange={(e) => setPreviewUid(e.target.value || null)}>
                   <option value="">{pt('none')}</option>
                   {devices.filter((d) => d.matrix).map((d) => (
                     <option key={d.uid} value={d.uid} disabled={!d.online}>
                       {d.displayName}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
             {values ? (
@@ -369,12 +369,12 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
           <Card title={pt('sensor')}>
             {sel && selected !== null ? (
               <div className="profiles-fields">
-                <Field label={pt('sensorLabel')}>{(id) => <input id={id} value={sel.label} onChange={(e) => updateSensor(selected, { label: e.target.value })} />}</Field>
+                <Field label={pt('sensorLabel')}>{(id) => <TextInput id={id} value={sel.label} onChange={(e) => updateSensor(selected, { label: e.target.value })} />}</Field>
                 <Field label={pt('sensorIndex')}>
-                  {(id) => <input id={id} type="number" min={0} value={sel.index} onChange={(e) => updateSensor(selected, { index: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />}
+                  {(id) => <NumberInput id={id} min={0} value={sel.index} onChange={(e) => updateSensor(selected, { index: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />}
                 </Field>
-                <Field label="x">{(id) => <input id={id} type="number" min={0} max={1} step={0.001} value={Number(sel.x.toFixed(4))} onChange={(e) => updateSensor(selected, { x: Math.min(1, Math.max(0, Number(e.target.value) || 0)) })} />}</Field>
-                <Field label="y">{(id) => <input id={id} type="number" min={0} max={1} step={0.001} value={Number(sel.y.toFixed(4))} onChange={(e) => updateSensor(selected, { y: Math.min(1, Math.max(0, Number(e.target.value) || 0)) })} />}</Field>
+                <Field label="x">{(id) => <NumberInput id={id} min={0} max={1} step={0.001} value={Number(sel.x.toFixed(4))} onChange={(e) => updateSensor(selected, { x: Math.min(1, Math.max(0, Number(e.target.value) || 0)) })} />}</Field>
+                <Field label="y">{(id) => <NumberInput id={id} min={0} max={1} step={0.001} value={Number(sel.y.toFixed(4))} onChange={(e) => updateSensor(selected, { y: Math.min(1, Math.max(0, Number(e.target.value) || 0)) })} />}</Field>
                 <SwitchRow checked={sel.enabled} onChange={(on) => updateSensor(selected, { enabled: on })} title={pt('sensorEnabled')} />
                 <button className="button danger" type="button" onClick={() => removeSensor(selected)}>
                   <Trash2 size={14} aria-hidden="true" />
@@ -410,10 +410,10 @@ function ProfileEditor({ name, navigate }: { name: string; navigate: (route: Rou
 
           <Card title={pt('general')}>
             <div className="profiles-fields">
-              <Field label={pt('displayName')}>{(id) => <input id={id} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />}</Field>
+              <Field label={pt('displayName')}>{(id) => <TextInput id={id} value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />}</Field>
               <Field label={pt('deviceType')}>
                 {(id) => (
-                  <input id={id} list="profiles-device-types" value={profile.deviceType} onChange={(e) => setProfile({ ...profile, deviceType: e.target.value })} />
+                  <TextInput id={id} list="profiles-device-types" value={profile.deviceType} onChange={(e) => setProfile({ ...profile, deviceType: e.target.value })} />
                 )}
               </Field>
               <datalist id="profiles-device-types">
@@ -523,9 +523,9 @@ function NumberField({ label, value, min, max, step = 1, onChange }: { label: st
   return (
     <Field label={label}>
       {(id) => (
-        <input
+        <NumberInput
           id={id}
-          type="number"
+         
           min={min}
           max={max}
           step={step}
@@ -546,7 +546,7 @@ function CsvField({ label, hint, value, onChange }: { label: string; hint: React
   useEffect(() => setText(value.join(',')), [value]);
   return (
     <Field label={label} hint={hint}>
-      {(id) => <input id={id} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => onChange(parseCsvInts(text))} />}
+      {(id) => <TextInput id={id} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => onChange(parseCsvInts(text))} />}
     </Field>
   );
 }

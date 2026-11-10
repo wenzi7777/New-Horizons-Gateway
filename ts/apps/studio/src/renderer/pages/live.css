@@ -1,0 +1,259 @@
+/* Visualization card styles ported from New-Horizons-Desktop styles.css. */
+.cop-mini-board {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 34px;
+  flex: none;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  background:
+    linear-gradient(rgba(46, 111, 87, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(46, 111, 87, 0.08) 1px, transparent 1px),
+    var(--panel);
+  background-size: 8px 8px;
+  overflow: hidden;
+}
+
+.cop-mini-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.cop-mini-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d94336;
+  box-shadow: 0 0 0 3px rgba(217, 67, 54, 0.18);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+
+.viz-card-cop.has-data .cop-mini-placeholder {
+  display: none;
+}
+
+.viz-card-cop.has-data .cop-mini-dot {
+  opacity: 1;
+}
+
+.visualization-device-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
+  transition: box-shadow 0.4s ease;
+}
+
+/* Card top: one line of name and actions, one line of view controls, one
+   line of live numbers -- the renderer below gets the height. */
+.viz-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.viz-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.viz-card-title input {
+  align-self: center;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.viz-card-name {
+  font-size: 16px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.viz-card-uid {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+}
+
+.viz-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.viz-card-actions .status-pill,
+.viz-card-actions .visualization-battery-chip {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.viz-card-actions .visualization-battery-chip .battery-status-indicator {
+  width: 18px;
+}
+
+.viz-card-actions .device-badge {
+  min-height: 0;
+  font-size: 12px;
+}
+
+.viz-card-remove {
+  min-width: 28px;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.viz-card-remove:hover {
+  color: var(--danger);
+}
+
+.viz-card-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+}
+
+.viz-renderer-toggle {
+  align-self: auto;
+}
+
+.viz-renderer-toggle button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.viz-card-profile {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.viz-card-profile select ,
+
+.viz-card-profile .nh-select {
+  max-width: 200px;
+  min-height: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.viz-card-toolbar .switch-row {
+  font-size: 12px;
+  gap: 5px;
+}
+
+.viz-card-shape {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-card-dot-size {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.viz-card-dot-size input {
+  flex: 1;
+  max-width: 260px;
+}
+
+.viz-card-hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+}
+
+/* Fixed columns across the whole card (a vector or the COP gets two), so a
+   value gaining a digit never moves its neighbours; a value that outgrows
+   its column shrinks instead (FitText). Narrow screens fall back to 4 columns. */
+.viz-card-stats {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  align-items: end;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+
+.viz-card-stats > div {
+  min-width: 0;
+}
+
+.viz-card-stats > .is-wide {
+  grid-column: span 2;
+}
+
+.viz-card-stats:not(:has(.viz-card-cop)) {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .viz-card-stats,
+  .viz-card-stats:not(:has(.viz-card-cop)) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.viz-card-stats dt {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.viz-card-stats dd {
+  margin: 1px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fit-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.viz-card-cop dd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.viz-card-cop dd .fit-text {
+  flex: 1;
+}
+
+/* The card a device card's "Visualize" link just opened. */
+.visualization-device-card.is-focused {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+}
+
+.viz-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 13px; cursor: pointer; }
+.viz-card-toolbar .segmented-control { width: auto; }

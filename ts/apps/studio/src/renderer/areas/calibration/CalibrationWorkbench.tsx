@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Check, CircleCheck, Download, Plus } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Notice, useConfirm } from '../../components/ui';
+import { Card, Disclosure, Notice, useConfirm, NumberInput } from '../../components/ui';
 import { useStudio } from '../../state/studio';
 import { calibrationApi } from './api';
 import {
@@ -452,8 +452,8 @@ export function CalibrationWorkbench({ device }: { device: DeviceView }) {
               <div className="cal-row">
                 <label className="field cal-field">
                   <span className="field-label">{ct('calNewLevelKpa')}</span>
-                  <input
-                    type="number"
+                  <NumberInput
+                   
                     inputMode="decimal"
                     min={0}
                     step="any"
@@ -498,8 +498,8 @@ export function CalibrationWorkbench({ device }: { device: DeviceView }) {
                 <div className="cal-row">
                   <label className="field cal-field narrow">
                     <span className="field-label">{ct('calDurationSeconds')}</span>
-                    <input
-                      type="number"
+                    <NumberInput
+                     
                       inputMode="decimal"
                       min={0.5}
                       max={MAX_CAPTURE_MS / 1000}
@@ -521,8 +521,8 @@ export function CalibrationWorkbench({ device }: { device: DeviceView }) {
                 <div className="cal-row">
                   <label className="field cal-field">
                     <span className="field-label">{ct('calReferenceLabel')}</span>
-                    <input
-                      type="number"
+                    <NumberInput
+                     
                       inputMode="decimal"
                       min={0}
                       step="any"
@@ -823,7 +823,7 @@ function FitSettingsEditor({ ct, settings, disabled, onApply }: { ct: T; setting
       <div className="cal-row">
         <label className="field cal-field narrow">
           <span className="field-label">{ct('paramFitMinLevel')}</span>
-          <input type="number" step="any" value={value} disabled={disabled} onChange={(event) => setValue(event.target.value)} />
+          <NumberInput step="any" value={value} disabled={disabled} onChange={(event) => setValue(event.target.value)} />
         </label>
         <button className="button" type="button" disabled={disabled || !value.trim() || !Number.isFinite(parsed)} onClick={() => onApply(parsed)}>{ct('calFitApply')}</button>
       </div>

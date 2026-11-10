@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FolderOpen, Image, RotateCcw } from 'lucide-react';
 
 import { TOOLS_CHUNK_BYTES, type ToolsFileSource } from '../../../../shared/areas/tools';
-import { Card, Facts, Notice, Segmented } from '../../../components/ui';
+import { Card, Facts, Notice, Segmented, Checkbox, Select } from '../../../components/ui';
 import { formatBytes, formatDateTime } from '../../../lib/format';
 import type { Route } from '../../../lib/navigation';
 import { useStudio } from '../../../state/studio';
@@ -347,7 +347,7 @@ export function RecordingAnalysisTool({ recordingId, navigate }: { recordingId: 
         <div className="analysis-source">
           <label className="field">
             <span className="field-label">{t('pickRecording')}</span>
-            <select
+            <Select
               value={recordingId ?? ''}
               onChange={(event) => navigate({ area: 'tools', path: event.target.value ? ['analysis', ...event.target.value.split('/')] : ['analysis'] })}
             >
@@ -357,7 +357,7 @@ export function RecordingAnalysisTool({ recordingId, navigate }: { recordingId: 
                   {r.deviceName || r.uid} · {formatDateTime(r.startedAtMs, locale)} · {formatBytes(r.bytes)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <span className="muted">{t('analysisOr')}</span>
           <button className="button" type="button" onClick={() => void openLocal()}>
@@ -433,7 +433,7 @@ export function RecordingAnalysisTool({ recordingId, navigate }: { recordingId: 
               />
               {loaded.events.length ? (
                 <label className="analysis-check">
-                  <input type="checkbox" checked={showEvents} onChange={(event) => setShowEvents(event.target.checked)} />
+                  <Checkbox checked={showEvents} onChange={(event) => setShowEvents(event.target.checked)} />
                   {t('analysisShowEvents')}
                 </label>
               ) : null}

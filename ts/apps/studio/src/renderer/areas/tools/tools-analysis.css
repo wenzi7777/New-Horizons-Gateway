@@ -78,3 +78,4 @@
 .pressure-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 14px; border: 2px solid var(--warning); border-radius: var(--radius-md); background: color-mix(in srgb, var(--warning) 10%, var(--panel-solid)); color: var(--text); font-weight: 600; }
 .pressure-banner span { flex: 1; }
 @media (prefers-reduced-motion: reduce) { .pressure-bar i, .tools-hub-item { transition: none; } }
+.pressure-input-row .nh-number { width: 120px; }

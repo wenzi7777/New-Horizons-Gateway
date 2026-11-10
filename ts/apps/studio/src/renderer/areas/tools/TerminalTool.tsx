@@ -11,7 +11,7 @@ import { History, Play, Trash2 } from 'lucide-react';
 
 import type { DeviceView, StudioSnapshot } from '../../../shared/contract';
 import type { TerminalHelpItem } from '../../../shared/areas/tools';
-import { Card, Disclosure, Notice, StatusDot } from '../../components/ui';
+import { Card, Disclosure, Notice, StatusDot, Select, TextInput } from '../../components/ui';
 import type { Route } from '../../lib/navigation';
 import { useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
@@ -460,7 +460,7 @@ export function TerminalTool({ uid, navigate }: ToolProps) {
             <div className="field">
               <label htmlFor="terminal-line">{t('terminalPlaceholder')}</label>
               <div className="term-line-row">
-                <input
+                <TextInput
                   id="terminal-line"
                   className="term-line"
                   type="text"
@@ -528,18 +528,18 @@ export function TerminalTool({ uid, navigate }: ToolProps) {
                     <div className="field" key={param.key}>
                       <label htmlFor={id}>{label}</label>
                       {param.type === 'select' ? (
-                        <select id={id} value={paramValues[param.key] ?? ''} onChange={(event) => setParamValues((v) => ({ ...v, [param.key]: event.target.value }))}>
+                        <Select id={id} value={paramValues[param.key] ?? ''} onChange={(event) => setParamValues((v) => ({ ...v, [param.key]: event.target.value }))}>
                           <option value="">{t('skipParam')}</option>
                           {(param.options ?? []).map((option) => (
                             <option key={option.value} value={option.value}>
                               {tx(option.labelKey)}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       ) : (
-                        <input
+                        <TextInput
                           id={id}
-                          type={param.type === 'number' ? 'number' : 'text'}
+                          inputMode={param.type === 'number' ? 'decimal' : undefined}
                           value={paramValues[param.key] ?? ''}
                           placeholder={param.placeholder}
                           aria-required={param.required || undefined}

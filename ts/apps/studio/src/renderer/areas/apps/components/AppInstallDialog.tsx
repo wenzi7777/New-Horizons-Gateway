@@ -9,7 +9,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, Circle, Loader2, X } from 'lucide-react';
 
 import type { DeviceView } from '../../../../shared/contract';
-import { Notice } from '../../../components/ui';
+import { Notice, Checkbox } from '../../../components/ui';
 import { useStudio } from '../../../state/studio';
 import { appsApi, errorCode } from '../api';
 import { installBlocker, installMinFirmware, localised, type AppCatalogEntry, type AppPackage } from '../lib/appLibrary';
@@ -126,7 +126,7 @@ export function AppInstallDialog({ entry, pkg, onClose, go, initialUid = '' }: P
             <div className="apps-dialog-row">
               <span>{t('appInstallPickDevice')}</span>
               <label className="apps-check">
-                <input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />
+                <Checkbox checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />
                 {t('appInstallShowAll', { count: candidates.length - usable.length })}
               </label>
             </div>

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudUpload, Pause, Play, RefreshCw, Tags, FileJson, PlugZap, LogIn, LogOut } from 'lucide-react';
 
 import type { SyncAreaStatus, SyncRecordingEntry } from '../../../shared/areas/sync';
-import { Card, Facts, Field, Notice, Segmented } from '../../components/ui';
+import { Card, Facts, Field, Notice, Segmented, TextInput } from '../../components/ui';
 import { useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
 import { syncApi } from './api';
@@ -132,10 +132,10 @@ export default function SyncSettingsSection() {
           >
             <p className="field-note">{st('signInHelp', { server: status?.baseUrl || '-' })}</p>
             <Field label={st('username')}>
-              {(id) => <input id={id} autoComplete="username" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />}
+              {(id) => <TextInput id={id} autoComplete="username" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />}
             </Field>
             <Field label={st('password')}>
-              {(id) => <input id={id} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+              {(id) => <TextInput id={id} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
             </Field>
             <div className="sync-actions">
               <button className="button primary" type="submit" disabled={!username.trim() || !password || busy !== ''}>

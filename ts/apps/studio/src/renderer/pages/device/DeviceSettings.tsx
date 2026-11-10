@@ -3,11 +3,11 @@
 // from StudioSnapshot.deviceDetails[uid].status (lib/deviceDetails.ts); every
 // change is sent with the Desktop's exact payload (lib/commands.ts).
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Facts, Field, Notice, Segmented, SwitchRow, useConfirm } from '../../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, Segmented, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
 import {
   BATTERY_PRESETS,
   batteryCapacityChoiceFor,
@@ -54,6 +54,7 @@ import { formatMicros, scanRateLow } from '../../lib/scanHealth';
 import { formatBytes } from '../../lib/format';
 import { progressOf, updateTransferProgress } from '../../lib/updateProgress';
 import { useStudio } from '../../state/studio';
+import { ActionButtonCard, BatteryLedCard, ConnectionCard, LightsCard, PinsCard, RamCard, RestartCard, useDeviceSettingsT } from './DeviceHardware';
 
 /** A draft that follows the device's value until the user edits it. */
 function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
@@ -78,24 +79,21 @@ function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
   ];
 }
 
-const SECTIONS = ['scan', 'signal', 'power', 'clock', 'maintenance', 'update', 'logs'] as const;
-type SectionId = (typeof SECTIONS)[number];
-const SECTION_LABEL = {
-  scan: 'secScan',
-  signal: 'secSignal',
-  power: 'secPower',
-  clock: 'secClock',
-  maintenance: 'secMaintenance',
-  update: 'secUpdate',
-  logs: 'secLogs',
-} as const;
+// The Desktop's device settings sections (pages/DeviceSettingsPage.tsx), in
+// its order. Streaming carries the clock; Hardware carries the Action Button.
+export const DEVICE_SETTINGS_SECTIONS = ['overview', 'hardware', 'runtime', 'update', 'diagnostics'] as const;
+export type DeviceSettingsSectionId = (typeof DEVICE_SETTINGS_SECTIONS)[number];
 
 export function DeviceSettings({ device }: { device: DeviceView }) {
   const { t, exec, api, snapshot } = useStudio();
+  const ds = useDeviceSettingsT();
   const detail = snapshot?.deviceDetails[device.uid];
   const view = useMemo(() => deviceSettingsView(detail), [detail]);
+  const rec = record(detail?.record);
+  const status = record(detail?.status ?? rec.last_status);
   const [busy, setBusy] = useState('');
   const [dialog, ask] = useConfirm();
+  const [active, setActive] = useState<DeviceSettingsSectionId>('hardware');
   const disabled = !device.online || busy !== '';
 
   /** Send one payload through the engine; logged, toasted, returns ok. */
@@ -108,34 +106,55 @@ export function DeviceSettings({ device }: { device: DeviceView }) {
       setBusy('');
     }
   };
+  const cardProps = { device, status, disabled, busy, send };
 
-  const sectionRefs = useRef<Partial<Record<SectionId, HTMLElement | null>>>({});
-  const jump = (id: SectionId) => {
-    const el = sectionRefs.current[id];
-    el?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-    el?.querySelector<HTMLElement>('h3')?.focus();
+  const body: Record<DeviceSettingsSectionId, ReactNode> = {
+    overview: (
+      <>
+        <ConnectionCard {...cardProps} record={rec} />
+        <RestartCard disabled={!device.online || busy !== ''} busy={busy} send={send} ask={ask} />
+      </>
+    ),
+    hardware: (
+      <>
+        <PinsCard {...cardProps} />
+        <PowerSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+        <BatteryLedCard {...cardProps} />
+        <ActionButtonCard {...cardProps} />
+        <LightsCard {...cardProps} />
+      </>
+    ),
+    runtime: (
+      <>
+        <ScanSection view={view} disabled={disabled} busy={busy} send={send} />
+        <ClockSection device={device} disabled={disabled} busy={busy} send={send} />
+      </>
+    ),
+    update: (
+      <>
+        <UpdateSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+        <MaintenanceSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+      </>
+    ),
+    diagnostics: (
+      <>
+        <SignalSection view={view} disabled={disabled} busy={busy} send={send} />
+        <RamCard status={status} disabled={disabled} busy={busy} send={send} />
+        <LogsSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+        <Disclosure summary={t('techDetails')}>
+          <p className="field-note">{t('rawStatus')}</p>
+          <pre className="json-view">{JSON.stringify(detail?.status ?? null, null, 2)}</pre>
+        </Disclosure>
+      </>
+    ),
   };
-  const section = (id: SectionId, children: ReactNode) => (
-    <section
-      ref={(el) => {
-        sectionRefs.current[id] = el;
-      }}
-      className="settings-section"
-      aria-labelledby={`sec-${id}`}
-    >
-      <h3 id={`sec-${id}`} tabIndex={-1} className="section-title">
-        {t(SECTION_LABEL[id])}
-      </h3>
-      {children}
-    </section>
-  );
 
   return (
-    <div className="stack">
-      <nav className="chip-nav" aria-label={t('tabSettings')}>
-        {SECTIONS.map((id) => (
-          <button key={id} type="button" className="chip" onClick={() => jump(id)}>
-            {t(SECTION_LABEL[id])}
+    <div className="device-settings-layout">
+      <nav className="device-settings-nav" aria-label={t('tabSettings')}>
+        {DEVICE_SETTINGS_SECTIONS.map((id) => (
+          <button key={id} type="button" className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} onClick={() => setActive(id)}>
+            {ds(`settingsSection_${id}`)}
           </button>
         ))}
         <button className="button tiny ghost chip-refresh" type="button" disabled={disabled} onClick={() => void send(t('actionStatus'), statusCommand(), { success: t('statusRefreshed') })}>
@@ -143,21 +162,12 @@ export function DeviceSettings({ device }: { device: DeviceView }) {
           {busy === 'status' ? t('running') : t('actionStatus')}
         </button>
       </nav>
-      {!device.online ? <Notice kind="warning">{t('deviceOfflineNotice')}</Notice> : null}
-      {!view.hasStatus ? <Notice>{t('noStatusYet')}</Notice> : null}
-
-      {section('scan', <ScanSection view={view} disabled={disabled} busy={busy} send={send} />)}
-      {section('signal', <SignalSection view={view} disabled={disabled} busy={busy} send={send} />)}
-      {section('power', <PowerSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />)}
-      {section('clock', <ClockSection device={device} disabled={disabled} busy={busy} send={send} />)}
-      {section('maintenance', <MaintenanceSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />)}
-      {section('update', <UpdateSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />)}
-      {section('logs', <LogsSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />)}
-
-      <Disclosure summary={t('techDetails')}>
-        <p className="field-note">{t('rawStatus')}</p>
-        <pre className="json-view">{JSON.stringify(detail?.status ?? null, null, 2)}</pre>
-      </Disclosure>
+      <section className="stack settings-section" aria-label={ds(`settingsSection_${active}`)}>
+        <h3 className="section-title">{ds(`settingsSection_${active}`)}</h3>
+        {!device.online ? <Notice kind="warning">{t('deviceOfflineNotice')}</Notice> : null}
+        {!view.hasStatus ? <Notice>{t('noStatusYet')}</Notice> : null}
+        {body[active]}
+      </section>
       {dialog}
     </div>
   );
@@ -205,13 +215,13 @@ function ScanSection({ view, disabled, busy, send }: SectionProps) {
         {choice === 'custom' ? (
           <div className="field-grid three">
             <Field label={t('targetFps')}>
-              {(id) => <input id={id} type="number" min={1} max={200} value={timing.target_fps} onChange={(e) => setTiming({ ...timing, target_fps: Number(e.target.value) })} />}
+              {(id) => <NumberInput id={id} min={1} max={200} value={timing.target_fps} onChange={(e) => setTiming({ ...timing, target_fps: Number(e.target.value) })} />}
             </Field>
             <Field label={t('settleUs')}>
-              {(id) => <input id={id} type="number" min={0} max={1000} value={timing.settle_us} onChange={(e) => setTiming({ ...timing, settle_us: Number(e.target.value) })} />}
+              {(id) => <NumberInput id={id} min={0} max={1000} value={timing.settle_us} onChange={(e) => setTiming({ ...timing, settle_us: Number(e.target.value) })} />}
             </Field>
             <Field label={t('sendEvery')}>
-              {(id) => <input id={id} type="number" min={1} max={60} value={timing.send_every_n_frames} onChange={(e) => setTiming({ ...timing, send_every_n_frames: Number(e.target.value) })} />}
+              {(id) => <NumberInput id={id} min={1} max={60} value={timing.send_every_n_frames} onChange={(e) => setTiming({ ...timing, send_every_n_frames: Number(e.target.value) })} />}
             </Field>
           </div>
         ) : null}
@@ -277,20 +287,20 @@ function SignalSection({ view, disabled, busy, send }: SectionProps) {
         <div className="field-grid">
           <Field label={t('filterMedian')}>
             {(id) => (
-              <select id={id} value={filter.median} disabled={!filter.enabled} onChange={(e) => setFilter({ ...filter, median: Number(e.target.value) })}>
+              <Select id={id} value={filter.median} disabled={!filter.enabled} onChange={(e) => setFilter({ ...filter, median: Number(e.target.value) })}>
                 {FILTER_MEDIANS.map((m) => (
                   <option key={m} value={m}>
                     {m === 1 ? `1 (${t('filterMedianOff')})` : m}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
           <Field label={t('filterAlpha')} hint={t('filterAlphaHint')}>
             {(id) => (
-              <input
+              <NumberInput
                 id={id}
-                type="number"
+               
                 min={0.05}
                 max={0.6}
                 step={0.05}
@@ -399,13 +409,13 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
       </Card>
       <Card title={t('chargeProfile')} copy={t('chargeProfileCopy')}>
         <div className="inline-form">
-          <select aria-label={t('chargeProfile')} value={profile} onChange={(e) => setProfile(e.target.value)}>
+          <Select aria-label={t('chargeProfile')} value={profile} onChange={(e) => setProfile(e.target.value)}>
             {CHARGE_PROFILES.map((p) => (
               <option key={p} value={p}>
                 {t(`charge_${p}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <SaveRow dirty={profileDirty} onRevert={resetProfile} disabled={disabled || !profileDirty} running={busy === 'set_charge_profile'} onSave={() => void send(t('chargeProfile'), chargeProfileCommand(profile)).then((o) => o.ok && resetProfile())} />
         </div>
       </Card>
@@ -413,23 +423,23 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
         <div className="field-grid three">
           <Field label={t('batteryCapacity')}>
             {(id) => (
-              <select id={id} value={pack.choice} onChange={(e) => setPack({ ...pack, choice: e.target.value as BatteryCapacityChoice })}>
+              <Select id={id} value={pack.choice} onChange={(e) => setPack({ ...pack, choice: e.target.value as BatteryCapacityChoice })}>
                 {BATTERY_PRESETS.map((p) => (
                   <option key={p.capacityMah} value={String(p.capacityMah)}>
                     {p.capacityMah} mAh · {p.maxChargeCurrentMa} mA
                   </option>
                 ))}
                 <option value="custom">{t('batteryCustom')}</option>
-              </select>
+              </Select>
             )}
           </Field>
           {pack.choice === 'custom' ? (
             <>
               <Field label={t('customCapacity')}>
-                {(id) => <input id={id} type="number" min={1} value={pack.capacity} onChange={(e) => setPack({ ...pack, capacity: e.target.value })} />}
+                {(id) => <NumberInput id={id} min={1} value={pack.capacity} onChange={(e) => setPack({ ...pack, capacity: e.target.value })} />}
               </Field>
               <Field label={t('maxChargeCurrent')}>
-                {(id) => <input id={id} type="number" min={100} max={350} step={10} value={pack.current} onChange={(e) => setPack({ ...pack, current: e.target.value })} />}
+                {(id) => <NumberInput id={id} min={100} max={350} step={10} value={pack.current} onChange={(e) => setPack({ ...pack, current: e.target.value })} />}
               </Field>
             </>
           ) : null}
@@ -579,13 +589,13 @@ function ClockSection({ device, disabled, busy, send }: { device: DeviceView; di
           }}
         >
           <Field label={t('ntpServer')}>
-            {(id) => <input id={id} type="text" value={form.ntpServer} onChange={(e) => (setForm({ ...form, ntpServer: e.target.value }), setFormDirty(true))} />}
+            {(id) => <TextInput id={id} type="text" value={form.ntpServer} onChange={(e) => (setForm({ ...form, ntpServer: e.target.value }), setFormDirty(true))} />}
           </Field>
           <Field label={t('ntpInterval')}>
-            {(id) => <input id={id} type="number" min={1} value={form.ntpIntervalS} onChange={(e) => (setForm({ ...form, ntpIntervalS: e.target.value }), setFormDirty(true))} />}
+            {(id) => <NumberInput id={id} min={1} value={form.ntpIntervalS} onChange={(e) => (setForm({ ...form, ntpIntervalS: e.target.value }), setFormDirty(true))} />}
           </Field>
           <Field label={t('syncInterval')}>
-            {(id) => <input id={id} type="number" min={1} value={form.syncIntervalS} onChange={(e) => (setForm({ ...form, syncIntervalS: e.target.value }), setFormDirty(true))} />}
+            {(id) => <NumberInput id={id} min={1} value={form.syncIntervalS} onChange={(e) => (setForm({ ...form, syncIntervalS: e.target.value }), setFormDirty(true))} />}
           </Field>
           <div className="form-footer span-all">
             <button className="button primary" type="submit" disabled={disabled || unsupported || !formDirty}>
@@ -724,7 +734,7 @@ function UpdateSection({ device, view, disabled, busy, send, ask }: SectionProps
       <Disclosure summary={t('techDetails')}>
         <SwitchRow checked={settings.auto} onChange={(auto) => setSettings({ ...settings, auto })} title={t('autoUpdateOnBoot')} />
         <Field label={t('customManifest')} hint={t('customManifestHint')}>
-          {(id) => <input id={id} type="text" value={settings.url} placeholder={view.ota.resolvedManifestUrl} onChange={(e) => setSettings({ ...settings, url: e.target.value })} />}
+          {(id) => <TextInput id={id} type="text" value={settings.url} placeholder={view.ota.resolvedManifestUrl} onChange={(e) => setSettings({ ...settings, url: e.target.value })} />}
         </Field>
         <SaveRow
           dirty={settingsDirty}
@@ -756,13 +766,13 @@ function LogsSection({ device, view, disabled, busy, send, ask }: SectionProps &
       <div className="field-grid">
         <Field label={t('logLevel')}>
           {(id) => (
-            <select id={id} value={log.level} onChange={(e) => setLog({ ...log, level: e.target.value })}>
+            <Select id={id} value={log.level} onChange={(e) => setLog({ ...log, level: e.target.value })}>
               {LOG_LEVELS.map((level) => (
                 <option key={level} value={level}>
                   {level}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <div className="field">

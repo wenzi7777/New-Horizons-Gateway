@@ -6,6 +6,7 @@ import { copyText } from "../lib/clipboard";
 import { useAppsT } from "../strings";
 import { buildAiPrompt, type PromptDiagnostic } from "../lib/sdkPrompt";
 import type { MatrixTarget, SdkKind } from "../lib/sdkProject";
+import { Checkbox } from '../../../components/ui';
 
 type Props = {
   kind: SdkKind;
@@ -74,7 +75,7 @@ export function AiPromptDialog({ kind, target, source, diagnostics, author, requ
         </div>
 
         <label className="apps-check">
-          <input type="checkbox" checked={includeCurrent} onChange={(event) => setIncludeCurrent(event.target.checked)} />
+          <Checkbox checked={includeCurrent} onChange={(event) => setIncludeCurrent(event.target.checked)} />
           <span>{t("sdkAiPromptIncludeCurrent")}</span>
         </label>
 

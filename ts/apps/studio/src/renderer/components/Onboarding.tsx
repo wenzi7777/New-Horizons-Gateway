@@ -11,7 +11,7 @@ import { syncApi } from '../areas/sync/api';
 import { isValidServerUrl } from '../lib/format';
 import { useStudio } from '../state/studio';
 import { AnimatedBrandMark } from './BrandArt';
-import { Field, Notice, Segmented } from './ui';
+import { Field, Notice, Segmented, TextInput } from './ui';
 
 const STEPS = ['server', 'account', 'sync', 'devices'] as const;
 type Step = (typeof STEPS)[number];
@@ -101,7 +101,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {target === 'manual' ? (
               <Field label={t('onbServerAddress')} error={manualUrl && manualInvalid ? t('onbServerAddressInvalid') : undefined}>
                 {(id) => (
-                  <input
+                  <TextInput
                     id={id}
                     className="text-input"
                     value={manualUrl}
@@ -132,8 +132,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   if (username.trim() && password) void signIn();
                 }}
               >
-                <Field label={t('onbUsername')}>{(id) => <input id={id} className="text-input" autoComplete="username" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />}</Field>
-                <Field label={t('onbPassword')}>{(id) => <input id={id} className="text-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
+                <Field label={t('onbUsername')}>{(id) => <TextInput id={id} className="text-input" autoComplete="username" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />}</Field>
+                <Field label={t('onbPassword')}>{(id) => <TextInput id={id} className="text-input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
                 <button className="button primary" type="submit" disabled={busy || !username.trim() || !password}>
                   <LogIn size={16} aria-hidden="true" /> {busy ? t('onbSigningIn') : t('onbSignIn')}
                 </button>

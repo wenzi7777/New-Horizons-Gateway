@@ -14,6 +14,7 @@ import { SYNTH_FPS, SyntheticFeed, emulatorSimulator, frameFromLiveFrame, linesF
 import { BOARDS, SYNTH_PATTERNS, VIRTUAL_TARGET_KEY, boardById, clampShape, type MatrixTarget, type SynthPattern, type VirtualDevice } from '../lib/sdkProject';
 import { useAppsT } from '../strings';
 import { LedDot, OledPanel, StripPixels } from './IndicatorViews';
+import { NumberInput, Select, Slider } from '../../../components/ui';
 
 type Props = {
   analysis: Analysis;
@@ -140,20 +141,20 @@ export function EmulatorPanel({ analysis, target, targets, virtual, onVirtualCha
       <section className="sdk-section">
         <div className="field">
           <label htmlFor="apps-emu-target">{t('sdkTarget')}</label>
-          <select id="apps-emu-target" value={target.key} onChange={(event) => onSelectTarget(event.target.value)}>
+          <Select id="apps-emu-target" value={target.key} onChange={(event) => onSelectTarget(event.target.value)}>
             <option value={VIRTUAL_TARGET_KEY}>{t('sdkEmuVirtual')}</option>
             {targets.map((item) => (
               <option key={item.key} value={item.key}>
                 {item.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {isVirtual ? (
           <div className="field-grid">
             <div className="field">
               <label htmlFor="apps-emu-board">{t('appsEmuBoard')}</label>
-              <select
+              <Select
                 id="apps-emu-board"
                 value={virtual.boardId}
                 onChange={(event) => {
@@ -166,31 +167,31 @@ export function EmulatorPanel({ analysis, target, targets, virtual, onVirtualCha
                     {item.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="field">
               <label htmlFor="apps-emu-pattern">{t('appsEmuPattern')}</label>
-              <select id="apps-emu-pattern" value={virtual.pattern} onChange={(event) => onVirtualChange({ ...virtual, pattern: event.target.value as SynthPattern })}>
+              <Select id="apps-emu-pattern" value={virtual.pattern} onChange={(event) => onVirtualChange({ ...virtual, pattern: event.target.value as SynthPattern })}>
                 {SYNTH_PATTERNS.map((pattern) => (
                   <option key={pattern} value={pattern}>
                     {t(`appsEmuPattern_${pattern}`)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="field">
               <label htmlFor="apps-emu-rows">{t('appsEmuRows')}</label>
-              <input id="apps-emu-rows" type="number" min={1} max={boardSpec.rows} value={virtual.rows} onChange={(event) => onVirtualChange({ ...virtual, ...clampShape(boardSpec, Number(event.target.value), virtual.cols) })} />
+              <NumberInput id="apps-emu-rows" min={1} max={boardSpec.rows} value={virtual.rows} onChange={(event) => onVirtualChange({ ...virtual, ...clampShape(boardSpec, Number(event.target.value), virtual.cols) })} />
             </div>
             <div className="field">
               <label htmlFor="apps-emu-cols">{t('appsEmuCols')}</label>
-              <input id="apps-emu-cols" type="number" min={1} max={boardSpec.cols} value={virtual.cols} onChange={(event) => onVirtualChange({ ...virtual, ...clampShape(boardSpec, virtual.rows, Number(event.target.value)) })} />
+              <NumberInput id="apps-emu-cols" min={1} max={boardSpec.cols} value={virtual.cols} onChange={(event) => onVirtualChange({ ...virtual, ...clampShape(boardSpec, virtual.rows, Number(event.target.value)) })} />
             </div>
             <div className="field span-all">
               <label htmlFor="apps-emu-noise">
                 {t('appsEmuNoise')} {Math.round(virtual.noise * 100)}%
               </label>
-              <input id="apps-emu-noise" type="range" min={0} max={1} step={0.05} value={virtual.noise} onChange={(event) => onVirtualChange({ ...virtual, noise: Number(event.target.value) })} />
+              <Slider id="apps-emu-noise" min={0} max={1} step={0.05} value={virtual.noise} onChange={(event) => onVirtualChange({ ...virtual, noise: Number(event.target.value) })} />
             </div>
           </div>
         ) : (

@@ -30,6 +30,7 @@ import {
   type Diagnostic,
   type FlowNode,
 } from "../sdk/lib/index.mjs";
+import { TextInput } from '../../../components/ui';
 
 type Props = {
   project: SdkProject;
@@ -69,7 +70,7 @@ function ManifestDetails({
   const field = (key: EditableManifestField, label: string, wide = false) => (
     <div className={`field${wide ? " sdk-details-wide" : ""}`} key={key}>
       <label htmlFor={`sdk-manifest-${key}`}>{label}</label>
-      <input
+      <TextInput
         id={`sdk-manifest-${key}`}
         value={drafts[key]}
         maxLength={key === "summary" ? 160 : 60}

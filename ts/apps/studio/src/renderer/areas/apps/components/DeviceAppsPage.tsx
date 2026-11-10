@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, RefreshCw, Store, Wrench } from 'lucide-react';
 
 import type { DeviceView } from '../../../../shared/contract';
-import { Notice, StatusDot, useConfirm } from '../../../components/ui';
+import { Notice, StatusDot, useConfirm, Checkbox } from '../../../components/ui';
 import { useStudio } from '../../../state/studio';
 import { appsApi, errorCode } from '../api';
 import { localised, type AppCatalogEntry } from '../lib/appLibrary';
@@ -465,7 +465,7 @@ function LivePreview({ poll, active, paused }: { poll: CommandRunner; active: bo
         </h2>
         {!unsupported ? (
           <label className="apps-check">
-            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+            <Checkbox checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
             {t('appLiveToggle')}
           </label>
         ) : null}

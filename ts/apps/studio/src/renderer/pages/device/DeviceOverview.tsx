@@ -6,7 +6,7 @@ import { Activity, Circle, RefreshCw, RotateCcw, Square, Unlink } from 'lucide-r
 
 import type { DeviceView } from '../../../shared/contract';
 import { Heatmap } from '../../components/Heatmap';
-import { Card, Facts, Notice, useConfirm } from '../../components/ui';
+import { Card, Facts, Notice, useConfirm, TextInput } from '../../components/ui';
 import { rebootCommand, statusCommand } from '../../lib/commands';
 import { formatAgo, frameStats, formatValue } from '../../lib/format';
 import type { Route } from '../../lib/navigation';
@@ -176,12 +176,12 @@ export function DeviceOverview({ device, navigate }: { device: DeviceView; navig
         >
           <div className="field">
             <label htmlFor="nickname">{t('nicknameLabel')}</label>
-            <input id="nickname" type="text" value={nickname} maxLength={64} placeholder={device.displayName} onChange={(e) => setNickname(e.target.value)} />
+            <TextInput id="nickname" type="text" value={nickname} maxLength={64} placeholder={device.displayName} onChange={(e) => setNickname(e.target.value)} />
             <span className="field-note">{t('nicknameHint')}</span>
           </div>
           <div className="field">
             <label htmlFor="group">{t('groupLabel')}</label>
-            <input id="group" type="text" value={group} maxLength={64} onChange={(e) => setGroup(e.target.value)} />
+            <TextInput id="group" type="text" value={group} maxLength={64} onChange={(e) => setGroup(e.target.value)} />
             <span className="field-note">{t('groupHint')}</span>
           </div>
           <div className="form-footer">

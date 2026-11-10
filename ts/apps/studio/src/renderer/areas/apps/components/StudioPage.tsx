@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BookOpen, Cpu, FilePlus2, FolderOpen, FolderSearch, Library, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 
-import { Notice, useConfirm } from '../../../components/ui';
+import { Notice, useConfirm, TextInput } from '../../../components/ui';
 import { useStudio } from '../../../state/studio';
 import { appsApi, errorCode } from '../api';
 import { localised, type AppCatalogEntry } from '../lib/appLibrary';
@@ -461,7 +461,7 @@ function AuthorDialog({ current, onSave, onClose }: { current: string; onSave: (
         <p className="muted">{t('sdkAuthorCopy')}</p>
         <div className="field">
           <label htmlFor={inputId}>{t('sdkAuthorLabel')}</label>
-          <input id={inputId} value={value} maxLength={60} autoFocus onChange={(event) => setValue(event.target.value)} />
+          <TextInput id={inputId} value={value} maxLength={60} autoFocus onChange={(event) => setValue(event.target.value)} />
           {normalized && normalized !== value.trim() ? <span className="field-note">{t('sdkAuthorNormalized', { author: normalized })}</span> : null}
         </div>
         <div className="actions">

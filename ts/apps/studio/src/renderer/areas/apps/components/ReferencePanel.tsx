@@ -25,6 +25,7 @@ import {
   panelset,
   readoutset,
 } from "../sdk/lib/index.mjs";
+import { TextInput } from '../../../components/ui';
 
 // Everything here is read from the SDK itself, so the reference cannot
 // describe a language the compiler does not accept.
@@ -56,7 +57,7 @@ export function ReferencePanel({ kind }: { kind: SdkKind }) {
     <div className="sdk-panel-body">
       <label className="apps-search">
         <Search size={15} aria-hidden="true" />
-        <input type="search" value={query} placeholder={t("sdkReferenceSearch")} aria-label={t("sdkReferenceSearch")} onChange={(event) => setQuery(event.target.value)} />
+        <TextInput type="search" value={query} placeholder={t("sdkReferenceSearch")} aria-label={t("sdkReferenceSearch")} onChange={(event) => setQuery(event.target.value)} />
       </label>
 
       {kind === "flow" ? (

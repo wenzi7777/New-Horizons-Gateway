@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, Download, FileUp, RefreshCw, Search } from 'lucide-react';
 
-import { Facts, Notice } from '../../../components/ui';
+import { Facts, Notice, TextInput } from '../../../components/ui';
 import { useStudio } from '../../../state/studio';
 import { appsApi, errorCode } from '../api';
 import { categoriesOf, localised, type AppCatalogEntry, type AppPackage } from '../lib/appLibrary';
@@ -109,7 +109,7 @@ export function LibraryPage({ appId, go }: { appId: string | null; go: (path: st
       <div className="apps-filters">
         <label className="apps-search">
           <Search size={15} aria-hidden="true" />
-          <input type="search" value={query} placeholder={t('appLibrarySearch')} aria-label={t('appLibrarySearch')} onChange={(event) => setQuery(event.target.value)} />
+          <TextInput type="search" value={query} placeholder={t('appLibrarySearch')} aria-label={t('appLibrarySearch')} onChange={(event) => setQuery(event.target.value)} />
         </label>
         {categories.length > 1 ? (
           <div className="chip-list" role="group" aria-label={t('appCategory')}>

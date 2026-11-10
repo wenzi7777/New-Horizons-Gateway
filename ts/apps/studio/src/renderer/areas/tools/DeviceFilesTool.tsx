@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { Download, FileText, Gauge, RefreshCw, ScrollText, Trash2, Upload, UserRound, type LucideIcon } from 'lucide-react';
 
 import { TOOLS_MAX_UPLOAD_BYTES, type ToolsUploadFile } from '../../../shared/areas/tools';
-import { Card, Notice, Segmented, useConfirm } from '../../components/ui';
+import { Card, Notice, Segmented, useConfirm, TextInput } from '../../components/ui';
 import { useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
 import { deviceRunner, toolsApi } from './api';
@@ -434,7 +434,7 @@ export function DeviceFilesTool({ uid, navigate }: ToolProps) {
             </span>
             <label className="files-upload-path">
               {t('paramPath')}
-              <input value={uploadPath} maxLength={64} onChange={(e) => setUploadPath(e.target.value)} placeholder={uploadFile.name} />
+              <TextInput value={uploadPath} maxLength={64} onChange={(e) => setUploadPath(e.target.value)} placeholder={uploadFile.name} />
             </label>
             <button className="button tiny primary" type="button" disabled={running || !maintenanceMode || Boolean(uploadProgress)} onClick={() => void uploadSelectedFile()}>
               {t('upload')}

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 
 import type { PressurePreset, PressureReadings, PressureResult } from '../../../shared/areas/tools';
-import { Card, Field, Notice, useConfirm } from '../../components/ui';
+import { Card, Field, Notice, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
 import { useStudio } from '../../state/studio';
 import { useAreaT } from '../i18n';
 import { toolsApi } from './api';
@@ -329,28 +329,28 @@ export function PressureControlTool() {
         <div className="field-grid">
           <Field label={t('pressureCalServer')}>
             {(id) => (
-              <select id={id} value={selectedPreset} onChange={(e) => setSelectedPreset(e.target.value)} disabled={isRunning}>
+              <Select id={id} value={selectedPreset} onChange={(e) => setSelectedPreset(e.target.value)} disabled={isRunning}>
                 {serverPresets.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.label}
                   </option>
                 ))}
                 <option value="custom">{t('pressureCalServerCustom')}</option>
-              </select>
+              </Select>
             )}
           </Field>
           <Field label={t('pressureCalApiUrl')}>
             {(id) =>
               selectedPreset !== 'custom' && preset ? (
-                <input id={id} type="url" value={preset.url} readOnly />
+                <TextInput id={id} type="url" value={preset.url} readOnly />
               ) : (
-                <input id={id} type="url" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} disabled={isRunning} />
+                <TextInput id={id} type="url" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} disabled={isRunning} />
               )
             }
           </Field>
           <Field label={t('pressureCalApiToken')} hint={tokenHint ? t('tokenSaved', { hint: tokenHint }) : selectedPreset !== 'custom' ? t('presetTokenNote') : undefined}>
             {(id) => (
-              <input
+              <TextInput
                 id={id}
                 type="password"
                 autoComplete="off"
@@ -374,7 +374,7 @@ export function PressureControlTool() {
           <Field label={t('pluginPressureControlTarget')} hint={t('pluginPressureControlSafetyLimit')}>
             {(id) => (
               <div className="pressure-input-row">
-                <input id={id} type="number" min={0} max={PRESSURE_MAX_KPA} step={0.5} value={targetInput} onChange={(e) => setTargetInput(e.target.value)} disabled={isRunning} />
+                <NumberInput id={id} min={0} max={PRESSURE_MAX_KPA} step={0.5} value={targetInput} onChange={(e) => setTargetInput(e.target.value)} disabled={isRunning} />
                 <span>kPa</span>
               </div>
             )}
