@@ -1,6 +1,6 @@
 {
   "name": "@nhgw/node",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "description": "Desktop host for the New Horizons Gateway core: Node UDP/WebSocket/HTTP/files, the web UI, the terminal UI, single-executable packaging and self-update.",
