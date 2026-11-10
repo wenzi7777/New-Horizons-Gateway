@@ -2,6 +2,8 @@
 // one @nhgw/host SyncClient on the controller's current host and data
 // folder, rebuilt when the data folder moves (the controller swaps hosts).
 // Studio counts wired and Wi-Fi alike: the network is never metered here.
+import { hostname } from 'node:os';
+
 import { FetchSyncHttp, SyncClient, SyncError, type SyncHttp } from '@nhgw/host';
 
 import type { SyncAreaStatus } from '../../shared/areas/sync';
@@ -61,6 +63,9 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
       (timer as { unref?: () => void }).unref?.();
       return {
         status: () => guarded(async (c) => plain(c.status())),
+        login: (username: string, password: string) =>
+          guarded((c) => c.login(typeof username === 'string' ? username : '', typeof password === 'string' ? password : '', hostname().replace(/\.local$/, ''))),
+        logout: () => guarded(async (c) => (await c.logout(), plain(c.status()))),
         setToken: (token: string) => guarded((c) => c.setToken(typeof token === 'string' ? token : '')),
         clearToken: () => guarded(async (c) => (await c.clearToken(), plain(c.status()))),
         testConnection: () => guarded((c) => c.testConnection()),

@@ -2,7 +2,7 @@
 // Settings page renders it under #/settings/sync): app token, connection
 // test, upload policy, the upload queue, label / profile sync.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CloudUpload, Pause, Play, RefreshCw, Tags, FileJson, PlugZap, Trash2 } from 'lucide-react';
+import { CloudUpload, Pause, Play, RefreshCw, Tags, FileJson, PlugZap, LogIn, LogOut } from 'lucide-react';
 
 import type { SyncAreaStatus, SyncRecordingEntry } from '../../../shared/areas/sync';
 import { Card, Facts, Field, Notice, Segmented } from '../../components/ui';
@@ -22,6 +22,8 @@ const ERROR_KEYS: Record<string, SyncKey> = {
   no_token: 'errNoToken',
   no_server: 'errNoServer',
   token_invalid: 'errTokenInvalid',
+  invalid_credentials: 'errCredentials',
+  username_and_password_required: 'errCredentialsMissing',
   server_error: 'errServer',
   sync_unsupported: 'errUnsupported',
   recording_id_conflict: 'errConflict',
@@ -40,7 +42,8 @@ export default function SyncSettingsSection() {
   const st = useAreaT(SYNC_STRINGS);
   const sync = useMemo(() => syncApi(api), [api]);
   const [status, setStatus] = useState<SyncAreaStatus | null>(null);
-  const [token, setToken] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
@@ -76,11 +79,14 @@ export default function SyncSettingsSection() {
     [errorText, sync],
   );
 
-  const saveToken = () =>
-    act('token', async () => {
-      const result = await sync.setToken(token);
-      setToken('');
-      if (!result.ok) throw new Error(result.error);
+  const signIn = () =>
+    act('login', async () => {
+      try {
+        const result = await sync.login(username, password);
+        if (!result.ok) throw new Error(result.error);
+      } finally {
+        setPassword('');
+      }
     }, st('connected'));
 
   const test = () =>
@@ -99,43 +105,45 @@ export default function SyncSettingsSection() {
     <div className="sync-section">
       <Card title={st('accountTitle')} copy={st('accountCopy')}>
         {status?.configured ? (
-          <Facts
-            items={[
-              [st('server'), status.baseUrl || '-'],
-              [st('token'), <code key="t">{status.tokenMasked}</code>],
-              [st('lastCheck'), status.connection ? `${when(status.connection.checkedAtMs)} · ${status.connection.ok ? st('ok') : errorText(status.connection.error)}` : st('never')],
-            ]}
-          />
+          <>
+            <Facts
+              items={[
+                [st('account'), status.account || st('accountToken')],
+                [st('server'), status.baseUrl || '-'],
+                [st('lastCheck'), status.connection ? `${when(status.connection.checkedAtMs)} · ${status.connection.ok ? st('ok') : errorText(status.connection.error)}` : st('never')],
+              ]}
+            />
+            <div className="sync-actions">
+              <button className="button" type="button" onClick={() => void test()} disabled={busy !== ''}>
+                <PlugZap size={14} aria-hidden="true" /> {st('test')}
+              </button>
+              <button className="button danger" type="button" onClick={() => void act('logout', () => sync.logout())} disabled={busy !== ''}>
+                <LogOut size={14} aria-hidden="true" /> {st('signOut')}
+              </button>
+            </div>
+          </>
         ) : (
-          <Notice kind="info">{st('noTokenHelp', { server: status?.baseUrl || '-' })}</Notice>
+          <form
+            className="sync-login"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void signIn();
+            }}
+          >
+            <p className="field-note">{st('signInHelp', { server: status?.baseUrl || '-' })}</p>
+            <Field label={st('username')}>
+              {(id) => <input id={id} autoComplete="username" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />}
+            </Field>
+            <Field label={st('password')}>
+              {(id) => <input id={id} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+            </Field>
+            <div className="sync-actions">
+              <button className="button primary" type="submit" disabled={!username.trim() || !password || busy !== ''}>
+                <LogIn size={14} aria-hidden="true" /> {busy === 'login' ? st('signingIn') : st('signIn')}
+              </button>
+            </div>
+          </form>
         )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void saveToken();
-          }}
-        >
-          <Field label={status?.configured ? st('replaceToken') : st('tokenLabel')} hint={st('tokenHint')}>
-            {(id) => (
-              <div className="sync-token-row">
-                <input id={id} type="password" autoComplete="off" spellCheck={false} placeholder="nhapp_…" value={token} onChange={(e) => setToken(e.target.value)} />
-                <button className="button primary" type="submit" disabled={!token.trim() || busy !== ''}>
-                  {st('saveToken')}
-                </button>
-              </div>
-            )}
-          </Field>
-        </form>
-        <div className="sync-actions">
-          <button className="button" type="button" onClick={() => void test()} disabled={!status?.configured || busy !== ''}>
-            <PlugZap size={14} aria-hidden="true" /> {st('test')}
-          </button>
-          {status?.configured ? (
-            <button className="button danger" type="button" onClick={() => void act('clear', () => sync.clearToken())} disabled={busy !== ''}>
-              <Trash2 size={14} aria-hidden="true" /> {st('removeToken')}
-            </button>
-          ) : null}
-        </div>
         {message ? (
           <div role={message.kind === 'error' ? 'alert' : 'status'}>
             <Notice kind={message.kind}>{message.text}</Notice>

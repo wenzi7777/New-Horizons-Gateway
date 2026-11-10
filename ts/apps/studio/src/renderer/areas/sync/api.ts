@@ -8,6 +8,8 @@ export function syncApi(api: StudioApi) {
   const call = <K extends keyof SyncAreaApi>(method: K, ...args: Parameters<SyncAreaApi[K]>) => api.call<ReturnType<SyncAreaApi[K]>>('sync', method, ...args);
   const methods: Methods = {
     status: () => call('status'),
+    login: (username, password) => call('login', username, password),
+    logout: () => call('logout'),
     setToken: (token) => call('setToken', token),
     clearToken: () => call('clearToken'),
     testConnection: () => call('testConnection'),

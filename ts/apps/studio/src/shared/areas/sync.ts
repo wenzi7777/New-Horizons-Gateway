@@ -43,6 +43,8 @@ export interface SyncMetadataResult {
 export interface SyncAreaStatus {
   configured: boolean;
   tokenMasked: string;
+  /** The Desktop account signed in with ('' when none). */
+  account: string;
   baseUrl: string;
   policy: 'manual' | 'auto' | 'wifi_only';
   paused: boolean;
@@ -59,6 +61,10 @@ export interface SyncAreaStatus {
 
 export interface SyncAreaApi {
   status(): SyncAreaStatus;
+  /** Signs in with a Desktop account (the password is sent once, never kept), stores the app token it yields, tests the connection. */
+  login(username: string, password: string): SyncConnectionResult;
+  /** Revokes this install's token on the server (best effort) and forgets it. */
+  logout(): SyncAreaStatus;
   /** Validates (nhapp_<id>_<secret>), stores, tests the connection. */
   setToken(token: string): SyncConnectionResult;
   clearToken(): SyncAreaStatus;

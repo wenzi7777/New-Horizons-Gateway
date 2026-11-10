@@ -3,14 +3,15 @@
 // preferences, updates and maintenance through the "app" area.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, ExternalLink, FileArchive, FolderOpen, Moon, RefreshCw, RotateCcw, Sun, SunMoon, Trash2 } from 'lucide-react';
-import type { ThemeMode } from '@nhgw/ui-tokens';
+import { LAB_NAME, LAB_URL, UNIVERSITY_URL, type ThemeMode } from '@nhgw/ui-tokens';
 
 import type { AppInfo, AppPrefs, ConnectionInfo, PruneResult, UpdateState } from '../../shared/areas/app';
 import type { ServerTarget, StudioSettings } from '../../shared/contract';
 import { appApi } from '../areas/app/api';
 import { useAreaT } from '../areas/i18n';
 import SyncSettingsSection from '../areas/sync/SettingsSection';
-import { BrandMark, Card, Disclosure, Facts, Field, Notice, Segmented, StatusDot, SwitchRow, useConfirm } from '../components/ui';
+import { AnimatedBrandMark, UAizuLogo } from '../components/BrandArt';
+import { Card, Disclosure, Facts, Field, Notice, Segmented, StatusDot, SwitchRow, useConfirm } from '../components/ui';
 import { formatBytes, formatDateTime, formatTime, isValidServerUrl, isValidStudioId } from '../lib/format';
 import { LANGUAGE_NAMES, LOCALE_SETTINGS, type LocaleSetting } from '../lib/locale';
 import type { Route } from '../lib/navigation';
@@ -559,26 +560,39 @@ function AdvancedSection({ st }: { st: ST }) {
 
 function AboutSection({ st }: { st: ST }) {
   const { t, snapshot, api } = useStudio();
+  const open = (url: string) => (event: { preventDefault(): void }) => {
+    event.preventDefault();
+    void api.openExternal(url);
+  };
   return (
     <Card>
       <div className="about">
-        <BrandMark size={72} />
+        {/* Remounted each time the section opens, so the planet rises once per visit. */}
+        <AnimatedBrandMark size={128} />
         <div>
           <h3>{t('appFullName')}</h3>
           <p className="muted">{t('versionValue', { version: snapshot?.version ?? '-' })}</p>
-          <p>{t('aboutCopy')}</p>
-          <div className="actions">
-            <button type="button" className="button" onClick={() => void api.openExternal(DOWNLOAD_PAGE)}>
-              <ExternalLink size={14} aria-hidden="true" />
-              {st('downloadPage')}
-            </button>
-            <button type="button" className="button" onClick={() => void api.openExternal(GITHUB)}>
-              <ExternalLink size={14} aria-hidden="true" />
-              {st('github')}
-            </button>
-          </div>
-          <p className="field-note">{st('licenses')}</p>
-          <p className="field-note">{st('copyright')}</p>
+        </div>
+        <p className="about-copy">{t('aboutCopy')}</p>
+        <div className="actions">
+          <button type="button" className="button" onClick={() => void api.openExternal(DOWNLOAD_PAGE)}>
+            <ExternalLink size={14} aria-hidden="true" />
+            {st('downloadPage')}
+          </button>
+          <button type="button" className="button" onClick={() => void api.openExternal(GITHUB)}>
+            <ExternalLink size={14} aria-hidden="true" />
+            {st('github')}
+          </button>
+        </div>
+        <p className="field-note about-copy">{st('licenses')}</p>
+        <div className="about-credits">
+          <a className="about-lab" href={LAB_URL} onClick={open(LAB_URL)}>
+            {LAB_NAME}
+          </a>
+          <a className="about-university" href={UNIVERSITY_URL} onClick={open(UNIVERSITY_URL)}>
+            <UAizuLogo className="about-uaizu-logo" title={st('university')} />
+            <span>{st('university')}</span>
+          </a>
         </div>
       </div>
     </Card>

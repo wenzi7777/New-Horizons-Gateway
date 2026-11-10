@@ -8,6 +8,7 @@ export const syncMock: AreaMock = (emit) => {
   const status: SyncAreaStatus = {
     configured: false,
     tokenMasked: '',
+    account: '',
     baseUrl: 'https://isensing-s1.u-aizu.ac.jp/newhorizons',
     policy: 'manual',
     paused: false,
@@ -30,6 +31,19 @@ export const syncMock: AreaMock = (emit) => {
   const meta = (): SyncMetadataResult => ({ ok: true, error: '', atMs: Date.now(), pushed: 1, pulled: 2 });
   return {
     status: () => status,
+    login: (username: string, password: string) => {
+      if (!String(username).trim() || !password) throw new Error('username_and_password_required');
+      if (password !== 'admin') throw new Error('invalid_credentials');
+      Object.assign(status, { configured: true, tokenMasked: 'nhapp_0123456789ab_…mock', account: String(username).trim() });
+      status.connection = ok();
+      changed();
+      return status.connection;
+    },
+    logout: () => {
+      Object.assign(status, { configured: false, tokenMasked: '', account: '', connection: null });
+      changed();
+      return status;
+    },
     setToken: (token: string) => {
       if (!/^nhapp_[0-9a-f]{12}_[A-Za-z0-9_-]{8,}$/.test(String(token).trim())) throw new Error('token_invalid');
       status.configured = true;

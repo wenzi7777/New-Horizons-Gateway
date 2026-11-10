@@ -16,6 +16,8 @@ export const SYNC_KEYS = {
   /** The base URL the token was entered for. */
   tokenServer: 'sync_app_token_server',
   paused: 'sync_paused',
+  /** The Desktop account the token was signed in with (shown, never sent). */
+  account: 'sync_account',
 } as const;
 
 export interface ServerChoice {

@@ -6,3 +6,4 @@ export * from './tokens';
 export * from './theme';
 export * from './i18n';
 export * from './mapping';
+export * from './brand';

@@ -1,12 +1,13 @@
 import Constants from 'expo-constants';
-import { BatteryWarning, Check, Info, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import type { Locale, ThemeMode } from '@nhgw/ui-tokens';
+import { BatteryWarning, Check, CloudUpload, Info, LogIn, LogOut, ShieldCheck, TriangleAlert, Wifi } from 'lucide-react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Linking, Pressable, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { LAB_NAME, LAB_URL, UAIZU_COLOR, UNIVERSITY_URL, type Locale, type ThemeMode } from '@nhgw/ui-tokens';
 
 import type { PocketSettings, ServerTarget, SyncPolicy } from '../../host/contract';
 import { useToast } from '../components/feedback';
-import { PocketMark } from '../components/PocketMark';
+import { PocketMark, UAizuLogo } from '../components/PocketMark';
 import {
   Body,
   Button,
@@ -27,8 +28,84 @@ import {
 } from '../components/primitives';
 import { formatBytes, formatTime, isValidPocketId, isValidServerUrl } from '../format';
 import { useI18n } from '../i18n';
-import { useSettings, useStatus, useStore } from '../store';
+import { syncErrorCode } from '../../host/sync';
+import { usePocketSync, useSettings, useStatus, useStore } from '../store';
 import { useTheme } from '../theme';
+
+const SYNC_ERROR_KEYS: Record<string, 'syncErrCredentials' | 'syncErrMissing' | 'syncErrNetwork' | 'syncErrNotAdmin' | 'syncErrNoServer' | 'syncErrUnsupported'> = {
+  invalid_credentials: 'syncErrCredentials',
+  username_and_password_required: 'syncErrMissing',
+  network: 'syncErrNetwork',
+  not_admin: 'syncErrNotAdmin',
+  no_server: 'syncErrNoServer',
+  sync_unsupported: 'syncErrUnsupported',
+};
+
+/** Signs in with a Desktop account, shows the upload queue, signs out. */
+function SyncAccountCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { sync, status } = usePocketSync();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState('');
+  const errorText = (error: unknown) => {
+    const code = syncErrorCode(error);
+    return SYNC_ERROR_KEYS[code] ? t(SYNC_ERROR_KEYS[code]) : t('actionFailed', { error: code });
+  };
+  const run = async (name: string, task: () => Promise<void>, done?: string) => {
+    setBusy(name);
+    try {
+      await task();
+      if (done) toast.show(done);
+    } catch (error) {
+      toast.show(errorText(error), 'danger');
+    } finally {
+      setBusy('');
+    }
+  };
+  if (!status.configured) {
+    return (
+      <Card>
+        <Body>{t('syncSignInTitle')}</Body>
+        <Caption>{t('syncSignInCopy', { server: status.baseUrl || '-' })}</Caption>
+        <TextField label={t('syncUsername')} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" />
+        <TextField label={t('syncPassword')} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" />
+        <Button
+          label={t('syncSignIn')}
+          icon={LogIn}
+          variant="primary"
+          busy={busy === 'login'}
+          disabled={!username.trim() || !password || busy !== ''}
+          onPress={() =>
+            void run('login', async () => {
+              try {
+                await sync.login(username, password);
+              } finally {
+                setPassword('');
+              }
+            }, t('syncSignedIn'))
+          }
+        />
+      </Card>
+    );
+  }
+  const waiting = status.counts.queued + status.counts.local;
+  return (
+    <Card>
+      <FactRow label={t('syncAccount')} value={status.account || t('syncAccountToken')} />
+      <Divider />
+      <FactRow label={t('serverUrlLabel')} value={status.baseUrl} mono />
+      <Divider />
+      <FactRow label={t('syncQueue')} value={t('syncQueueValue', { waiting, failed: status.counts.failed, synced: status.counts.synced })} />
+      {status.connection && !status.connection.ok ? <Notice tone="warning" title={errorText(status.connection.error)} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        <Button label={t('syncUploadNow')} icon={CloudUpload} variant="primary" compact busy={busy === 'upload'} disabled={busy !== '' || waiting + status.counts.failed === 0} onPress={() => void run('upload', () => sync.uploadNow())} />
+        <Button label={t('syncSignOut')} icon={LogOut} compact busy={busy === 'logout'} disabled={busy !== ''} onPress={() => void run('logout', () => sync.logout(), t('syncSignedOut'))} />
+      </View>
+    </Card>
+  );
+}
 
 /** Language names are shown in their own language, as on the Desktop. */
 const LANGUAGES: readonly { value: Locale | 'system'; label: string | null }[] = [
@@ -306,6 +383,9 @@ export function SettingsScreen() {
   const status = useStatus();
   const save = useSave();
   const version = Constants.expoConfig?.version ?? '-';
+  // The About icon's planet rises once each time this screen is entered.
+  const [aboutPlay, setAboutPlay] = useState(0);
+  useFocusEffect(useCallback(() => setAboutPlay((n) => n + 1), []));
 
   return (
     <Screen title={t('tabSettings')}>
@@ -358,13 +438,9 @@ export function SettingsScreen() {
           value={settings.syncPolicy}
           onChange={(v) => save({ syncPolicy: v })}
         />
-        {settings.syncPolicy !== 'manual' ? (
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
-            <Info size={16} color={theme.colors.textDim} style={{ marginTop: 2 }} />
-            <Caption style={{ flex: 1 }}>{t('syncComingSoon')}</Caption>
-          </View>
-        ) : null}
+        <Caption>{t(settings.syncPolicy === 'manual' ? 'syncManualCopy' : settings.syncPolicy === 'auto' ? 'syncAutoCopy' : 'syncWifiCopy')}</Caption>
       </Card>
+      <SyncAccountCard />
 
       <SectionHeader title={t('sectionBackground')} />
       <BackgroundCard />
@@ -387,10 +463,20 @@ export function SettingsScreen() {
 
       <SectionHeader title={t('sectionAbout')} />
       <Card style={{ alignItems: 'center', paddingVertical: 24 }}>
-        <PocketMark size={72} />
-        <Text style={{ color: theme.colors.text, fontSize: 18, fontWeight: '600', textAlign: 'center' }}>{t('appFullName')}</Text>
+        <PocketMark size={128} playKey={aboutPlay} />
+        <Text style={{ color: theme.colors.text, fontSize: 20, fontWeight: '600', textAlign: 'center', marginTop: 8 }}>{t('appFullName')}</Text>
         <Caption>{t('versionValue', { version })}</Caption>
         <Caption style={{ textAlign: 'center' }}>{t('aboutCopy')}</Caption>
+        <View style={{ alignSelf: 'stretch', height: 1, backgroundColor: theme.colors.line, marginVertical: 14 }} />
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', columnGap: 32, rowGap: 14 }}>
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(LAB_URL)} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+            <Text style={{ color: theme.colors.accentStrong, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 }}>{LAB_NAME}</Text>
+          </Pressable>
+          <Pressable accessibilityRole="link" accessibilityLabel={t('aboutUniversity')} onPress={() => void Linking.openURL(UNIVERSITY_URL)} style={({ pressed }) => ({ alignItems: 'center', gap: 6, opacity: pressed ? 0.7 : 1 })}>
+            <UAizuLogo width={96} color={UAIZU_COLOR} />
+            <Caption>{t('aboutUniversity')}</Caption>
+          </Pressable>
+        </View>
       </Card>
     </Screen>
   );

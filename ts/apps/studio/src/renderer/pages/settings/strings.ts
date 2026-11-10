@@ -114,7 +114,7 @@ export const SETTINGS_STRINGS = defineAreaStrings(
     downloadPage: 'Download page',
     github: 'Source on GitHub',
     licenses: 'NH Studio is built with Electron, React, Three.js, CodeMirror and Lucide icons, each under its own open-source license (MIT / ISC / BSD). Their notices are included with the application.',
-    copyright: '© University of Aizu, New Horizons project',
+    university: 'The University of Aizu',
   },
   {
     navGeneral: '一般',
@@ -227,7 +227,7 @@ export const SETTINGS_STRINGS = defineAreaStrings(
     downloadPage: 'ダウンロードページ',
     github: 'GitHub のソース',
     licenses: 'NH Studio は Electron、React、Three.js、CodeMirror、Lucide アイコンを使用しており、それぞれ独自のオープンソースライセンス（MIT / ISC / BSD）に従います。各ライセンス表記はアプリケーションに同梱されています。',
-    copyright: '© 会津大学 New Horizons プロジェクト',
+    university: '会津大学',
   },
   {
     navGeneral: '通用',
@@ -340,7 +340,7 @@ export const SETTINGS_STRINGS = defineAreaStrings(
     downloadPage: '下载页面',
     github: 'GitHub 源代码',
     licenses: 'NH Studio 使用了 Electron、React、Three.js、CodeMirror 和 Lucide 图标，它们各自遵循开源许可证（MIT / ISC / BSD），许可声明随应用一起提供。',
-    copyright: '© 会津大学 New Horizons 项目',
+    university: '会津大学',
   },
 );
 

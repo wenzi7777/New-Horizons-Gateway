@@ -21,6 +21,8 @@ class FakeServer implements SyncHttp {
   failPutsAfter = Infinity;
   puts = 0;
   role = 'admin';
+  loginBodies: Record<string, string>[] = [];
+  revoked = 0;
 
   private reply(status: number, body: unknown): SyncResponse {
     return { status, text: JSON.stringify(body) };
@@ -32,7 +34,17 @@ class FakeServer implements SyncHttp {
       this.dropNext -= 1;
       throw new Error('ECONNRESET');
     }
+    if (req.url.endsWith('/api/app-tokens/login')) {
+      const login = JSON.parse(String(req.body)) as Record<string, string>;
+      if (login.username !== 'nick' || login.password !== 'pw') return this.reply(401, { error: 'invalid_credentials' });
+      this.loginBodies.push(login);
+      return this.reply(200, { token: TOKEN, token_type: 'Bearer', item: { id: '0123456789ab' }, user: { username: 'nick', role: this.role } });
+    }
     if (req.headers.Authorization !== `Bearer ${TOKEN}`) return this.reply(401, { error: 'unauthorized' });
+    if (req.url.endsWith('/api/app-tokens/self/revoke')) {
+      this.revoked += 1;
+      return this.reply(200, { status: 'revoked' });
+    }
     const url = new URL(req.url);
     const path = url.pathname.replace('/newhorizons', '');
     const body = typeof req.body === 'string' ? (JSON.parse(req.body) as Record<string, any>) : null;
@@ -285,6 +297,25 @@ describe('SyncClient recordings', () => {
     expect(ctx.logs.join('\n')).not.toContain('WRONG');
     expect(JSON.stringify(ctx.client.status())).not.toContain('SECRET');
     expect(ctx.host.config[SYNC_KEYS.tokenServer]).toBe(BASE);
+  });
+});
+
+describe('SyncClient sign-in', () => {
+  it('exchanges a Desktop account for a token, keeps no password, and signs out by revoking it', async () => {
+    const { client, server, host, logs } = setup();
+    await client.reload();
+    await expect(client.login('nick', 'wrong')).rejects.toMatchObject({ code: 'invalid_credentials' });
+    const result = await client.login(' nick ', 'pw', 'Lab Mac');
+    expect(result.ok).toBe(true);
+    expect(server.loginBodies).toEqual([{ username: 'nick', password: 'pw', client_type: 'studio', device_name: 'Lab Mac' }]);
+    expect(client.status()).toMatchObject({ configured: true, account: 'nick' });
+    expect(JSON.stringify(host.config)).not.toContain('pw"');
+    expect(host.config.sync_account).toBe('nick');
+    expect(logs.join('\n')).not.toContain(TOKEN);
+    await client.logout();
+    expect(server.revoked).toBe(1);
+    expect(client.status()).toMatchObject({ configured: false, account: '' });
+    expect(host.config.sync_app_token).toBe('');
   });
 });
 

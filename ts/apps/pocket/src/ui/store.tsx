@@ -7,8 +7,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import type { LiveFrame, PocketStore } from '../host/contract';
-import { createPocketStore } from '../host';
+import { createPocketStore, getPocketSync } from '../host';
+import { createMockSync } from '../host/mockSync';
 import { createMockStore } from '../host/mockStore';
+import type { PocketSync } from '../host/sync';
 
 // The real host on Android; the mock where the native module is missing
 // (Expo Go, iOS, web), so the screens still run there for review.
@@ -122,4 +124,14 @@ export function useNow(intervalMs = 1000): number {
     return () => clearInterval(timer);
   }, [tick, intervalMs]);
   return now;
+}
+
+let syncCurrent: PocketSync | null = null;
+
+/** Server sync (sign-in, upload queue): the real client on Android, a mock elsewhere. */
+export function usePocketSync(): { sync: PocketSync; status: ReturnType<PocketSync['status']> } {
+  if (syncCurrent === null) syncCurrent = getPocketSync() ?? createMockSync();
+  const sync = syncCurrent;
+  const status = useSyncExternalStore(sync.subscribe, sync.status, sync.status);
+  return { sync, status };
 }

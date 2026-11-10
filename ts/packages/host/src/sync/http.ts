@@ -30,7 +30,11 @@ export class FetchSyncHttp implements SyncHttp {
       const response = await fetch(request.url, {
         method: request.method,
         headers: request.headers,
-        ...(request.body !== undefined ? { body: request.body as NonNullable<Parameters<typeof fetch>[1]>['body'] } : {}),
+        // Raw chunks go as a standalone ArrayBuffer: React Native's fetch takes
+        // that (not a Uint8Array view); Node's takes either.
+        ...(request.body !== undefined
+          ? { body: (typeof request.body === 'string' ? request.body : request.body.slice().buffer) as NonNullable<Parameters<typeof fetch>[1]>['body'] }
+          : {}),
         signal: controller.signal,
       });
       return { status: response.status, text: await response.text() };

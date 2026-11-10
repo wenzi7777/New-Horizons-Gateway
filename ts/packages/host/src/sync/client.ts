@@ -109,6 +109,8 @@ export interface MetadataResult {
 export interface SyncStatus {
   configured: boolean;
   tokenMasked: string;
+  /** The Desktop account signed in with ('' for a pasted token or none). */
+  account: string;
   baseUrl: string;
   policy: HostSettings['syncPolicy'];
   paused: boolean;
@@ -227,6 +229,7 @@ export class SyncClient {
   private profileState: ProfileState = { version: 1, server: '', items: {}, last: null };
   private token = '';
   private tokenServer = '';
+  private account = '';
   private paused = false;
   private connection: ConnectionResult | null = null;
   /** Ids asked for with "upload now" (manual policy; also jumps the queue). */
@@ -277,6 +280,7 @@ export class SyncClient {
     const config = await this.host.appConfig();
     this.token = text(config[SYNC_KEYS.token]);
     this.tokenServer = text(config[SYNC_KEYS.tokenServer]);
+    this.account = text(config[SYNC_KEYS.account]);
     this.paused = config[SYNC_KEYS.paused] === true;
     const index = readJson<RecordingIndex>(this.files, SYNC_PATHS.recordings);
     this.index = index && isObject(index.items) ? { version: 1, last_upload_ms: num(index.last_upload_ms), items: index.items } : { version: 1, last_upload_ms: 0, items: {} };
@@ -348,10 +352,62 @@ export class SyncClient {
     return result;
   }
 
+  /**
+   * Signs in with a Desktop account: the server checks the password once and
+   * answers with an app token for this install (POST /api/app-tokens/login).
+   * The password is not kept; the token and the account name are.
+   */
+  async login(username: string, password: string, deviceName = ''): Promise<ConnectionResult> {
+    const base = this.baseUrl();
+    if (!base) throw new SyncError('no_server', false);
+    const user = username.trim();
+    if (!user || !password) throw new SyncError('username_and_password_required', false);
+    let response;
+    try {
+      response = await this.http.request({
+        method: 'POST',
+        url: `${base}/api/app-tokens/login`,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ username: user, password, client_type: this.host.clientType, device_name: deviceName }),
+        timeoutMs: this.timeoutMs,
+      });
+    } catch {
+      throw new SyncError('network', true);
+    }
+    let json: Record<string, unknown> = {};
+    try {
+      const parsed = response.text ? (JSON.parse(response.text) as unknown) : {};
+      if (isObject(parsed)) json = parsed;
+    } catch {
+      json = {};
+    }
+    if (response.status === 401) throw new SyncError('invalid_credentials', false, 401, json);
+    if (response.status === 404) throw new SyncError('sync_unsupported', false, 404, json);
+    if (response.status !== 200 || typeof json.token !== 'string') throw this.failure(response.status, json);
+    const account = isObject(json.user) ? text(json.user.username) : user;
+    await this.host.saveAppConfig({ [SYNC_KEYS.account]: account });
+    this.account = account;
+    this.log('info', `signed in as ${account}`);
+    return this.setToken(json.token);
+  }
+
+  /** Signs out: the server revokes this install's token (best effort), then it is forgotten here. */
+  async logout(): Promise<void> {
+    if (this.activeToken()) {
+      try {
+        await this.call('POST', '/api/app-tokens/self/revoke');
+      } catch {
+        // Offline: the token is forgotten here anyway; an admin can revoke it on the Relays page.
+      }
+    }
+    await this.clearToken();
+  }
+
   async clearToken(): Promise<void> {
-    await this.host.saveAppConfig({ [SYNC_KEYS.token]: '', [SYNC_KEYS.tokenServer]: '' });
+    await this.host.saveAppConfig({ [SYNC_KEYS.token]: '', [SYNC_KEYS.tokenServer]: '', [SYNC_KEYS.account]: '' });
     this.token = '';
     this.tokenServer = '';
+    this.account = '';
     this.connection = null;
     this.log('info', 'token cleared');
     this.emit({ type: 'state' });
@@ -495,6 +551,7 @@ export class SyncClient {
     return {
       configured: token !== '',
       tokenMasked: maskToken(token),
+      account: token ? this.account : '',
       baseUrl: this.baseUrl(),
       policy: this.host.settings().syncPolicy,
       paused: this.paused,
