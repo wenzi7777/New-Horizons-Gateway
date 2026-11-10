@@ -114,6 +114,7 @@ test("boards mirror the firmware's BoardConfig.h", async () => {
     v23d: [15, 15, false, false, 0],
     v10f: [10, 21, true, true, 3],
     v15f: [14, 14, true, true, 9],
+    v20f: [14, 14, true, true, 9],
     v22c: [10, 12, false, false, 0],
     v21: [10, 12, false, false, 0],
   });

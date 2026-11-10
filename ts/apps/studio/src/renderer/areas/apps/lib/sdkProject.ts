@@ -64,6 +64,7 @@ export const BOARDS: BoardSpec[] = [
   { id: "v23d", hardwareModel: "TIA-CTL v2.3.D GCU LTS", name: "v2.3.D GCU LTS", rows: 15, cols: 15, oled: false, button: false, externalLeds: 0, magnetometer: true, fuelGauge: false },
   { id: "v10f", hardwareModel: "TIA-CTL v1.0.F 2026.4", name: "v1.0.F", rows: 10, cols: 21, oled: true, button: true, externalLeds: 3, magnetometer: false, fuelGauge: false },
   { id: "v15f", hardwareModel: "TIA-CTL v1.5.F 2026.7", name: "v1.5.F", rows: 14, cols: 14, oled: true, button: true, externalLeds: 9, magnetometer: true, fuelGauge: true },
+  { id: "v20f", hardwareModel: "TIA-CTL v2.0.F 2026.10", name: "v2.0.F", rows: 14, cols: 14, oled: true, button: true, externalLeds: 9, magnetometer: true, fuelGauge: true },
   { id: "v22c", hardwareModel: "TIA-CTL v2.2.C GCU LTS", name: "v2.2.C GCU LTS", rows: 10, cols: 12, oled: false, button: false, externalLeds: 0, magnetometer: true, fuelGauge: false },
   { id: "v21", hardwareModel: "TIA-CTL v2.1 GCU LTS", name: "v2.1 GCU LTS", rows: 10, cols: 12, oled: false, button: false, externalLeds: 0, magnetometer: true, fuelGauge: false },
 ];

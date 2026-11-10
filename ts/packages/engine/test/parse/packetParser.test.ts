@@ -106,6 +106,7 @@ describe('packetParser', () => {
     expect(knownSensorCountFromDevice({ matrix_shape: { rows: 7, cols: 16 } })).toBe(112);
     expect(knownSensorCountFromDevice({ last_status: { matrix_layout: { analog_pins: [1, 2], select_pins: [3, 4, 5] } } })).toBe(6);
     expect(knownSensorCountFromDevice({ hardware_model: 'VD-CTL/R v1.5.F 2026.7' })).toBe(196);
+    expect(knownSensorCountFromDevice({ hardware_model: 'VD-CTL/R v2.0.F 2026.10' })).toBe(196);
     expect(knownSensorCountFromDevice({ hardware_model: 'TIA-CTL v1.0.F 2026.4' })).toBeNull();
     expect(knownSensorCountFromDevice({ hardware_model: 'something else' })).toBeNull();
     const packet = encodePacket({ matrix: [1, 2, 3, 4], events: [{ seq: 1, frame_seq: 1, ms: 1, app: 'x', event: 'y', detail: 'z' }] });

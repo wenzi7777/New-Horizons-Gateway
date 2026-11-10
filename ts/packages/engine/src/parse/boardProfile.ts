@@ -21,6 +21,7 @@ export type BoardProfile = {
 // "TIA-CTL/R ..." (v1.8.0); normalizeHardwareModel() folds both in.
 export const V1_HARDWARE_MODEL = 'TIA-CTL v1.0.F 2026.4';
 export const V15F_HARDWARE_MODEL = 'TIA-CTL v1.5.F 2026.7';
+export const V20F_HARDWARE_MODEL = 'TIA-CTL v2.0.F 2026.10';
 export const V21_GCU_HARDWARE_MODEL = 'TIA-CTL v2.1 GCU LTS';
 export const V22C_GCU_HARDWARE_MODEL = 'TIA-CTL v2.2.C GCU LTS';
 export const GCU_HARDWARE_MODEL = 'TIA-CTL v2.3.D GCU LTS';
@@ -50,6 +51,20 @@ export const V15F_BOARD_PROFILE: BoardProfile = {
   external_led_pin: 16,
 };
 
+export const V20F_BOARD_PROFILE: BoardProfile = {
+  hardware_model: V20F_HARDWARE_MODEL,
+  supports_external_led: true,
+  supports_oled: true,
+  supports_local_button_wake: true,
+  supports_charge_control: true,
+  power_ux: 'local_button',
+  default_manifest_url: 'https://raw.githubusercontent.com/wenzi7777/New-Horizons-OS/main/releases/arduino-v20f-latest.json',
+  default_analog_pins: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  default_select_pins: [17, 18, 21, 26, 47, 33, 34, 48, 35, 36, 37, 38, 39, 45],
+  external_led_count: 9,
+  external_led_pin: 16,
+};
+
 const remoteOnly = (hardware_model: string, supports_charge_control: boolean): BoardProfile => ({
   hardware_model,
   supports_external_led: false,
@@ -67,6 +82,7 @@ export const KNOWN_BOARD_PROFILES: readonly BoardProfile[] = [
   V21_GCU_BOARD_PROFILE,
   V22C_GCU_BOARD_PROFILE,
   GCU_BOARD_PROFILE,
+  V20F_BOARD_PROFILE,
   V15F_BOARD_PROFILE,
   DEFAULT_BOARD_PROFILE,
 ];

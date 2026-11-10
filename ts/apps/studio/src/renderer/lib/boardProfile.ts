@@ -40,6 +40,7 @@ export type BoardProfile = {
 // prefixes in, so every spelling resolves to one profile.
 export const V1_HARDWARE_MODEL = "TIA-CTL v1.0.F 2026.4";
 export const V15F_HARDWARE_MODEL = "TIA-CTL v1.5.F 2026.7";
+export const V20F_HARDWARE_MODEL = "TIA-CTL v2.0.F 2026.10";
 const V21_GCU_HARDWARE_MODEL = "TIA-CTL v2.1 GCU LTS";
 const V22C_GCU_HARDWARE_MODEL = "TIA-CTL v2.2.C GCU LTS";
 const GCU_HARDWARE_MODEL = "TIA-CTL v2.3.D GCU LTS";
@@ -377,6 +378,32 @@ const V15F_PROFILE: BoardProfile = {
   digitalPinHeading: "Digital Pins",
 };
 
+// v2.0.F: same connector pins and matrix as v1.5.F.
+const V20F_PROFILE: BoardProfile = {
+  hardwareModel: V20F_HARDWARE_MODEL,
+  wikiSlug: "vd-ctl-r-v2-0-f",
+  manifestBaseUrl: "https://raw.githubusercontent.com/wenzi7777/New-Horizons-OS/main/releases/arduino-v20f",
+  defaultAnalogPins: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  defaultSelectPins: [17, 18, 21, 26, 47, 33, 34, 48, 35, 36, 37, 38, 39, 45],
+  supportsIoVisualizer: true,
+  supportsExternalLed: true,
+  supportsOled: true,
+  supportsIoVisualizerArtwork: true,
+  supportsLocalButtonWake: true,
+  supportsChargeControl: true,
+  supportsBatteryStatusLed: true,
+  supportsBatteryPercentageIndicator: true,
+  supportsActionButtonSettings: true,
+  powerUx: "local_button",
+  overviewAsset: null,
+  analogPinOrder: V15F_ANALOG_PIN_SLOTS.map((pin) => pin.label),
+  digitalPinOrder: V15F_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
+  analogPinSlots: V15F_ANALOG_PIN_SLOTS,
+  digitalPinSlots: V15F_DIGITAL_PIN_SLOTS,
+  analogPinHeading: "Analog Pins",
+  digitalPinHeading: "Digital Pins",
+};
+
 const GCU_PROFILE: BoardProfile = {
   hardwareModel: GCU_HARDWARE_MODEL,
   wikiSlug: "vd-ctl-r-v2-3-d-gcu-lts",
@@ -402,7 +429,7 @@ const GCU_PROFILE: BoardProfile = {
   digitalPinHeading: "DIGITAL PINS",
 };
 
-const KNOWN_PROFILES = [V21_GCU_PROFILE, V22C_GCU_PROFILE, GCU_PROFILE, V15F_PROFILE, V1_PROFILE];
+const KNOWN_PROFILES = [V21_GCU_PROFILE, V22C_GCU_PROFILE, GCU_PROFILE, V20F_PROFILE, V15F_PROFILE, V1_PROFILE];
 
 export function normalizeHardwareModel(value: string) {
   return value.trim().toLowerCase().replace(/^(vd|tia)-ctl\/r\b/, "tia-ctl");
@@ -415,6 +442,7 @@ function slugifyHardwareModel(value: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/-2026-4$/, "")
     .replace(/-2026-7$/, "")
+    .replace(/-2026-10$/, "")
     .replace(/-v1-0-f$/, "-v1.0f")
     .replace(/^-+|-+$/g, "");
 }
