@@ -818,3 +818,7 @@ table.data-table tr:last-child td { border-bottom: 0; }
   .topbar, .wizard { background: var(--panel-solid); }
   .modal-backdrop { background: color-mix(in srgb, #000 45%, transparent); }
 }
+
+/* v1.2.0: the pointer to NH Studio, the Gateway's successor. */
+.studio-successor { display: grid; gap: 6px; justify-items: start; }
+.studio-successor .button { margin-top: 4px; text-decoration: none; }

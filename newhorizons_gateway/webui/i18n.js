@@ -3,6 +3,9 @@
 // all three: tests/test_gateway_web_ui.py checks it.
 window.NHG_I18N = {
   en: {
+    successorTitle: "NH Gateway is replaced by NH Studio",
+    successorCopy: "This is the last version of NH Gateway. It keeps working, but new features come only in NH Studio, which relays devices the same way and takes these settings over (same Gateway ID).",
+    successorDownload: "Download NH Studio",
     language: "Language",
     sections: "Sections",
     close: "Close",
@@ -201,6 +204,9 @@ window.NHG_I18N = {
   },
 
   ja: {
+    successorTitle: "NH Gateway は NH Studio に置き換わります",
+    successorCopy: "これが NH Gateway の最終バージョンです。引き続き動作しますが、新しい機能は NH Studio にのみ追加されます。NH Studio は同じようにデバイスを中継し、この設定（同じ Gateway ID）をそのまま引き継ぎます。",
+    successorDownload: "NH Studio をダウンロード",
     language: "言語",
     sections: "セクション",
     close: "閉じる",
@@ -399,6 +405,9 @@ window.NHG_I18N = {
   },
 
   "zh-CN": {
+    successorTitle: "NH Gateway 已由 NH Studio 取代",
+    successorCopy: "这是 NH Gateway 的最后一个版本。它仍可继续使用，但新功能只会加入 NH Studio。NH Studio 以同样方式转发设备，并沿用这里的设置（相同的 Gateway ID）。",
+    successorDownload: "下载 NH Studio",
     language: "语言",
     sections: "分区",
     close: "关闭",
