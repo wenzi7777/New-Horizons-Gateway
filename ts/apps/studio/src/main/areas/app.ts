@@ -45,7 +45,7 @@ export interface AppAreaDeps {
 }
 
 export function defaultPrefs(platform: string): AppPrefs {
-  return { updateChannel: 'stable', checkUpdatesOnStart: true, openAtLogin: false, keepRunningInBackground: platform === 'darwin' };
+  return { updateChannel: 'stable', checkUpdatesOnStart: true, openAtLogin: false, keepRunningInBackground: platform === 'darwin', onboardingDone: false };
 }
 
 export function normalizePrefs(raw: unknown, platform: string): AppPrefs {
@@ -57,6 +57,7 @@ export function normalizePrefs(raw: unknown, platform: string): AppPrefs {
     checkUpdatesOnStart: typeof value.checkUpdatesOnStart === 'boolean' ? value.checkUpdatesOnStart : base.checkUpdatesOnStart,
     openAtLogin: typeof value.openAtLogin === 'boolean' ? value.openAtLogin : base.openAtLogin,
     keepRunningInBackground: typeof value.keepRunningInBackground === 'boolean' ? value.keepRunningInBackground : base.keepRunningInBackground,
+    onboardingDone: value.onboardingDone === true,
   };
 }
 

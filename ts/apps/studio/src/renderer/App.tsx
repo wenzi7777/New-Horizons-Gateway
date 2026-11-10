@@ -3,6 +3,8 @@
 // indicator, theme, operation log) and the routed page.
 
 import { TitleBarControls } from './components/TitleBarControls';
+import { Onboarding } from './components/Onboarding';
+import { appApi } from './areas/app/api';
 import { syncBaseUrl } from '../../../../packages/host/src/sync/config';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
@@ -82,6 +84,13 @@ export function App() {
   const { t, snapshot, source, platform, theme, updateSettings, locale, api } = useStudio();
   const [route, navigate] = useHashRoute();
   const [logOpen, setLogOpen] = useState(false);
+  // The first-run guide: shown until finished or skipped; Settings can bring it back.
+  const [onboarding, setOnboarding] = useState(false);
+  useEffect(() => {
+    const app = appApi(api);
+    void app.getPrefs().then((prefs) => setOnboarding(!prefs.onboardingDone), () => undefined);
+    return app.on('prefs', (prefs) => setOnboarding(!prefs.onboardingDone));
+  }, [api]);
 
   const devices = snapshot?.devices ?? [];
   const recordingCount = activeRecordingCount(devices);
@@ -239,6 +248,7 @@ export function App() {
         </div>
       </div>
       <Toasts />
+      {onboarding ? <Onboarding onDone={() => setOnboarding(false)} /> : null}
     </div>
   );
 }

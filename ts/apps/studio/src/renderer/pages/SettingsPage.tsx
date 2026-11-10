@@ -158,6 +158,11 @@ function GeneralSection({ st }: { st: ST }) {
             title={st('backgroundTitle')}
             copy={platform === 'darwin' ? st('backgroundCopyMac') : st('backgroundCopyWin')}
           />
+          <div className="actions">
+            <button type="button" className="button" onClick={() => setPrefs({ onboardingDone: false })}>
+              {t('onbReopen')}
+            </button>
+          </div>
         </Card>
       ) : null}
     </div>

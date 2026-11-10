@@ -13,6 +13,8 @@ export interface AppPrefs {
   openAtLogin: boolean;
   /** Closing the window keeps relaying/recording (macOS default on, Windows default off). */
   keepRunningInBackground: boolean;
+  /** The first-run guide (server, sign-in, sync, device policy) was finished or skipped. */
+  onboardingDone: boolean;
 }
 
 export type UpdatePhase =

@@ -29,6 +29,7 @@ import {
 import { formatBytes, formatTime, isValidPocketId, isValidServerUrl } from '../format';
 import { useI18n } from '../i18n';
 import { syncErrorCode } from '../../host/sync';
+import { setOnboardingDone } from '../../host/firstRun';
 import { syncBaseUrl } from '@nhgw/host';
 import { usePocketSync, usePocketUpdater, useSettings, useStatus, useStore } from '../store';
 import { useTheme } from '../theme';
@@ -527,6 +528,8 @@ export function SettingsScreen() {
 
       <SectionHeader title={t('sectionUpdate')} />
       <UpdateCard />
+
+      <Button label={t('onbReopen')} compact onPress={() => void setOnboardingDone(false)} style={{ alignSelf: 'flex-start', marginTop: 16 }} />
 
       <SectionHeader title={t('sectionAbout')} />
       <Card style={{ alignItems: 'center', paddingVertical: 24 }}>

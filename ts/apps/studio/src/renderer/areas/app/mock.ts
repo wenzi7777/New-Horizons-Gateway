@@ -4,7 +4,7 @@ import type { AppInfo, AppPrefs, ConnectionInfo, UpdateState } from '../../../sh
 import type { AreaMock } from '../mockTypes';
 
 export const appMock: AreaMock = (emit) => {
-  let prefs: AppPrefs = { updateChannel: 'stable', checkUpdatesOnStart: true, openAtLogin: false, keepRunningInBackground: true };
+  let prefs: AppPrefs = { updateChannel: 'stable', checkUpdatesOnStart: true, openAtLogin: false, keepRunningInBackground: true, onboardingDone: false };
   let update: UpdateState = {
     phase: 'idle',
     channel: 'stable',

@@ -1,7 +1,12 @@
 import { Stack } from 'expo-router';
 import { nativeChromeColor } from '@nhgw/ui-tokens';
 
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
+
+import { onboardingDone, subscribeOnboarding } from '../host/firstRun';
 import { AppProviders } from '../ui/AppProviders';
+import { OnboardingScreen } from '../ui/screens/OnboardingScreen';
 import { useI18n } from '../ui/i18n';
 import { useTheme } from '../ui/theme';
 
@@ -31,10 +36,25 @@ function RootStack() {
   );
 }
 
+/** The app, with the first-run guide over it until finished or skipped. */
+function Root() {
+  const [guide, setGuide] = useState(false);
+  useEffect(() => {
+    void onboardingDone().then((done) => setGuide(!done));
+    return subscribeOnboarding((done) => setGuide(!done));
+  }, []);
+  return (
+    <View style={{ flex: 1 }}>
+      <RootStack />
+      {guide ? <OnboardingScreen onDone={() => setGuide(false)} /> : null}
+    </View>
+  );
+}
+
 export default function RootLayout() {
   return (
     <AppProviders>
-      <RootStack />
+      <Root />
     </AppProviders>
   );
 }
