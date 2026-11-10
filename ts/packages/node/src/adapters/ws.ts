@@ -25,7 +25,6 @@ function eventMessage(event: Event): string {
 export class NodeWsConnector implements WsConnector {
   private readonly logger: Logger;
   private readonly impl: WebSocketCtor | undefined;
-  private warnedHeaders = false;
 
   constructor(options: NodeWsConnectorOptions = {}) {
     this.logger = options.logger ?? silentLogger;
@@ -37,16 +36,8 @@ export class NodeWsConnector implements WsConnector {
     if (!Impl) throw new Error('websocket_unavailable');
     let ws: WebSocket;
     if (Object.keys(headers).length > 0) {
-      // The WHATWG constructor has no headers. undici takes a non-standard
-      // init object with `headers` on recent versions and ignores the key on
-      // older ones. No config sets a token today, so this is never used.
-      if (!this.warnedHeaders) {
-        this.warnedHeaders = true;
-        this.logger.warn(
-          `upstream: request headers (${Object.keys(headers).join(', ')}) passed through undici's WebSocket init; ` +
-            'they are dropped on Node versions without header support',
-        );
-      }
+      // The WHATWG constructor has no headers; undici (Node 22+, Electron)
+      // takes a non-standard init object with `headers` (the app token).
       ws = new Impl(url, { headers });
     } else {
       ws = new Impl(url);

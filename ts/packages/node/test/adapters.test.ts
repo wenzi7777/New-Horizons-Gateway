@@ -59,14 +59,14 @@ describe('NodeWsConnector', () => {
     expect(ws.closed).toBe(true);
   });
 
-  it('passes headers through the init object and says so once', () => {
+  it('passes headers (the app token) through the init object without logging them', () => {
     const logger = new HostLogger();
     const connector = new NodeWsConnector({ WebSocketImpl: FakeWebSocket as never, logger });
     const handlers = { onOpen() {}, onMessage() {}, onClose() {}, onError() {} };
     connector.connect('ws://x/ws', { Authorization: 'Bearer t' }, handlers);
     expect(FakeWebSocket.last!.init).toEqual({ headers: { Authorization: 'Bearer t' } });
     connector.connect('ws://x/ws', { Authorization: 'Bearer t' }, handlers);
-    expect(logger.recent().filter((l) => l.level === 'warn')).toHaveLength(1);
+    expect(logger.recent()).toHaveLength(0);
   });
 });
 

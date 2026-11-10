@@ -33,7 +33,7 @@ import { AREA_MODULES, AreaRegistry } from './areas';
 import { appService, configureAppArea } from './areas/app';
 import { QuitRequested, StartupSequence, waitFor, type StepBody, type StepResult } from './app/startup';
 import { registerStudioIpc, type DesktopPorts, type IpcEventLike } from './ipc';
-import { HostLogger } from './nodeAdapters';
+import { HostLogger, NodeWsConnector } from './nodeAdapters';
 import { APP_ENTRY, APP_SCHEME, SPLASH_ENTRY, contentSecurityPolicy, isExternalWebUrl, isRendererUrl, serveAppRequest } from './security';
 import { StudioController } from './studioController';
 
@@ -378,6 +378,8 @@ function main(): void {
       platform,
       upstreamPlatform: `${platform}-${process.arch}`,
       logger,
+      // The host's default is React Native's WebSocket (url, protocols, {headers}); Node's takes {headers} second.
+      connector: new NodeWsConnector({ logger }),
     });
     registerStudioIpc(ipcMain, controller, desktopPorts(), { isTrustedSender, logger });
     areas = new AreaRegistry(
