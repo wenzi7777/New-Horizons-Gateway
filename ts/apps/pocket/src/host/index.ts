@@ -11,7 +11,7 @@ import { createPocketSync, type PocketSync } from './sync';
 export type { PocketStore } from './contract';
 
 /** Reported upstream (hello / gateway_status). */
-export const POCKET_VERSION = 'v2.0.1';
+export const POCKET_VERSION = 'v2.1.0';
 
 let instance: AppHost | null = null;
 let syncInstance: PocketSync | null = null;
