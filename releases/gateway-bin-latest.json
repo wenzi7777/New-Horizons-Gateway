@@ -1,31 +1,31 @@
 {
-  "version": "v2.0.0",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.0.0/releases/notes/studio-v2.0.0.md",
-  "released_at": "2026-11-10T13:02:41.875Z",
+  "version": "v2.0.1",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.0.1/releases/notes/studio-v2.0.1.md",
+  "released_at": "2026-11-10T13:55:00.040Z",
   "assets": {
     "darwin-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/nh-studio-headless-darwin-arm64",
-      "sha256": "49c2b96d8d884553b87305231e3fb87afc640efcb73a410ff48277999c8d1aab",
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/nh-studio-headless-darwin-arm64",
+      "sha256": "3dcf33ced466552a0eb52db12e2b27e94d4ae12b0d1470802a45fa30562cd902",
       "size": 111883776
     },
     "darwin-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/nh-studio-headless-darwin-x64",
-      "sha256": "49273b8c26ca46510eac9677c313f215440181d486a308dc8bd983f5a6b0326f",
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/nh-studio-headless-darwin-x64",
+      "sha256": "2f895183c7bf7ad15b6405bc8be9ea9e8f91e6f8b52b1be57037e09abdf0b942",
       "size": 114366512
     },
     "win32-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/nh-studio-headless-win32-x64.exe",
-      "sha256": "2b0aa85cc638cf547cb9815db2e3a2563c5128b56fadd0a638d52fe6e2ab2061",
-      "size": 86381568
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/nh-studio-headless-win32-x64.exe",
+      "sha256": "cb8e4f98bec4d6e55a7f5e5227929844efb3da6219f55bc55f7a6148f75dfa5c",
+      "size": 86382592
     },
     "linux-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/nh-studio-headless-linux-x64",
-      "sha256": "47e19dd333efd1a8abe1cd45713a448d1640a51ce995c08c56c661db6f0917db",
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/nh-studio-headless-linux-x64",
+      "sha256": "0570c6727243511468fa44c1ebfa83d7cb1f2e2ee350ad5d638c1d563a33252a",
       "size": 123866304
     },
     "linux-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/nh-studio-headless-linux-arm64",
-      "sha256": "288e487dc5dba27a21a63e1b5331bbb150635c92c73de883e234b5dc5592b978",
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/nh-studio-headless-linux-arm64",
+      "sha256": "f0434f6a9b11e9b599d1efcf31e54c2d9e206c3b21c4b676c0ce14014ebd4a44",
       "size": 121113728
     }
   }

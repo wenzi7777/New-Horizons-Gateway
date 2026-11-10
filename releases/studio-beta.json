@@ -1,27 +1,27 @@
 {
-  "version": "v2.0.0",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.0.0/releases/notes/studio-v2.0.0.md",
-  "released_at": "2026-11-10T13:02:41.543Z",
+  "version": "v2.0.1",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.0.1/releases/notes/studio-v2.0.1.md",
+  "released_at": "2026-11-10T13:54:59.710Z",
   "assets": {
     "darwin-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/NH-Studio-2.0.0-mac-arm64.dmg",
-      "sha256": "651d848bd81dd15497c40e3e8c7f8c7f8d7bae75f3923587014ff0b405454c1d",
-      "size": 121545531
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/NH-Studio-2.0.1-mac-arm64.dmg",
+      "sha256": "9f18a7b96bd1191e562d45c2fd4528ac4d0f86c7c378c1c2fbc40838b37adf37",
+      "size": 121544043
     },
     "darwin-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/NH-Studio-2.0.0-mac-x64.dmg",
-      "sha256": "39da012c452118239506c28c009b09ebd661d4f6d55dac4bd5ad61d1c42af0ca",
-      "size": 125441316
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/NH-Studio-2.0.1-mac-x64.dmg",
+      "sha256": "a5838e9c186014d671e5b76aad24c7700a41c5416397774b6606fc80460a2b11",
+      "size": 125429886
     },
     "win32-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/NH-Studio-2.0.0-win-x64.exe",
-      "sha256": "a7f178cd06de9472a9587b93c5d363e51fbbc0bbdabfede0ae5f707329c9ba28",
-      "size": 121834185
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/NH-Studio-2.0.1-win-x64.exe",
+      "sha256": "49d5be366abb761b0f8db82d27222e048182846e9e6a402f7101a36104d6e61e",
+      "size": 121834103
     },
     "linux-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.0/NH-Studio-2.0.0-linux-x86_64.AppImage",
-      "sha256": "e62ec8f2ed3a0a3384a58a4302418ef128998d89bf0dbfe38427ddb2c804efb7",
-      "size": 126503882
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.0.1/NH-Studio-2.0.1-linux-x86_64.AppImage",
+      "sha256": "523feb245e01b37d44669cd6a926afb99aa9a5998e830d63966fa371f64d0003",
+      "size": 126503822
     }
   }
 }
