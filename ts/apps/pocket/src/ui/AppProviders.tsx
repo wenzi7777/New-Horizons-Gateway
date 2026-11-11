@@ -8,6 +8,7 @@ import { nativeChromeColor } from '@nhgw/ui-tokens';
 
 import { getPocketUpdater } from '../host/updates';
 import { FeedbackProvider } from './components/feedback';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import { I18nProvider } from './i18n';
 import { StoreProvider } from './store';
 import { ThemeProvider, useTheme } from './theme';
@@ -42,7 +43,10 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <I18nProvider>
           <SafeAreaProvider>
             <NavigationTheming>
-              <FeedbackProvider>{children}</FeedbackProvider>
+              <FeedbackProvider>
+                {children}
+                <UpdatePrompt />
+              </FeedbackProvider>
             </NavigationTheming>
           </SafeAreaProvider>
         </I18nProvider>

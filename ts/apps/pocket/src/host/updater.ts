@@ -13,6 +13,16 @@ export const CHANNEL_KEY = 'pocket_update_channel';
 
 export type UpdateChannel = 'stable' | 'beta';
 
+/** How often the timer looks, and how old the last check may be before it checks again. */
+export const UPDATE_POLL_MS = 15 * 60_000;
+export const UPDATE_RECHECK_MS = 3 * 60 * 60_000;
+
+/** Whether to read the manifest again: not mid-download or install, and only when the last check is old. */
+export function shouldRecheckUpdate(phase: string, checkedAtMs: number, nowMs: number): boolean {
+  if (!['idle', 'none', 'upToDate', 'available', 'error'].includes(phase)) return false;
+  return !checkedAtMs || nowMs - checkedAtMs >= UPDATE_RECHECK_MS;
+}
+
 export type UpdatePhase =
   | 'idle'
   | 'checking'

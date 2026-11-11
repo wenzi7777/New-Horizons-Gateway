@@ -90,10 +90,21 @@ export const RESET_SETTINGS: Partial<StudioSettings> = {
 
 export type AppController = Pick<AreaContext['controller'], 'settings' | 'snapshot' | 'updateSettings' | 'host' | 'native'>;
 
+/** How often the timer looks, and how old the last check may be before it checks again. */
+export const UPDATE_POLL_MS = 15 * 60_000;
+export const UPDATE_RECHECK_MS = 3 * 60 * 60_000;
+
+/** Whether the periodic timer should read the manifest again: not mid-download, and only when the last check is old. */
+export function shouldRecheckUpdate(phase: string, checkedAtMs: number | null, nowMs: number): boolean {
+  if (!['idle', 'none', 'current', 'available', 'error'].includes(phase)) return false;
+  return checkedAtMs === null || nowMs - checkedAtMs >= UPDATE_RECHECK_MS;
+}
+
 export class AppService {
   private prefs_: AppPrefs;
   readonly updater: StudioUpdater;
   splash: StartupSequence | null = null;
+  private updateTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly context: Omit<AreaContext, 'controller'> & { controller: AppController },
@@ -126,6 +137,21 @@ export class AppService {
       },
       this.prefs_.updateChannel,
     );
+    // A Studio left open for days would never hear of a release (it was checked at start-up only).
+    this.updateTimer = setInterval(() => this.periodicUpdateCheck(), UPDATE_POLL_MS);
+    this.updateTimer.unref?.();
+  }
+
+  /** Re-reads the manifest when the last check is old; never while a download or install is under way. */
+  periodicUpdateCheck(): void {
+    if (!this.prefs_.checkUpdatesOnStart) return;
+    const state = this.updater.state;
+    if (shouldRecheckUpdate(state.phase, state.checkedAtMs, (this.deps.now ?? Date.now)())) void this.updater.check();
+  }
+
+  stopUpdateChecks(): void {
+    if (this.updateTimer !== null) clearInterval(this.updateTimer);
+    this.updateTimer = null;
   }
 
   private get prefsPath(): string {
@@ -321,6 +347,7 @@ export const appArea: AreaModule = {
     return service.handlers();
   },
   dispose() {
+    service?.stopUpdateChecks();
     service = null;
   },
 };

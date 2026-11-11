@@ -2,10 +2,11 @@
 // installs; elsewhere (Expo Go, web) a stand-in that says updates need the
 // installed app. Checked once at start, then from Settings.
 import Constants from 'expo-constants';
+import { AppState } from 'react-native';
 
 import NhGatewayNative from '../../modules/nh-gateway-native/src/NhGatewayNativeModule';
 import { createPocketStore } from '.';
-import { CHANNEL_KEY, PocketUpdater, type UpdateChannel } from './updater';
+import { CHANNEL_KEY, PocketUpdater, shouldRecheckUpdate, UPDATE_POLL_MS, type UpdateChannel } from './updater';
 
 let instance: PocketUpdater | null = null;
 
@@ -60,5 +61,14 @@ export function getPocketUpdater(): PocketUpdater {
   });
   const updater = instance;
   void updater.loadChannel().then(() => updater.check());
+  // The relay service keeps this process alive for days, so a start-up check alone never
+  // hears of a release: look again every so often and whenever the app comes back.
+  const recheck = () => {
+    if (shouldRecheckUpdate(updater.snapshot().phase, updater.snapshot().checkedAtMs, Date.now())) void updater.check();
+  };
+  setInterval(recheck, UPDATE_POLL_MS);
+  AppState.addEventListener('change', (next) => {
+    if (next === 'active') recheck();
+  });
   return updater;
 }

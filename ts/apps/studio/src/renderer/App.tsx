@@ -4,6 +4,7 @@
 
 import { TitleBarControls } from './components/TitleBarControls';
 import { Onboarding } from './components/Onboarding';
+import { UpdatePrompt } from './components/UpdatePrompt';
 import ReauthDialog from './areas/sync/ReauthDialog';
 import { appApi } from './areas/app/api';
 import { syncBaseUrl } from '../../../../packages/host/src/sync/config';
@@ -255,6 +256,7 @@ export function App() {
       </div>
       <Toasts />
       {onboarding ? <Onboarding onDone={() => setOnboarding(false)} /> : null}
+      {!onboarding ? <UpdatePrompt /> : null}
       {snapshot?.status.authRejected && !onboarding && !reauthLater ? <ReauthDialog onLater={() => setReauthLater(true)} /> : null}
     </div>
   );
