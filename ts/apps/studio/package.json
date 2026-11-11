@@ -1,7 +1,7 @@
 {
   "name": "@nhgw/studio",
   "productName": "NH Studio",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "private": true,
   "description": "New Horizons Studio: manage TIA-CTL devices on this computer, record, and relay to the New Horizons server.",
   "main": "dist/main/main.cjs",
