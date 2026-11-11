@@ -14,6 +14,8 @@ export type {
   LiveFrame,
   NearbyDeviceView,
   QuickCommand,
+  RecordingAnalysisInfo,
+  RecordingChunk,
   RecordingSummary,
   RecordingTimeline,
   ServerTarget,
@@ -41,6 +43,8 @@ export type PocketStore = Pick<
   | 'run'
   | 'setRecording'
   | 'timeline'
+  | 'recordingAnalysisInfo'
+  | 'readRecordingChunk'
   | 'exportRecording'
   | 'deleteRecording'
   | 'requestIgnoreBatteryOptimizations'

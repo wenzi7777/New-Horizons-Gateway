@@ -37,6 +37,8 @@ import type {
   NearbyDeviceView,
   QuickCommand,
   RecordingSummary,
+  RecordingAnalysisInfo,
+  RecordingChunk,
   RecordingTimeline,
 } from './contract';
 import { HostClock, NativeUdpSocket, NoUpdateControl, RelayUpstream, RnWsConnector, noAutoApplier } from './adapters';
@@ -965,6 +967,20 @@ export class AppHost implements HostStore {
     recordingDirectory(recordingId);
     if (this.catalog.list().every((item) => item.id !== recordingId)) this.catalog.refresh(this.inProgressIds(), Date.now());
     return this.catalog.timeline(recordingId);
+  }
+
+  async recordingAnalysisInfo(recordingId: string): Promise<RecordingAnalysisInfo> {
+    recordingDirectory(recordingId);
+    if (this.catalog.list().every((item) => item.id !== recordingId)) this.catalog.refresh(this.inProgressIds(), Date.now());
+    return this.catalog.analysisInfo(recordingId);
+  }
+
+  async readRecordingChunk(recordingId: string, file: 'data' | 'events', offset: number, length: number): Promise<RecordingChunk> {
+    recordingDirectory(recordingId);
+    if (file !== 'data' && file !== 'events') throw new Error('invalid_file');
+    // A recording still being written is read up to what is flushed; the capture's buffer is flushed first.
+    this.captures.flushAll();
+    return this.catalog.readChunk(recordingId, file, offset, length);
   }
 
   async exportZip(recordingId: string): Promise<ExportedZip> {

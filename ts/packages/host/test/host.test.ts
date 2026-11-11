@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { base64ToBytes, utf8Decode, type WsConnection, type WsConnector, type WsHandlers } from '@nhgw/core';
 
 import { encodePacket, FLAG } from '../../engine/test/parse/packets';
+import { RecordingCsvBuilder } from '@nhgw/analysis';
 import { convertRaw } from '@nhgw/engine';
 
 import { PATHS } from '../src/files';
@@ -118,6 +119,25 @@ describe('AppHost (pocket)', () => {
 
     const timeline = await host.timeline(recordings[0]!.id);
     expect(timeline.buckets.length).toBeGreaterThan(0);
+    // The analysis screen reads the CSV in slices, which parse to the same rows as the whole file.
+    const id = recordings[0]!.id;
+    const info = await host.recordingAnalysisInfo(id);
+    expect(info.dataBytes).toBe(native.fileSize(data));
+    expect(info.meta).not.toBeNull();
+    const decoder = new TextDecoder();
+    const builder = new RecordingCsvBuilder('x');
+    let offset = 0;
+    let chunks = 0;
+    for (;;) {
+      const chunk = await host.readRecordingChunk(id, 'data', offset, 64);
+      builder.feed(decoder.decode(chunk.data, { stream: true }));
+      offset = chunk.nextOffset;
+      chunks += 1;
+      if (chunk.done) break;
+    }
+    expect(chunks).toBeGreaterThan(1);
+    expect(builder.finish().rowCount).toBe(10);
+    expect(await host.readRecordingChunk(id, 'data', 10 ** 9, 64)).toMatchObject({ done: true, data: new Uint8Array(0) });
     await host.exportRecording(recordings[0]!.id);
     expect(native.zips[0]).toMatchObject({ path: `recordings/${recordings[0]!.id}`, skip: '.nhraw' });
     expect(shared[0]).toMatch(/^file:\/\/\/cache\/export\/3CDC7545CCD0_\d{8}_\d{6}\.zip$/);

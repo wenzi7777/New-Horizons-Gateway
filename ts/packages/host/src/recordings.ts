@@ -2,7 +2,7 @@
 // reads each folder's meta.json (cached by its mtime).
 import { computeTimeline } from '@nhgw/engine';
 
-import type { RecordingSummary, RecordingTimeline } from './contract';
+import type { RecordingAnalysisInfo, RecordingChunk, RecordingSummary, RecordingTimeline } from './contract';
 import { PATHS } from './files';
 import type { NativeFileInfo, HostFiles } from './nativeApi';
 import { recordingSummary, timelineView } from './views';
@@ -104,6 +104,23 @@ export class RecordingCatalog {
     const data = typeof named.data === 'string' && named.data ? named.data : `${base}.data.csv`;
     const events = typeof named.events === 'string' && named.events ? named.events : `${base}.events.csv`;
     return { data: `${directory}/${data}`, events: `${directory}/${events}` };
+  }
+
+  /** Sizes of the CSV files and the parsed meta (null when there is none). */
+  analysisInfo(id: string): RecordingAnalysisInfo {
+    const { data, events } = this.files(id);
+    return { dataBytes: Math.max(0, this.native.fileSize(data)), eventsBytes: Math.max(0, this.native.fileSize(events)), meta: this.cache.get(id)?.meta ?? null };
+  }
+
+  readChunk(id: string, file: 'data' | 'events', offset: number, length: number): RecordingChunk {
+    const path = this.files(id)[file];
+    const total = this.native.fileSize(path);
+    if (total < 0) return { data: new Uint8Array(0), nextOffset: 0, done: true, totalBytes: 0 };
+    const start = Math.max(0, Math.min(Math.floor(offset), total));
+    const want = Math.max(0, Math.min(Math.floor(length), total - start));
+    const data = want > 0 ? this.native.readBytes(path, start, want) : new Uint8Array(0);
+    const next = start + data.length;
+    return { data, nextOffset: next, done: next >= total, totalBytes: total };
   }
 
   timeline(id: string): RecordingTimeline {

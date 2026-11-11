@@ -1,5 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
-import { Share2, Trash2 } from 'lucide-react-native';
+import { ChartLine, Share2, Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -141,6 +141,9 @@ export function RecordingScreen({ id }: { id: string }) {
       ) : null}
 
       <Card padded={false}>
+        <ActionRow label={t('analysisButton')} icon={ChartLine} disabled={inProgress} onPress={() => router.push({ pathname: '/analysis/[...id]', params: { id: id.split('/') } })} />
+        <Caption style={{ paddingHorizontal: 16, paddingBottom: 12 }}>{t('analysisButtonCopy')}</Caption>
+        <Divider inset={0} />
         <ActionRow label={t('exportRecording')} icon={Share2} busy={exporting} disabled={inProgress} onPress={share} />
         <Caption style={{ paddingHorizontal: 16, paddingBottom: 12 }}>{t('exportCopy')}</Caption>
         <Divider inset={0} />

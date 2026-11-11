@@ -87,6 +87,22 @@ export interface RecordingSummary {
   syncState: 'local' | 'uploading' | 'synced';
 }
 
+/** What the analysis screen needs to open a recording: file sizes and the parsed .meta.json. */
+export interface RecordingAnalysisInfo {
+  /** Bytes of the data CSV (0 when missing). */
+  dataBytes: number;
+  eventsBytes: number;
+  meta: Record<string, unknown> | null;
+}
+
+/** One slice of a recording file; decode with a streaming TextDecoder (a slice can end inside a character). */
+export interface RecordingChunk {
+  data: Uint8Array;
+  nextOffset: number;
+  done: boolean;
+  totalBytes: number;
+}
+
 export interface RecordingTimeline {
   /** Up to 240 buckets of summed pressure, min and max per bucket. */
   buckets: { min: number; max: number }[];
@@ -173,6 +189,10 @@ export interface HostStore {
   setRecording(uid: string, on: boolean): Promise<CommandOutcome>;
 
   timeline(recordingId: string): Promise<RecordingTimeline>;
+  /** The sizes of a recording's CSV files and its meta, for the analysis screen. */
+  recordingAnalysisInfo(recordingId: string): Promise<RecordingAnalysisInfo>;
+  /** A slice of a recording's data or events CSV (at most `length` bytes from `offset`). */
+  readRecordingChunk(recordingId: string, file: 'data' | 'events', offset: number, length: number): Promise<RecordingChunk>;
   /** Zips the recording folder (without its raw capture) to a temp file. */
   exportZip(recordingId: string): Promise<ExportedZip>;
   /** exportZip, then the host's share callback (Pocket: the Android share sheet). */

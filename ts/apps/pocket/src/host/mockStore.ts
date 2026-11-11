@@ -15,6 +15,8 @@ import type {
   PocketSettings,
   PocketStore,
   QuickCommand,
+  RecordingAnalysisInfo,
+  RecordingChunk,
   RecordingSummary,
   RecordingTimeline,
 } from './contract';
@@ -494,6 +496,37 @@ export class MockPocketStore implements PocketStore {
   }
 
   // -- recordings -----------------------------------------------------------
+
+  /** A synthetic CSV for a mock recording (header + a few sensors, one frame per 16.7 ms), so the analysis screen has data in Expo Go. */
+  private mockCsv(recordingId: string): string {
+    const r = this.recordingList.find((x) => x.id === recordingId);
+    if (!r) throw new Error('recording_not_found');
+    const random = rng(hash(recordingId));
+    const rows = 4;
+    const cols = 4;
+    const frames = Math.min(3000, Math.max(30, Math.round(r.durationMs / 16.7)));
+    const names = Array.from({ length: rows * cols }, (_, i) => `P${i + 1}`);
+    const lines = [['timestamp_ms', 'frame_seq', ...names].join(',')];
+    for (let f = 0; f < frames; f++) {
+      const phase = f / frames;
+      const cells = names.map((_, i) => Math.round(300 + Math.max(0, Math.sin(phase * Math.PI * 6 + i * 0.4)) * 2200 * (0.5 + random() * 0.5)));
+      lines.push([r.startedAtMs + Math.round(f * 16.7), f, ...cells].join(','));
+    }
+    return `${lines.join('\r\n')}\r\n`;
+  }
+
+  async recordingAnalysisInfo(recordingId: string): Promise<RecordingAnalysisInfo> {
+    await sleep(200);
+    const csv = this.mockCsv(recordingId);
+    return { dataBytes: csv.length, eventsBytes: 0, meta: { format: 1, matrix: { rows: 4, cols: 4 }, device: { hardware_model: 'TIA-CTL v2.0.F 2026.10', firmware_version: 'v1.22.0' } } };
+  }
+
+  async readRecordingChunk(recordingId: string, file: 'data' | 'events', offset: number, length: number): Promise<RecordingChunk> {
+    const text = file === 'data' ? this.mockCsv(recordingId) : '';
+    const bytes = new TextEncoder().encode(text);
+    const data = bytes.slice(offset, offset + length);
+    return { data, nextOffset: offset + data.length, done: offset + data.length >= bytes.length, totalBytes: bytes.length };
+  }
 
   async timeline(recordingId: string): Promise<RecordingTimeline> {
     await sleep(400);
