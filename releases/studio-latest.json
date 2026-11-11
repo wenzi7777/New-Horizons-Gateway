@@ -1,27 +1,51 @@
 {
   "version": "v2.4.0",
   "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.4.0/releases/notes/studio-v2.4.0.md",
-  "released_at": "2026-11-11T13:48:44.361Z",
+  "released_at": "2026-11-11T14:18:44.023Z",
   "assets": {
     "darwin-arm64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.4.0/NH-Studio-2.4.0-mac-arm64.dmg",
       "sha256": "2575c5f9a66b05747656a9f8039018a145b71967296091242c555c2dc8579804",
-      "size": 121633869
+      "size": 121633869,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/2575c5f9a66b05747656a9f8039018a145b71967296091242c555c2dc8579804",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-11T13:55:16.145Z"
+      }
     },
     "darwin-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.4.0/NH-Studio-2.4.0-mac-x64.dmg",
       "sha256": "4ee80ce05413b724b6ef72fb6e7af2070e658cd88cf68a9d9ab608ca7528a154",
-      "size": 127346541
+      "size": 127346541,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/4ee80ce05413b724b6ef72fb6e7af2070e658cd88cf68a9d9ab608ca7528a154",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-11T13:58:08.798Z"
+      }
     },
     "win32-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.4.0/NH-Studio-2.4.0-win-x64.exe",
       "sha256": "9bc8c868fcc7f75fb1d2723311fc5f5aa8f8a247303cf48df90fb265a5c2bd14",
-      "size": 121866983
+      "size": 121866983,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/9bc8c868fcc7f75fb1d2723311fc5f5aa8f8a247303cf48df90fb265a5c2bd14",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-11T14:01:30.472Z"
+      }
     },
     "linux-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.4.0/NH-Studio-2.4.0-linux-x86_64.AppImage",
       "sha256": "dafb3f0bba62f01373eb50175e5d283f43982eea723889a3bd5c7169d09cad80",
-      "size": 126548952
+      "size": 126548952,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/dafb3f0bba62f01373eb50175e5d283f43982eea723889a3bd5c7169d09cad80",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-11T13:52:25.335Z"
+      }
     }
   }
 }
