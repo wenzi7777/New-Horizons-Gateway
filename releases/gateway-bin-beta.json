@@ -1,62 +1,32 @@
 {
-  "version": "v2.2.0",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.2.0/releases/notes/studio-v2.2.0.md",
-  "released_at": "2026-11-10T22:52:14.875Z",
+  "version": "v2.2.1",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.2.1/releases/notes/studio-v2.2.1.md",
+  "released_at": "2026-11-11T08:51:17.120Z",
   "assets": {
     "darwin-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-studio-headless-darwin-arm64",
-      "sha256": "0964ef286d3681310b6fa156e8a1a422eb18ad64e0f8552eab947bf8e8a9160d",
-      "size": 111883776,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/0964ef286d3681310b6fa156e8a1a422eb18ad64e0f8552eab947bf8e8a9160d",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-10T22:33:26.133Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.1/nh-studio-headless-darwin-arm64",
+      "sha256": "77ec30b4fcb9969b0d00cd0f5b23d555aaaaf956df721723ac2a9ac15d3dba72",
+      "size": 111883776
     },
     "darwin-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-studio-headless-darwin-x64",
-      "sha256": "a48a419bae1e6567b95f631ea2b729f46ac429ac4a9fdcd67630f5c3c751404e",
-      "size": 114366512,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/a48a419bae1e6567b95f631ea2b729f46ac429ac4a9fdcd67630f5c3c751404e",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-10T22:36:47.388Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.1/nh-studio-headless-darwin-x64",
+      "sha256": "5e5707c41fddaf99ee53909a5cdc18f55d8f00a1a3507f0811ecff2d675ba1a2",
+      "size": 114366512
     },
     "win32-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-studio-headless-win32-x64.exe",
-      "sha256": "f071fe83ad705309f07ba703f4afbf89d06591752a4b81adcad2e6129cdd25d4",
-      "size": 86383616,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/f071fe83ad705309f07ba703f4afbf89d06591752a4b81adcad2e6129cdd25d4",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-10T22:50:54.097Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.1/nh-studio-headless-win32-x64.exe",
+      "sha256": "ba1a2bcb31e523fab9071f982b7d23492e663b8b510d941ef3f7b217e05e7806",
+      "size": 86383616
     },
     "linux-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-studio-headless-linux-x64",
-      "sha256": "aa3586e225d679ee692702521fc03d97120239d5ccf2d64e9fece295831ce7be",
-      "size": 123866304,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/aa3586e225d679ee692702521fc03d97120239d5ccf2d64e9fece295831ce7be",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-10T22:45:00.735Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.1/nh-studio-headless-linux-x64",
+      "sha256": "52f81f15b90d4c82ad06feb580c5e94fe5f6ebe633dc25c570159fad0f2c0f38",
+      "size": 123866304
     },
     "linux-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.0/nh-studio-headless-linux-arm64",
-      "sha256": "28ebee452cc0f3d3968d268c0f6c72d33749a9e2f17fa0918f9a123807382658",
-      "size": 121113728,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/28ebee452cc0f3d3968d268c0f6c72d33749a9e2f17fa0918f9a123807382658",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-10T22:41:39.536Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.2.1/nh-studio-headless-linux-arm64",
+      "sha256": "ebf21afeafa2467b9dc3c64c635edb2babb0522901f25a4892992c608a535d6f",
+      "size": 121113728
     }
   }
 }
