@@ -7,7 +7,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+
+import { isMetaFile, metaNameFor, sidecarNameFor } from '@nhgw/analysis';
 
 import {
   applyPressureSettings,
@@ -140,6 +142,41 @@ export async function recordingFilesIn(directory: string): Promise<{ data: strin
   return { data: join(directory, data), events: join(directory, events), meta };
 }
 
+/**
+ * The events sidecar and meta file that sit beside a data CSV a user picked (a Desktop export,
+ * or a copy of a Studio recording folder). Same names as the Desktop's file picker matches:
+ * `<base>.events.csv`, `<base>.meta.json`, else the one meta file whose `files.data` names this CSV.
+ */
+export async function siblingFilesOf(path: string): Promise<{ events: string | null; meta: Record<string, unknown> | null }> {
+  const directory = dirname(path);
+  const name = basename(path);
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(directory);
+  } catch {
+    return { events: null, meta: null };
+  }
+  const events = entries.find((entry) => entry.toLowerCase() === sidecarNameFor(name).toLowerCase()) ?? null;
+  const readMeta = async (entry: string) => {
+    const file = join(directory, entry);
+    if ((await fileSize(file)) > META_MAX_BYTES) return null;
+    const parsed = await readJson(file);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  };
+  const exact = entries.find((entry) => entry.toLowerCase() === metaNameFor(name).toLowerCase());
+  let meta = exact ? await readMeta(exact) : null;
+  if (!meta) {
+    for (const entry of entries.filter(isMetaFile)) {
+      const candidate = await readMeta(entry);
+      if (candidate && (candidate.files as Record<string, unknown> | undefined)?.data === name) {
+        meta = candidate;
+        break;
+      }
+    }
+  }
+  return { events: events ? join(directory, events) : null, meta };
+}
+
 export function createToolsArea(deps: ToolsDeps = {}): AreaModule {
   return {
     area: 'tools',
@@ -241,7 +278,13 @@ export function createToolsArea(deps: ToolsDeps = {}): AreaModule {
           if (!path) return null;
           const token = randomUUID();
           opened.set(token, path);
-          return { token, name: basename(path), bytes: await fileSize(path) };
+          const siblings = await siblingFilesOf(path);
+          let eventsToken: string | null = null;
+          if (siblings.events) {
+            eventsToken = randomUUID();
+            opened.set(eventsToken, siblings.events);
+          }
+          return { token, name: basename(path), bytes: await fileSize(path), eventsToken, meta: siblings.meta };
         },
         readChunk: async (source: ToolsFileSource, offset: number, length?: number) => {
           const path = await sourcePath(source);

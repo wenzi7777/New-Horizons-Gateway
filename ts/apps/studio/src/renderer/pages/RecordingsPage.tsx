@@ -3,7 +3,7 @@
 // folder with its Change button.
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Download, FolderOpen, FolderSearch, Trash2, X } from 'lucide-react';
+import { ChartLine, Download, FolderOpen, FolderSearch, Trash2, X } from 'lucide-react';
 
 import type { RecordingSummary, RecordingTimeline } from '../../shared/contract';
 import { TimelineChart } from '../components/TimelineChart';
@@ -129,7 +129,7 @@ export function RecordingsPage({ route, navigate }: Props) {
         </section>
         {route.id ? (
           selected ? (
-            <RecordingDetail recording={selected} onClose={() => navigate({ area: 'recordings', id: null })} dayTitle={dayTitle} />
+            <RecordingDetail recording={selected} onClose={() => navigate({ area: 'recordings', id: null })} dayTitle={dayTitle} onAnalyze={() => navigate({ area: 'tools', path: ['analysis', ...selected.id.split('/')] })} />
           ) : (
             <Card title={t('navRecordings')}>
               <p className="empty">{t('recordingGone')}</p>
@@ -141,7 +141,7 @@ export function RecordingsPage({ route, navigate }: Props) {
   );
 }
 
-function RecordingDetail({ recording, onClose, dayTitle }: { recording: RecordingSummary; onClose: () => void; dayTitle: (ms: number) => string }) {
+function RecordingDetail({ recording, onClose, dayTitle, onAnalyze }: { recording: RecordingSummary; onClose: () => void; dayTitle: (ms: number) => string; onAnalyze: () => void }) {
   const { t, locale, api, exec, platform, toast } = useStudio();
   const [timeline, setTimeline] = useState<RecordingTimeline | null>(null);
   const [error, setError] = useState('');
@@ -240,6 +240,10 @@ function RecordingDetail({ recording, onClose, dayTitle }: { recording: Recordin
         <button className="button primary" type="button" disabled={recording.inProgress} onClick={() => void exportIt()} title={t('exportCopy')}>
           <Download size={14} aria-hidden="true" />
           {t('exportRecording')}
+        </button>
+        <button className="button" type="button" disabled={recording.inProgress} title={recording.inProgress ? t('analyzeBlockedInProgress') : t('analyzeRecordingCopy')} onClick={onAnalyze}>
+          <ChartLine size={14} aria-hidden="true" />
+          {t('analyzeRecording')}
         </button>
         <button className="button" type="button" onClick={() => void exec(platform === 'win32' ? t('revealInExplorer') : t('revealInFinder'), () => api.revealRecording(recording.id), { success: false })}>
           <FolderSearch size={14} aria-hidden="true" />

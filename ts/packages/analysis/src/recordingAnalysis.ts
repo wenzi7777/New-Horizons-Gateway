@@ -269,7 +269,7 @@ export type RecordingIssue = {
   amount: number;
 };
 
-export type RecordingSummary = {
+export type RecordingAnalysisSummary = {
   startMs: number;
   endMs: number;
   durationMs: number;
@@ -304,7 +304,7 @@ export function gapThresholdMs(medianIntervalMs: number): number {
 
 export const MAX_LISTED_ISSUES = 500;
 
-export function summarizeRecording(rec: Recording): RecordingSummary {
+export function summarizeRecording(rec: Recording): RecordingAnalysisSummary {
   const steps = sampleIntervals(rec);
   const sorted = Float64Array.from(steps).sort();
   const median = quantile(sorted, 0.5);
@@ -376,7 +376,7 @@ export type IntervalHistogram = { binWidthMs: number; counts: number[]; overflow
 
 /** Sample intervals in 1 ms bins (wider for slow streams) up to about twice
  * the 99th percentile; anything longer lands in `overflow`. */
-export function intervalHistogram(rec: Recording, summary: RecordingSummary, maxBins = 60): IntervalHistogram {
+export function intervalHistogram(rec: Recording, summary: RecordingAnalysisSummary, maxBins = 60): IntervalHistogram {
   const limitMs = Math.max(4, Math.ceil(summary.intervalMs.p99 * 2));
   const binWidthMs = Math.max(1, Math.ceil(limitMs / maxBins));
   const counts = new Array<number>(Math.ceil(limitMs / binWidthMs)).fill(0);

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import * as lib from "../../src/renderer/areas/tools/lib/recordingAnalysis";
+import * as lib from "../src/index";
 
 describe("recordingAnalysis (Desktop tests)", () => {
 const HEADER = "timestamp_ms,P1,P2,P3,P4,Mag_x,Mag_y,Mag_z,Gyro_x,Gyro_y,Gyro_z,Acc_x,Acc_y,Acc_z,frame_seq,time_ref";

@@ -2,7 +2,7 @@
 // ~1 MB chunks from the main process (tools.readChunk) and posts them here,
 // so neither the page nor this worker ever holds the whole CSV as text.
 // Bundled by Vite as a module worker (new URL(..., import.meta.url)).
-import { RecordingCsvBuilder, recordingBuffers, type Recording } from '../lib/recordingAnalysis';
+import { RecordingCsvBuilder, recordingBuffers, type Recording } from '@nhgw/analysis';
 
 export type WorkerRequest =
   | { id: number; type: 'start'; name: string }

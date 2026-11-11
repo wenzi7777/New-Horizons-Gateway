@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { useStudio } from "../../../state/studio";
-import { bucketSeries, formatDuration, nearestIndex, niceTicks, timeTicks } from "../lib/recordingAnalysis";
+import { bucketSeries, formatDuration, nearestIndex, niceTicks, timeTicks } from "@nhgw/analysis";
 
 export type ChartSeries = { key: string; label: string; color: string; value: (row: number) => number };
 export type ChartMarker = { index: number; color: string; label: string };

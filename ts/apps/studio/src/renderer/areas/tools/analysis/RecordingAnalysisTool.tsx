@@ -32,7 +32,7 @@ import {
   type Recording,
   type RecordingIssue,
   type RecordingMeta,
-} from '../lib/recordingAnalysis';
+} from '@nhgw/analysis';
 import { toolsStrings } from '../toolsStrings';
 import type { WorkerReply, WorkerRequest } from './recordingWorker';
 import { SensorHeatmap } from './SensorHeatmap';
@@ -230,7 +230,7 @@ export function RecordingAnalysisTool({ recordingId, navigate }: { recordingId: 
       const file = await tools.openAnalysisFile();
       if (!file) return;
       navigate({ area: 'tools', path: ['analysis'] });
-      void load(file.name, { kind: 'opened', token: file.token }, null, null);
+      void load(file.name, { kind: 'opened', token: file.token }, file.eventsToken ? { kind: 'opened', token: file.eventsToken } : null, file.meta ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }

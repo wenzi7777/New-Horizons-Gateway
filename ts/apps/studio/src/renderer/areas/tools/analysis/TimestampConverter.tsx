@@ -8,7 +8,7 @@ import {
   formatInstant,
   timestampToEpochMs,
   type TimestampUnit,
-} from "../lib/recordingAnalysis";
+} from "@nhgw/analysis";
 import { Select, TextInput } from '../../../components/ui';
 
 const UNITS: TimestampUnit[] = ["s", "ms", "us", "ns"];

@@ -1,0 +1,10 @@
+{
+  "name": "@nhgw/analysis",
+  "version": "2.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "Reading a recorded session (.data.csv, .events.csv, .meta.json) back and analysing it: pure functions over typed arrays, shared by NH Studio's and NH Pocket's analysis screens.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

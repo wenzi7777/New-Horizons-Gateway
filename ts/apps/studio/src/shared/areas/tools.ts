@@ -40,6 +40,10 @@ export interface ToolsOpenedFile {
   token: string;
   name: string;
   bytes: number;
+  /** Token of the `.events.csv` beside the file, when there is one. */
+  eventsToken?: string | null;
+  /** The `.meta.json` beside the file, parsed (null when missing or unreadable). */
+  meta?: Record<string, unknown> | null;
 }
 
 export interface ToolsChunk {
