@@ -9,6 +9,9 @@ import type {
   LiveFrame,
   NearbyDeviceView,
   HostClientType,
+  RangeMode,
+  VrefView,
+  VrefZone,
   HostSettings,
   RecordingSummary,
   RecordingTimeline,
@@ -89,6 +92,50 @@ export function deviceView(entry: Record<string, unknown>, nowMono: number): Dev
       error: str(entry.recording_error),
     },
     lastSeenMs: parseIsoMs(entry.last_seen_at),
+    vref: vrefOf(status),
+  };
+}
+
+/** The v2.0.F firmware's safe Vref and GPIO45 strap thresholds (VrefPolicy.h). */
+export const VREF_SAFE_MV = 330;
+export const VREF_STRAP_MARGIN_MV = 700;
+export const VREF_STRAP_RISK_MV = 800;
+
+/**
+ * Where a Vref sits: the safe value, raised, close to the strap risk (700–800 mV) or past
+ * it (a reset that skips the shutdown handler may then fail to boot until power is cut).
+ */
+export function vrefZone(mv: number | null, mode: string): VrefZone {
+  if (mode === 'auto') return 'auto';
+  if (mv === null) return 'unknown';
+  if (Math.abs(mv - VREF_SAFE_MV) <= 5) return 'safe';
+  if (mv < VREF_STRAP_MARGIN_MV) return 'raised';
+  if (mv < VREF_STRAP_RISK_MV) return 'near';
+  return 'risk';
+}
+
+/** status.vref + status.range -> VrefView; null when the board has no Vref DAC. */
+export function vrefOf(status: Record<string, unknown>): VrefView | null {
+  const vref = dict(status.vref);
+  if (vref.supported !== true) return null;
+  const range = dict(status.range);
+  const rawMode = str(range.mode);
+  const mode: RangeMode = rawMode === 'virtual' || rawMode === 'auto' ? rawMode : 'raw';
+  const table = Array.isArray(range.rfb_ohm) ? range.rfb_ohm.map((v) => num(v) ?? 0) : [];
+  const measured = table.filter((v) => v > 0).sort((a, b) => a - b);
+  const mv = vref.ok === false ? null : num(vref.mv);
+  return {
+    mv,
+    zone: vrefZone(mv, mode),
+    limitMv: num(vref.limit_mv),
+    mode,
+    refRfbOhm: num(range.ref_rfb_ohm) ?? 20000,
+    leakCompensation: range.leak_compensation !== false,
+    rfbMeasuredRows: Math.max(measured.length, int(range.rfb_known_rows) ?? 0),
+    rfbRows: table.length,
+    rfbMedianOhm: measured[Math.floor(measured.length / 2)] ?? null,
+    saturatedRows: int(range.saturated_rows),
+    calibrationOn: vref.calibration_on === true,
   };
 }
 

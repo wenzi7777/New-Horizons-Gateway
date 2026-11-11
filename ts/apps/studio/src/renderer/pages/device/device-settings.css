@@ -200,3 +200,16 @@
   display: flex;
   align-items: center;
 }
+
+.vref-status .metric { flex: 1 1 150px; }
+.vref-status .metric .field-note { display: block; margin-top: 2px; }
+.vref-status .metric.vref-zone-near { border-color: var(--warning); }
+.vref-status .metric.vref-zone-risk { border-color: var(--danger); }
+.vref-needs-rfb { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vref-needs-rfb > :first-child { flex: 1; }
+.vref-slider { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: center; gap: 10px; }
+.vref-zone-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-right: calc(110px + 10px + 2.5em); }
+.vref-zone-bar span { flex-basis: 0; }
+.vref-zone-bar .safe { background: var(--success); }
+.vref-zone-bar .near { background: var(--warning); }
+.vref-zone-bar .risk { background: var(--danger); }

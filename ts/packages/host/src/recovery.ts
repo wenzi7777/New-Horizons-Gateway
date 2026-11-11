@@ -3,8 +3,17 @@
 // recordings/.raw that is not being written is either discarded (its live
 // recording finished after all) or converted into the recording files
 // (engine NhrawConverter), replacing the live recording's partial folder.
+// The conversion is written to a staging folder under recordings/.raw first
+// and only swapped in once it succeeded, so a failure keeps the partial CSV.
 import type { Logger } from '@nhgw/core';
-import { NHRAW_HEADER_LEN, NhrawConverter, NhrawStreamReader, type RecordingPaths } from '@nhgw/engine';
+import {
+  NHRAW_HEADER_LEN,
+  NhrawConverter,
+  NhrawStreamReader,
+  type RecordingFileHandle,
+  type RecordingFileSink,
+  type RecordingPaths,
+} from '@nhgw/engine';
 
 import { NativeRecordingSink, NHRAW_SUFFIX, PATHS } from './files';
 import type { HostFiles } from './nativeApi';
@@ -13,6 +22,8 @@ import type { RawSidecar } from './rawCaptures';
 export const RECOVERY_CHUNK_BYTES = 1024 * 1024;
 /** A capture that failed to convert is renamed so it is kept but not retried on every start. */
 export const FAILED_SUFFIX = '.failed';
+/** Conversions are staged here (one folder per capture), then moved into the data root. */
+export const STAGING_DIR = `${PATHS.rawDir}/.convert`;
 
 export type RecoveryInput = {
   /** The capture's size in bytes. */
@@ -92,34 +103,127 @@ export interface RecoveryOptions {
 
 const defaultYield = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-/** Converts one capture into the data root, in chunks. Returns the recording's paths (null when it held no frame). */
+/** The native sink, remembering what it opened so a failed conversion can close it all. */
+class ClosingSink implements RecordingFileSink {
+  private readonly inner: NativeRecordingSink;
+  private readonly open_ = new Set<RecordingFileHandle>();
+  constructor(native: HostFiles) {
+    this.inner = new NativeRecordingSink(native);
+  }
+  exists(path: string): boolean {
+    return this.inner.exists(path);
+  }
+  mkdirp(path: string): void {
+    this.inner.mkdirp(path);
+  }
+  open(path: string): RecordingFileHandle {
+    const handle = this.inner.open(path);
+    this.open_.add(handle);
+    const open = this.open_;
+    return {
+      size: handle.size,
+      append: (text: string) => handle.append(text),
+      flush: () => handle.flush(),
+      close: () => {
+        open.delete(handle);
+        handle.close();
+      },
+    };
+  }
+  writeAtomic(path: string, text: string): void {
+    this.inner.writeAtomic(path, text);
+  }
+  closeAll(): void {
+    for (const handle of [...this.open_]) {
+      this.open_.delete(handle);
+      try {
+        handle.close();
+      } catch {
+        // already gone
+      }
+    }
+  }
+}
+
+/**
+ * Converts one capture under `dataRoot` (default: the data root), in chunks.
+ * Returns the recording's paths (null when it held no frame). On failure
+ * every file it opened is closed before the error propagates.
+ */
 export async function convertCapture(
   native: HostFiles,
   rawPath: string,
   yieldToUi: () => Promise<void> = defaultYield,
   serverTimeZone?: string,
+  dataRoot: string = PATHS.dataRoot,
 ): Promise<RecordingPaths | null> {
-  const sink = new NativeRecordingSink(native);
+  const sink = new ClosingSink(native);
   const reader = new NhrawStreamReader();
   let converter: NhrawConverter | null = null;
-  let offset = 0;
-  for (;;) {
-    const chunk = native.readBytes(rawPath, offset, RECOVERY_CHUNK_BYTES);
-    if (chunk.length === 0) break;
-    offset += chunk.length;
-    for (const record of reader.push(chunk)) {
-      converter ??= new NhrawConverter(reader.header!, {
-        sink,
-        dataRoot: PATHS.dataRoot,
-        ...(serverTimeZone !== undefined ? { serverTimeZone } : {}),
-      });
-      converter.push(record);
+  const options = { sink, dataRoot, ...(serverTimeZone !== undefined ? { serverTimeZone } : {}) };
+  try {
+    let offset = 0;
+    for (;;) {
+      const chunk = native.readBytes(rawPath, offset, RECOVERY_CHUNK_BYTES);
+      if (chunk.length === 0) break;
+      offset += chunk.length;
+      for (const record of reader.push(chunk)) {
+        converter ??= new NhrawConverter(reader.header!, options);
+        converter.push(record);
+      }
+      await yieldToUi();
     }
-    await yieldToUi();
+    const { truncated } = reader.end();
+    converter ??= new NhrawConverter(reader.header!, options);
+    return converter.finish({ truncated, closeOpen: true }).paths;
+  } finally {
+    sink.closeAll();
   }
-  const { truncated } = reader.end();
-  converter ??= new NhrawConverter(reader.header!, { sink, dataRoot: PATHS.dataRoot });
-  return converter.finish({ truncated, closeOpen: true }).paths;
+}
+
+/** `paths` with its `from` root swapped for `to`. */
+function rebase(paths: RecordingPaths, from: string, to: string): RecordingPaths {
+  const move = (path: string) => (path.startsWith(`${from}/`) ? `${to}/${path.slice(from.length + 1)}` : path);
+  return { directory: move(paths.directory), data: move(paths.data), events: move(paths.events), meta: move(paths.meta) };
+}
+
+/**
+ * Converts a capture in a staging folder, then puts the result where the
+ * recording belongs, replacing `replaceDirectory` (the live partial) only
+ * now. Anything that fails leaves the partial folder as it was.
+ */
+async function convertAndSwap(
+  native: HostFiles,
+  raw: string,
+  stagingName: string,
+  replaceDirectory: string | null,
+  options: RecoveryOptions,
+): Promise<RecordingPaths | null> {
+  const staging = `${STAGING_DIR}/${stagingName}`;
+  native.deletePath(staging); // a previous attempt's leftovers
+  try {
+    const staged = await convertCapture(native, raw, options.yieldToUi, options.serverTimeZone, staging);
+    // No frame: nothing better than what the partial folder holds.
+    if (staged === null) return null;
+    const paths = rebase(staged, staging, PATHS.dataRoot);
+    // The folders to give way: the live partial, and whatever already sits at the target.
+    const aside: { from: string; to: string }[] = [];
+    for (const directory of new Set([replaceDirectory, paths.directory])) {
+      if (directory === null || !native.fileExists(directory)) continue;
+      const to = `${STAGING_DIR}/${stagingName}.replaced-${aside.length}`;
+      native.deletePath(to);
+      if (!native.movePath(directory, to)) throw new Error(`could not move ${directory} aside`);
+      aside.push({ from: directory, to });
+    }
+    if (!native.movePath(staged.directory, paths.directory)) {
+      for (const item of aside.reverse()) native.movePath(item.to, item.from);
+      throw new Error(`could not move the conversion to ${paths.directory}`);
+    }
+    for (const item of aside) native.deletePath(item.to);
+    return paths;
+  } finally {
+    native.deletePath(staging);
+  }
 }
 
 /** Every left-over capture in recordings/.raw: decided, then converted or discarded. */
@@ -155,8 +259,8 @@ export async function recoverCaptures(options: RecoveryOptions): Promise<Recover
     const outcome: RecoveryOutcome = { raw, decision, paths: null, error: '' };
     try {
       if (decision.action === 'convert') {
-        if (decision.replaceDirectory) native.deletePath(decision.replaceDirectory);
-        outcome.paths = await convertCapture(native, raw, options.yieldToUi, options.serverTimeZone);
+        const stagingName = entry.name.slice(0, -NHRAW_SUFFIX.length);
+        outcome.paths = await convertAndSwap(native, raw, stagingName, decision.replaceDirectory, options);
         logger.info(`recovered ${entry.name} -> ${outcome.paths?.directory ?? '(no frames)'}`);
       }
       native.deletePath(raw);

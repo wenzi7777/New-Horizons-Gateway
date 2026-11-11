@@ -151,6 +151,8 @@ export class GatewayRuntime {
   restartRequested = false;
 
   private upstreamLink: UpstreamLink;
+  /** The server URL the current link was built with / last pointed at. */
+  private linkServerUrl: string;
   private readonly options: GatewayRuntimeOptions;
   private readonly host: GatewayHostHooks;
   private readonly logger: Logger;
@@ -191,6 +193,7 @@ export class GatewayRuntime {
       onCommand: (deviceUid, payload) => this.onCommand(deviceUid, payload),
       onMessage: (message) => this.onUpstreamMessage(message),
     };
+    this.linkServerUrl = pyStr(config.server_url);
     this.upstreamLink = options.createUpstream(
       {
         serverUrl: pyStr(config.server_url),
@@ -303,6 +306,7 @@ export class GatewayRuntime {
       // with a read-only gatewayId the link is rebuilt instead.
       const wasRunning = this.runtimeStarted;
       if (wasRunning) this.upstreamLink.stop();
+      this.linkServerUrl = pyStr(config.server_url);
       this.upstreamLink = this.options.createUpstream(
         { serverUrl: pyStr(config.server_url), gatewayId, updateChannel: channel },
         this.upstreamCallbacks,
@@ -311,7 +315,13 @@ export class GatewayRuntime {
     }
     this.updateControl.setChannel(channel);
     this.upstreamLink.setUpdateChannel(channel);
-    this.upstreamLink.updateServer(pyStr(config.server_url));
+    // Only a real change reconnects: every config save lands here (a renamed
+    // device, a toggled switch), and dropping the link for those loses data.
+    const serverUrl = pyStr(config.server_url);
+    if (serverUrl !== this.linkServerUrl) {
+      this.linkServerUrl = serverUrl;
+      this.upstreamLink.updateServer(serverUrl);
+    }
     if (this.discovery !== null) {
       this.discovery.gatewayId = gatewayId;
       this.discovery.gatewayName = strOr(config.gateway_name) || 'NH Gateway';

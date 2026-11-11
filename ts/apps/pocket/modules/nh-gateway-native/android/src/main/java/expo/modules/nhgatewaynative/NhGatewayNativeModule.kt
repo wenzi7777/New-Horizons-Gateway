@@ -3,6 +3,7 @@ package expo.modules.nhgatewaynative
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -165,6 +166,18 @@ class NhGatewayNativeModule : Module(), UdpHub.Listener {
       true
     }
     Function("installedVersion") { ApkUpdater.installedVersion(context) }
+
+    // For the sync policy "wifi_only": online = any active network (a lab
+    // Wi-Fi without internet still reaches a local Desktop), metered as Android
+    // judges it (mobile data, a metered hotspot); null when unknown.
+    Function("networkState") {
+      val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+      if (connectivity == null) {
+        mapOf("online" to true, "metered" to null)
+      } else {
+        mapOf("online" to (connectivity.activeNetwork != null), "metered" to connectivity.isActiveNetworkMetered)
+      }
+    }
 
     Function("isIgnoringBatteryOptimizations") {
       val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager

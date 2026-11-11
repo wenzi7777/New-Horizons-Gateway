@@ -4,7 +4,7 @@
 
 declare const __NHGW_VERSION__: string | undefined;
 
-export const PACKAGE_VERSION = '2.3.0';
+export const PACKAGE_VERSION = '2.4.0';
 
 /** "v" + package version, the form every Gateway version takes (v1.1.3, v2.0.0-beta.1). */
 export const GATEWAY_VERSION: string =

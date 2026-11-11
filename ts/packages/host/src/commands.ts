@@ -3,6 +3,7 @@
 // DeviceSettingsPage.tsx, components/calibration/CalibrationWorkbench.tsx;
 // commands in NewHorizonsOS-OTA/spec/commands.md).
 import type { QuickCommand } from './contract';
+import { VREF_SAFE_MV } from './views';
 
 /** CalibrationWorkbench's ZERO_DURATION_MS: how long a tare averages. */
 export const TARE_DURATION_MS = 1000;
@@ -25,5 +26,15 @@ export function quickCommandPayload(command: QuickCommand): Record<string, unkno
       return { command: 'calibration_tare_capture', duration_ms: TARE_DURATION_MS };
     case 'tare_clear':
       return { command: 'calibration_tare_clear' };
+    case 'range_mode': {
+      const payload: Record<string, unknown> = { command: 'set_range', mode: command.mode };
+      if (command.refRfbOhm !== undefined) payload.ref_rfb_ohm = command.refRfbOhm;
+      if (command.leakCompensation !== undefined) payload.leak_comp = command.leakCompensation;
+      return payload;
+    }
+    case 'vref_reset':
+      return { command: 'set_vref', mv: VREF_SAFE_MV };
+    case 'rfb_measure':
+      return { command: 'rfb_measure' };
   }
 }

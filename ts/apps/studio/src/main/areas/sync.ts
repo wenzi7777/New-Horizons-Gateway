@@ -26,22 +26,56 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
 
   const plain = (status: unknown) => JSON.parse(JSON.stringify(status)) as SyncAreaStatus;
 
-  async function ensure(): Promise<SyncClient> {
-    const ctx = context!;
-    const host = ctx.controller.host;
-    if (client && client.host === host) return client;
-    if (client) {
-      off?.();
-      await client.stop();
+  /** The rebind in flight: callers during it (the 5 s timer, a handler) share it, so one client is ever built per host. */
+  let rebinding: Promise<SyncClient> | null = null;
+
+  function ensure(): Promise<SyncClient> {
+    const host = context!.controller.host;
+    if (client && client.host === host && rebinding === null) return Promise.resolve(client);
+    if (rebinding === null) {
+      rebinding = rebind().finally(() => {
+        rebinding = null;
+      });
     }
+    return rebinding;
+  }
+
+  async function rebind(): Promise<SyncClient> {
+    const ctx = context!;
+    // The controller may swap hosts again while the old client stops: build for the latest.
+    for (;;) {
+      const host = ctx.controller.host;
+      if (client && client.host === host) return client;
+      if (client) {
+        const old = client;
+        off?.();
+        off = null;
+        client = null;
+        await old.stop();
+        continue;
+      }
+      return build(ctx, host);
+    }
+  }
+
+  async function build(ctx: AreaContext, host: AreaContext['controller']['host']): Promise<SyncClient> {
     const next = new SyncClient({ host, files: ctx.controller.native, http, logger: ctx.logger, network: () => ({ online: true, metered: false }) });
     client = next;
     off = next.on((event) => {
       if (event.type === 'progress') ctx.emit('progress', { id: event.id, sentBytes: event.sentBytes, totalBytes: event.totalBytes });
       else ctx.emit('state', plain(next.status()));
     });
-    if (options.autoStart === false) await next.reload();
-    else await next.start();
+    try {
+      if (options.autoStart === false) await next.reload();
+      else await next.start();
+    } catch (error) {
+      // Not left half-built: the next call tries again.
+      off?.();
+      off = null;
+      client = null;
+      await next.stop().catch(() => undefined);
+      throw error;
+    }
     return next;
   }
 
@@ -85,6 +119,7 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
     },
     async dispose() {
       if (timer) clearInterval(timer);
+      await rebinding?.catch(() => undefined);
       off?.();
       await client?.stop();
     },

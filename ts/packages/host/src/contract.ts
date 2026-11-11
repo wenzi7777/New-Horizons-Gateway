@@ -53,6 +53,27 @@ export interface DeviceView {
   matrix: { rows: number; cols: number } | null;
   recording: { enabled: boolean; finishing: boolean; error: string };
   lastSeenMs: number | null;
+  /** TIA-CTL v2.0.F: its Vref DAC and range; null (or absent) on a board without one. */
+  vref?: VrefView | null;
+}
+
+/** Where a Vref sits against the GPIO45 boot strap (see vrefZone in views.ts). */
+export type VrefZone = 'auto' | 'safe' | 'raised' | 'near' | 'risk' | 'unknown';
+export type RangeMode = 'raw' | 'virtual' | 'auto';
+
+export interface VrefView {
+  mv: number | null;
+  zone: VrefZone;
+  limitMv: number | null;
+  mode: RangeMode;
+  refRfbOhm: number;
+  leakCompensation: boolean;
+  /** Rows with a measured Rfb, of `rfbRows`; the range modes need at least one. */
+  rfbMeasuredRows: number;
+  rfbRows: number;
+  rfbMedianOhm: number | null;
+  saturatedRows: number | null;
+  calibrationOn: boolean;
 }
 
 export interface NearbyDeviceView {
@@ -145,7 +166,13 @@ export type QuickCommand =
   | { kind: 'exit_maintenance' }
   | { kind: 'scan_rate'; fps: 60 | 90 }
   | { kind: 'tare' }
-  | { kind: 'tare_clear' };
+  | { kind: 'tare_clear' }
+  /** v2.0.F: switch the range mode, keeping the reference Rfb and leak setting unless given. */
+  | { kind: 'range_mode'; mode: RangeMode; refRfbOhm?: number; leakCompensation?: boolean }
+  /** v2.0.F: Vref back to its safe 330 mV. */
+  | { kind: 'vref_reset' }
+  /** v2.0.F: measure each row's Rfb (about 1.5 s). */
+  | { kind: 'rfb_measure' };
 
 /** The engine's full record of one device and its last status (plain JSON), for settings pages. */
 export interface DeviceDetail {

@@ -50,6 +50,12 @@ export interface GatewayConfig {
   managed_devices?: string[];
   /** UIDs released by this host: FindMe declines them (device_released) until adopted again. */
   released_devices?: string[];
+  /**
+   * Ids this host went by before (newest last), recorded when gateway_id
+   * changes under offer_policy "managed": a device still attached to one of
+   * them is attached to this host, not adopted elsewhere.
+   */
+  previous_gateway_ids?: string[];
   [key: string]: unknown;
 }
 
@@ -95,6 +101,23 @@ export function normalizeListUid(value: unknown): string {
 function normalizeUidList(value: unknown): string[] {
   const items = Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined) : [];
   return [...new Set(items.map(normalizeListUid).filter(Boolean))].sort(pyCompareStr);
+}
+
+/** How many earlier relay ids previous_gateway_ids keeps. */
+export const MAX_PREVIOUS_GATEWAY_IDS = 16;
+
+/** Valid ids, once each (the last occurrence kept), never the current one, the newest MAX_PREVIOUS_GATEWAY_IDS. */
+function normalizePreviousIds(value: unknown, current: string): string[] {
+  const items = Array.isArray(value) ? value : [];
+  const out: string[] = [];
+  for (const item of items) {
+    const id = pyStrip(pyTruthy(item) ? pyStr(item) : '');
+    if (!id || id === current || !GATEWAY_ID_PATTERN.test(id)) continue;
+    const at = out.indexOf(id);
+    if (at >= 0) out.splice(at, 1);
+    out.push(id);
+  }
+  return out.slice(-MAX_PREVIOUS_GATEWAY_IDS);
 }
 
 export function normalizeOfferPolicy(value: unknown): OfferPolicy {
@@ -195,6 +218,7 @@ export function normalizeConfig(raw: RawConfig): GatewayConfig {
   if ('offer_policy' in config) config.offer_policy = normalizeOfferPolicy(config.offer_policy);
   if ('managed_devices' in config) config.managed_devices = normalizeUidList(config.managed_devices);
   if ('released_devices' in config) config.released_devices = normalizeUidList(config.released_devices);
+  if ('previous_gateway_ids' in config) config.previous_gateway_ids = normalizePreviousIds(config.previous_gateway_ids, config.gateway_id as string);
   config.server_url = resolveServerUrl(config);
   return config as GatewayConfig;
 }
@@ -228,6 +252,7 @@ export class GatewayConfigStore {
     const out: GatewayConfig = { ...this.config, denied_devices: [...this.config.denied_devices] };
     if (this.config.managed_devices) out.managed_devices = [...this.config.managed_devices];
     if (this.config.released_devices) out.released_devices = [...this.config.released_devices];
+    if (this.config.previous_gateway_ids) out.previous_gateway_ids = [...this.config.previous_gateway_ids];
     return out;
   }
 
@@ -236,6 +261,10 @@ export class GatewayConfigStore {
     const next = normalizeConfig({ ...this.config, ...patch });
     if (next.gateway_id) next.gateway_id = validateGatewayId(next.gateway_id);
     if (next.enabled) next.gateway_id = validateGatewayId(next.gateway_id);
+    const before = this.config.gateway_id;
+    if (before && next.gateway_id !== before && normalizeOfferPolicy(next.offer_policy) === 'managed') {
+      next.previous_gateway_ids = normalizePreviousIds([...(next.previous_gateway_ids ?? []), before], next.gateway_id);
+    }
     // Python assigned before writing, so a failed write still changes the live config.
     this.config = next;
     await this.store.save(sortedForDisk(this.config));
@@ -266,6 +295,11 @@ export class GatewayConfigStore {
 
   managedDevices(): string[] {
     return [...(this.config.managed_devices ?? [])];
+  }
+
+  /** Ids this host went by before (previous_gateway_ids). */
+  previousGatewayIds(): string[] {
+    return [...(this.config.previous_gateway_ids ?? [])];
   }
 
   releasedDevices(): string[] {

@@ -126,6 +126,8 @@ export interface SyncStatus {
   lastUploadMs: number;
   /** Labels and profiles can be edited now (they are edited on the server only). */
   editable: boolean;
+  /** The server refused the token (401/403): uploads wait until the user signs in again. */
+  tokenRejected: boolean;
   labels: MetadataResult | null;
   profiles: MetadataResult | null;
 }
@@ -148,6 +150,10 @@ interface IndexItem {
   synced_at_ms: number;
   server_path: string;
   updated_ms: number;
+  /** The folder's file listing (name, size, mtime) when it was synced: a change re-checks it. */
+  listing?: string;
+  /** Upload of changed files under a new recording_id (`…:r<revision>`); absent = the first. */
+  revision?: number;
 }
 
 interface RecordingIndex {
@@ -205,6 +211,11 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** Lets timers, I/O and the UI run (a real macrotask, whatever timer port the client uses). */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+}
+
 function readJson<T>(files: HostFiles, path: string): T | null {
   try {
     const raw = files.readText(path);
@@ -245,6 +256,8 @@ export class SyncClient {
   private lastMetadataMs = Number.NEGATIVE_INFINITY;
   private metadataBusy: Promise<void> | null = null;
   private pushedStates = '';
+  /** The token the server last refused (401/403); nothing is uploaded with it again. */
+  private rejectedToken = '';
 
   constructor(options: SyncClientOptions) {
     this.host = options.host;
@@ -345,6 +358,7 @@ export class SyncClient {
     await this.host.saveAppConfig({ [SYNC_KEYS.token]: value, [SYNC_KEYS.tokenServer]: base });
     this.token = value;
     this.tokenServer = base;
+    this.rejectedToken = '';
     // A new token may fix what the old one could not.
     for (const item of Object.values(this.index.items)) {
       if (item.state === 'failed' && !item.retryable) Object.assign(item, { state: 'queued', retryable: true, next_attempt_ms: 0, attempts: 0, error: '' });
@@ -412,6 +426,7 @@ export class SyncClient {
     this.token = '';
     this.tokenServer = '';
     this.account = '';
+    this.rejectedToken = '';
     this.connection = null;
     this.log('info', 'token cleared');
     this.emit({ type: 'state' });
@@ -489,6 +504,7 @@ export class SyncClient {
         const labels = await this.call('GET', '/api/sync/labels?since_ms=9007199254740991');
         if (labels.status !== 200) throw this.failure(labels.status, labels.json);
         result.ok = true;
+        this.rejectedToken = '';
       }
     } catch (error) {
       result.error = error instanceof SyncError ? error.code : 'unexpected';
@@ -567,9 +583,28 @@ export class SyncClient {
       current: this.current ? { ...this.current } : null,
       lastUploadMs: this.index.last_upload_ms,
       editable: this.serverEditable(),
+      tokenRejected: this.tokenRejected(),
       labels: this.labelState.server === this.baseUrl() ? this.labelState.last : null,
       profiles: this.profileState.server === this.baseUrl() ? this.profileState.last : null,
     };
+  }
+
+  private tokenRejected(): boolean {
+    const token = this.activeToken();
+    return token !== '' && this.rejectedToken === token;
+  }
+
+  /** The code of a 401/403 failure ('' for anything else). */
+  private static authFailure(error: unknown): string {
+    return error instanceof SyncError && (error.code === 'unauthorized' || error.code === 'forbidden') ? error.code : '';
+  }
+
+  /** The server refused the token: stop using it until a new one is set or a check passes. */
+  private noteTokenRejected(code: string): void {
+    if (!this.tokenRejected()) this.log('warn', `the server refused the token (${code}); sign in again`);
+    this.rejectedToken = this.activeToken();
+    this.connection = { ok: false, error: code, checkedAtMs: this.timers.now(), username: '', role: '', clientType: '' };
+    this.emit({ type: 'state' });
   }
 
   /** Pushes 'uploading' / 'synced' to the host so RecordingSummary.syncState shows them (both apps). */
@@ -608,7 +643,7 @@ export class SyncClient {
     if (id !== undefined && targets.length === 0) throw new SyncError('recording_not_found', false);
     for (const summary of targets) {
       const item = this.item(summary.id);
-      if (item?.state === 'synced') continue;
+      if (item?.state === 'synced' && !this.changedSinceSync(summary.id, item)) continue;
       this.requested.add(summary.id);
       if (item?.state === 'failed') Object.assign(item, { state: 'queued', next_attempt_ms: 0, error: '', retryable: true });
     }
@@ -650,7 +685,8 @@ export class SyncClient {
       const item = this.index.items[summary.id];
       const mine = item && item.server === base ? item : null;
       const wanted = this.requested.has(summary.id);
-      if (mine?.state === 'synced') {
+      // A synced recording whose files changed since is uploaded again (as a new revision).
+      if (mine?.state === 'synced' && !this.changedSinceSync(summary.id, mine)) {
         this.requested.delete(summary.id);
         continue;
       }
@@ -664,21 +700,59 @@ export class SyncClient {
 
   private async runQueue(): Promise<void> {
     const now = this.timers.now();
-    if (!this.activeToken()) return;
+    if (!this.activeToken() || this.tokenRejected()) return;
     if (!this.paused && now - this.lastMetadataMs >= this.metadataIntervalMs) {
       this.lastMetadataMs = now;
-      await this.syncLabelsNow().catch(() => undefined);
-      await this.syncProfilesNow().catch(() => undefined);
+      for (const sync of [() => this.syncLabelsNow(), () => this.syncProfilesNow()]) {
+        try {
+          await sync();
+        } catch (error) {
+          const code = SyncClient.authFailure(error);
+          if (code) {
+            this.noteTokenRejected(code);
+            return;
+          }
+        }
+      }
     }
     this.host.refreshRecordings();
     const tried = new Set<string>();
     for (;;) {
-      if (this.paused || !this.running || !this.activeToken()) return;
+      // A refused token ends the whole round: the other recordings are not tried (or failed) with it.
+      if (this.paused || !this.running || !this.activeToken() || this.tokenRejected()) return;
       const next = this.nextCandidate(this.timers.now(), tried);
       if (next === null) return;
       tried.add(next.id);
       await this.uploadRecording(next);
     }
+  }
+
+  /** The recording folder's files as (name, size, mtime), '' when unreadable. */
+  private listingOf(id: string): string {
+    try {
+      const entries = this.files
+        .listDir(`${SYNC_PATHS.dataRoot}/${id}`)
+        .filter((entry) => !entry.isDirectory)
+        .map((entry) => [entry.name, entry.size, entry.mtimeMs] as const)
+        .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      return JSON.stringify(entries);
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Whether a synced recording's files changed since (by listing). An item
+   * synced before listings were kept takes the current one as its baseline.
+   */
+  private changedSinceSync(id: string, item: IndexItem): boolean {
+    const listing = this.listingOf(id);
+    if (!listing) return false;
+    if (item.listing === undefined) {
+      item.listing = listing;
+      return false;
+    }
+    return item.listing !== listing;
   }
 
   private recordingIdFor(summary: RecordingSummary): string {
@@ -710,9 +784,14 @@ export class SyncClient {
     return out;
   }
 
-  private hashFile(file: LocalFile): string {
+  /** SHA-256 of a file, a chunk at a time, letting the event loop run between chunks (an hour of data is hundreds of MB). */
+  private async hashFile(file: LocalFile): Promise<string> {
     const hash = new Sha256();
     for (let offset = 0; offset < file.size; offset += HASH_CHUNK) {
+      if (offset > 0) {
+        await yieldToEventLoop();
+        if (!this.running) throw new SyncError('paused', true);
+      }
       hash.update(this.files.readBytes(file.path, offset, Math.min(HASH_CHUNK, file.size - offset)));
     }
     return hash.hex();
@@ -738,14 +817,28 @@ export class SyncClient {
         : { server: base, recording_id: '', state: 'queued', fingerprint: '', hashes: {}, attempts: 0, next_attempt_ms: 0, error: '', retryable: true, synced_at_ms: 0, server_path: '', updated_ms: now };
     this.index.items[id] = item;
     if (!item.recording_id) item.recording_id = this.recordingIdFor(summary);
+    const wasSynced = item.state === 'synced';
     try {
       const files = this.localFiles(id);
       if (files.some((file) => now - file.mtimeMs < SETTLE_MS)) return; // still being written; the next tick takes it
       const fingerprint = JSON.stringify(files.map((file) => [file.role, file.size, file.mtimeMs]));
+      const syncedHashes = { ...item.hashes };
       if (item.fingerprint !== fingerprint || Object.keys(item.hashes).length !== files.length) {
-        item.hashes = {};
-        for (const file of files) item.hashes[file.role] = this.hashFile(file);
+        const hashes: Record<string, string> = {};
+        for (const file of files) hashes[file.role] = await this.hashFile(file);
+        item.hashes = hashes;
         item.fingerprint = fingerprint;
+      }
+      if (wasSynced) {
+        const same = Object.keys(syncedHashes).length === files.length && files.every((file) => syncedHashes[file.role] === item.hashes[file.role]);
+        item.listing = this.listingOf(id);
+        if (same) return; // only touched: still what the server holds
+        // The server keeps the first upload under its id (a different one is recording_id_conflict).
+        item.revision = (item.revision ?? 1) + 1;
+        const suffix = `:r${item.revision}`;
+        item.recording_id = `${this.recordingIdFor(summary).slice(0, 128 - suffix.length)}${suffix}`;
+        Object.assign(item, { state: 'queued', attempts: 0, error: '', retryable: true, next_attempt_ms: 0 });
+        this.log('info', `${id} changed since it was uploaded; uploading it again as ${item.recording_id}`);
       }
       const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
       this.current = { id, sentBytes: 0, totalBytes };
@@ -761,6 +854,7 @@ export class SyncClient {
         synced_at_ms: this.timers.now(),
         server_path: text(result.path),
         updated_ms: this.timers.now(),
+        listing: this.listingOf(id),
       });
       this.index.last_upload_ms = this.timers.now();
       this.requested.delete(id);
@@ -768,16 +862,17 @@ export class SyncClient {
     } catch (error) {
       const failure = error instanceof SyncError ? error : new SyncError('unexpected', true);
       if (failure.code === 'paused') {
-        item.state = 'queued';
+        if (!wasSynced || item.state !== 'synced') item.state = 'queued';
+      } else if (SyncClient.authFailure(failure)) {
+        // Not this recording's fault: it waits (still asked for) until the user signs in again.
+        Object.assign(item, { state: 'queued', error: '', next_attempt_ms: 0, updated_ms: this.timers.now() });
+        this.noteTokenRejected(failure.code);
       } else {
         item.attempts += 1;
         const delay = Math.min(this.backoff.maxMs, this.backoff.baseMs * 2 ** Math.max(0, item.attempts - 1));
         Object.assign(item, { state: 'failed', error: failure.code, retryable: failure.retryable, next_attempt_ms: this.timers.now() + delay, updated_ms: this.timers.now() });
         this.requested.delete(id);
         this.log('warn', `upload ${id} failed: ${failure.code}${failure.retryable ? ` (retry in ${Math.round(delay / 1000)} s)` : ''}`);
-        if (failure.code === 'unauthorized' || failure.code === 'forbidden') {
-          this.connection = { ok: false, error: failure.code, checkedAtMs: this.timers.now(), username: '', role: '', clientType: '' };
-        }
       }
     } finally {
       this.current = null;
@@ -812,9 +907,15 @@ export class SyncClient {
           const length = Math.min(maxChunk, file.size - offset);
           const bytes = this.files.readBytes(file.path, offset, length);
           const put = await this.call('PUT', `/api/sync/recordings/${rid}/files/${file.role}?offset=${offset}`, undefined, bytes);
-          if (put.status === 200) offset = num(put.json.received);
-          else if (put.status === 409 && put.json.error === 'offset_mismatch') offset = num(put.json.received);
+          let next: number;
+          if (put.status === 200) next = num(put.json.received);
+          else if (put.status === 409 && put.json.error === 'offset_mismatch') next = num(put.json.received);
           else throw this.failure(put.status, put.json);
+          // The server must take something (or name where it is): the same offset again would loop forever.
+          if (put.status === 200 && next <= offset) throw new SyncError('upload_stalled', true, put.status, put.json);
+          if (put.status === 409 && next === offset) throw new SyncError('upload_stalled', true, put.status, put.json);
+          if (next > file.size) throw new SyncError('upload_offset_invalid', true, put.status, put.json);
+          offset = next;
           received.set(file.role, offset);
           if (this.current) {
             this.current = { id: this.current.id, sentBytes: sent(), totalBytes };

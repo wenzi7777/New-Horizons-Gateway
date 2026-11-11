@@ -85,4 +85,49 @@ describe('StudioUpdater', () => {
     const http: HttpGet = async () => ({ status: 500, text: async () => '', body: null });
     expect(await updater(http).check()).toMatchObject({ phase: 'error', error: 'http_500' });
   });
+
+  it('gives up a download that stalls, as a timeout error', async () => {
+    const http: HttpGet = async (url, signal) => {
+      if (url.endsWith('.json')) return { status: 200, text: async () => JSON.stringify(manifest('v2.1.0')), body: null };
+      return {
+        status: 200,
+        text: async () => '',
+        body: (async function* () {
+          yield payload.subarray(0, 4);
+          // Then nothing more arrives (the stream ignores the abort signal, as a stuck socket may).
+          await new Promise(() => undefined);
+        })(),
+      };
+    };
+    const installed: string[] = [];
+    const u = new StudioUpdater({
+      currentVersion: 'v2.0.0',
+      platformKey: 'darwin-arm64',
+      downloadDir: mkdtempSync(join(tmpdir(), 'nhs-upd-')),
+      http,
+      install: async (file) => void installed.push(file),
+      downloadStallTimeoutMs: 30,
+    });
+    await u.check();
+    const after = await u.install();
+    expect(after).toMatchObject({ phase: 'error', error: 'timeout' });
+    expect(installed).toEqual([]);
+  });
+
+  it('gives up a download whose server never answers', async () => {
+    const http: HttpGet = async (url) => {
+      if (url.endsWith('.json')) return { status: 200, text: async () => JSON.stringify(manifest('v2.1.0')), body: null };
+      return new Promise(() => undefined);
+    };
+    const u = new StudioUpdater({
+      currentVersion: 'v2.0.0',
+      platformKey: 'darwin-arm64',
+      downloadDir: mkdtempSync(join(tmpdir(), 'nhs-upd-')),
+      http,
+      install: async () => undefined,
+      downloadStallTimeoutMs: 30,
+    });
+    await u.check();
+    expect(await u.install()).toMatchObject({ phase: 'error', error: 'timeout' });
+  });
 });

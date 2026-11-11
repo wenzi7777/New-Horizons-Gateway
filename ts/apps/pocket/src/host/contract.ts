@@ -20,6 +20,8 @@ export type {
   RecordingTimeline,
   ServerTarget,
   SyncPolicy,
+  VrefView,
+  VrefZone,
 } from '@nhgw/host';
 
 /** Pocket's settings are the host's. */

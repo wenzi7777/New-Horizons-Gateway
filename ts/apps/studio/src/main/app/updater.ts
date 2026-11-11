@@ -40,6 +40,8 @@ export interface UpdaterOptions {
   onChange?: (state: UpdateState) => void;
   manifestBase?: string;
   checkTimeoutMs?: number;
+  /** A download that receives nothing (no answer, no bytes) this long is abandoned as 'timeout' (default 60 s). */
+  downloadStallTimeoutMs?: number;
   now?: () => number;
 }
 
@@ -175,14 +177,41 @@ export class StudioUpdater {
     const name = basename(new URL(asset.url).pathname) || `nh-studio-${this.state_.latestVersion}`;
     const target = join(this.options.downloadDir, name.replace(/[^A-Za-z0-9._-]/g, '_'));
     this.set({ phase: 'downloading', downloadedBytes: 0, totalBytes: asset.size, error: '' });
-    const response = await this.options.http(asset.url);
+    // A stalled server or network must not leave the update "downloading" forever:
+    // every wait (the answer, each chunk) is limited, and the request is aborted.
+    const stallMs = this.options.downloadStallTimeoutMs ?? 60_000;
+    const controller = new AbortController();
+    const stalled = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new Error('timeout')), { once: true });
+    });
+    stalled.catch(() => undefined);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), stallMs);
+    };
+    arm();
+    try {
+      return await this.receive(asset, target, controller, stalled, arm);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  }
+
+  private async receive(asset: PlatformAsset, target: string, controller: AbortController, stalled: Promise<never>, arm: () => void): Promise<string> {
+    const response = await Promise.race([this.options.http(asset.url, controller.signal), stalled]);
     if (response.status < 200 || response.status >= 300) throw new Error(`http_${response.status}`);
     const hash = createHash('sha256');
     const out = createWriteStream(target);
     let received = 0;
     let lastEmit = 0;
+    const iterator = chunksOf(response.body)[Symbol.asyncIterator]();
     try {
-      for await (const chunk of chunksOf(response.body)) {
+      for (;;) {
+        arm();
+        const next = await Promise.race([iterator.next(), stalled]);
+        if (next.done) break;
+        const chunk = next.value;
         received += chunk.length;
         if (received > asset.size) throw new Error('size_mismatch');
         hash.update(chunk);
@@ -194,6 +223,8 @@ export class StudioUpdater {
       }
       await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => (error ? reject(error) : resolve())));
     } catch (error) {
+      controller.abort();
+      void iterator.return?.(undefined)?.catch(() => undefined);
       out.destroy();
       await rm(target, { force: true });
       throw error;

@@ -14,6 +14,8 @@ declare class NhGatewayNativeModule extends NativeModule<NhGatewayNativeEvents> 
   networkInterfaces(): NetworkInterfaceInfo[];
   isIgnoringBatteryOptimizations(): boolean;
   requestIgnoreBatteryOptimizations(): boolean;
+  /** Whether a network is up and whether Android counts it as metered (null: unknown). Absent in builds before it. */
+  networkState?(): { online: boolean; metered: boolean | null };
 
   // In-app update (ApkUpdater.kt). updateDownload rejects with a code in the
   // message: insecure_url, bad_size, http_<n>, network, size_mismatch,

@@ -12,11 +12,13 @@
 import {
   base64ToBytes,
   defaultConfig,
+  GATEWAY_ID_PATTERN,
   GatewayConfigStore,
   GatewayRuntime,
   type HostPlatform,
   type Logger,
   normalizeConfig,
+  normalizeListUid,
   type RawConfig,
   TICK_INTERVAL_MS,
   type WsConnector,
@@ -95,7 +97,22 @@ export function commandTimeoutMs(payload: Record<string, unknown>): number {
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
 const NOTIFY_INTERVAL_MS = 250;
-/** A relay id of NH Studio / NH Pocket (`<clientType>-<8 hex>`, see newRelayId). */
+/**
+ * A device adopted this recently is not given up to another relay its FindMe
+ * names: the device may still be answering with the relay it is leaving.
+ */
+export const ADOPT_GRACE_MS = 30_000;
+
+/**
+ * The relay id a damaged config file still shows (`"gateway_id": "…"`), so a
+ * config that will not parse keeps the id the Backend and devices know.
+ */
+export function salvageGatewayId(text: string | null): string {
+  if (!text) return '';
+  const match = /"gateway_id"\s*:\s*"([^"\\]{1,64})"/.exec(text);
+  const id = match?.[1]?.trim() ?? '';
+  return GATEWAY_ID_PATTERN.test(id) ? id : '';
+}
 
 /** Where the app's config and label documents live, when not beside the recordings. */
 export interface HostDocuments {
@@ -199,6 +216,10 @@ export class AppHost implements HostStore {
   private run_: Running | null = null;
   private starting: Promise<void> | null = null;
   private configStore: GatewayConfigStore | null = null;
+  /** The one config load in flight (appConfig / saveAppConfig / updateSettings / start share it). */
+  private configLoading: Promise<GatewayConfigStore> | null = null;
+  /** UID (normalized) -> wall ms of this host's last adopt(). */
+  private readonly adoptedAt = new Map<string, number>();
 
   // Cached views: getters return the same object until something changed
   // (useSyncExternalStore needs stable snapshots).
@@ -339,15 +360,13 @@ export class AppHost implements HostStore {
 
   /** Raw values of the host config (the sync client keeps its token and switches there); loads the file if not started. */
   async appConfig(): Promise<Record<string, unknown>> {
-    const store = this.activeStore() ?? (await this.loadConfig());
-    this.configStore = store;
+    const store = await this.loadConfig();
     return { ...store.snapshot() };
   }
 
   /** Saves app keys into the host config; a changed sync token re-authenticates the relay link. */
   async saveAppConfig(patch: Record<string, unknown>): Promise<void> {
-    const store = this.activeStore() ?? (await this.loadConfig());
-    this.configStore = store;
+    const store = await this.loadConfig();
     const before = relayToken(store.snapshot());
     const config = await store.save(patch);
     const run = this.run_;
@@ -497,23 +516,55 @@ export class AppHost implements HostStore {
     return hostDefaultConfig(newRelayId(this.clientType), this.productName);
   }
 
-  private async loadConfig(): Promise<GatewayConfigStore> {
+  /**
+   * The config store: the one in use, else the file loaded once. Concurrent
+   * callers share one load, so a first run (or a damaged file) mints one
+   * relay id, not one per caller.
+   */
+  private loadConfig(): Promise<GatewayConfigStore> {
+    const active = this.activeStore();
+    if (active !== null) return Promise.resolve(active);
+    if (this.configLoading === null) {
+      this.configLoading = this.readConfig()
+        .then((store) => {
+          this.configStore = store;
+          return store;
+        })
+        .finally(() => {
+          this.configLoading = null;
+        });
+    }
+    return this.configLoading;
+  }
+
+  private async readConfig(): Promise<GatewayConfigStore> {
     const docs = this.documents;
-    const firstRun = !docs.files.fileExists(docs.config);
-    const store = await GatewayConfigStore.load(new NativeJsonStore<RawConfig>(docs.files, docs.config, () => this.newConfig()));
+    const file = new NativeJsonStore<RawConfig>(docs.files, docs.config, () => this.newConfig(), {
+      // A config that will not parse keeps its relay id when the text still shows it.
+      recover: (text) => {
+        const id = salvageGatewayId(text);
+        return id ? hostDefaultConfig(id, this.productName) : null;
+      },
+      warn: (message) => this.logger.warn(`config: ${message}`),
+    });
+    const store = await GatewayConfigStore.load(file);
     const config = store.snapshot();
     const patch: RawConfig = {};
     // An id is required to run; a damaged or hand-edited config may lack one.
     if (!config.gateway_id) patch.gateway_id = newRelayId(this.clientType);
     if (!config.enabled) patch.enabled = true;
-    if (firstRun || Object.keys(patch).length) await store.save(patch);
+    const outcome = file.lastLoad;
+    if (outcome === 'reset') this.logger.warn(`config: nothing recoverable; new relay id ${config.gateway_id}`);
+    else if (outcome === 'recovered') this.logger.warn(`config: rebuilt with relay id ${config.gateway_id}`);
+    // A minted or recovered id is saved at once, so the next load sees the same one.
+    if (outcome !== 'ok' || Object.keys(patch).length) await store.save(patch);
+    if (patch.gateway_id) this.logger.warn(`config: had no relay id; new relay id ${String(patch.gateway_id)}`);
     return store;
   }
 
   private async doStart(): Promise<void> {
     const native = this.native;
     const configStore = await this.loadConfig();
-    this.configStore = configStore;
     const clock = this.clock;
     const connector = this.deps.connector ?? new RnWsConnector();
     const version = this.deps.version ?? DEFAULT_VERSION;
@@ -582,15 +633,38 @@ export class AppHost implements HostStore {
       onRecordingKnowledge: (uid, event) => this.captures.event(uid, event),
       onDevicePacket: (uid) => this.noteLiveDirectory(service, uid),
     });
-    await service.load();
-    service.bindRuntime(runtime);
-    this.wrapRuntimeHooks(runtime, service);
-
-    const subscriptions: Running['subscriptions'] = [
-      native.addListener('onDatagram', (event) => this.onDatagram(runtime, event)),
-      service.on((event) => this.onServiceEvent(event)),
-    ];
-    await runtime.start();
+    const subscriptions: Running['subscriptions'] = [];
+    try {
+      await service.load();
+      service.bindRuntime(runtime);
+      this.wrapRuntimeHooks(runtime, service);
+      subscriptions.push(
+        native.addListener('onDatagram', (event) => this.onDatagram(runtime, event)),
+        service.on((event) => this.onServiceEvent(event)),
+      );
+      await runtime.start();
+    } catch (error) {
+      // Nothing of this attempt may outlive it: a second start would otherwise
+      // open a second upstream link under the same relay id.
+      this.removeSubscriptions(subscriptions);
+      try {
+        await runtime.stop();
+      } catch {
+        // half started
+      }
+      try {
+        (currentUpstream as RelayUpstream | null)?.stop();
+      } catch {
+        // never started
+      }
+      try {
+        native.stopService();
+      } catch {
+        // not running
+      }
+      this.logger.error(`start: ${errorText(error)}`);
+      throw error;
+    }
     const tickMs = this.deps.tickIntervalMs ?? TICK_INTERVAL_MS;
     let ticking = false;
     const timer = setInterval(() => {
@@ -635,12 +709,22 @@ export class AppHost implements HostStore {
   private yieldToOtherHost(runtime: GatewayRuntime, uid: string, otherId: string): void {
     const store = runtime.configStore;
     if (store.offerPolicy() !== 'managed' || !store.isManaged(uid)) return;
+    // Adopting here right now: the device may still name the relay it is leaving.
+    if (runtime.state.activeClaimFor(uid) !== null) return;
+    const adopted = this.adoptedAt.get(normalizeListUid(uid));
+    if (adopted !== undefined && this.clock.nowMs() - adopted < ADOPT_GRACE_MS) return;
     this.logger.info(`${uid} is now attached to ${otherId}: removed from this host's devices`);
     void (async () => {
       if (this.run_?.service.recordingEnabled(uid)) await this.setRecording(uid, false).catch(() => undefined);
       await store.save({ managed_devices: store.managedDevices().filter((item) => item !== uid) });
       this.changed();
     })().catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorText(error)}`));
+  }
+
+  /** This host's relay id, or one it went by before (a device attached to that is still attached here). */
+  private isOwnId(runtime: GatewayRuntime, id: string): boolean {
+    const store = runtime.configStore;
+    return id === store.snapshot().gateway_id || store.previousGatewayIds().includes(id);
   }
 
   /** Engine hooks the host adds: the FindMe count, raw capture of control replies and app_events requests. */
@@ -653,7 +737,7 @@ export class AppHost implements HostStore {
         const uid = str(request.device_uid).trim().toUpperCase();
         const current = str(request.current_gateway_id);
         if (uid) {
-          if (current && current !== runtime.configStore.snapshot().gateway_id) {
+          if (current && !this.isOwnId(runtime, current)) {
             this.attachedTo.set(uid, current);
             this.yieldToOtherHost(runtime, uid, current);
           } else this.attachedTo.delete(uid);
@@ -803,14 +887,7 @@ export class AppHost implements HostStore {
     if (run === null) return;
     this.run_ = null;
     clearInterval(run.timer);
-    for (const sub of run.subscriptions) {
-      try {
-        if (typeof sub === 'function') sub();
-        else sub.remove();
-      } catch {
-        // already gone
-      }
-    }
+    this.removeSubscriptions(run.subscriptions);
     for (const uid of this.captures.uids()) this.captures.event(uid, { type: 'shutdown' });
     // Recordings end as "server_stopped" (recording_update finishes their captures).
     run.service.stop();
@@ -827,15 +904,28 @@ export class AppHost implements HostStore {
       // not running
     }
     for (const set of this.live.values()) for (const throttle of set) throttle.close();
+    // A later start builds new subscriptions; the closed throttles must not linger.
+    this.live.clear();
+    this.adoptedAt.clear();
     this.slowRefresh(true);
     this.changed();
+  }
+
+  private removeSubscriptions(subscriptions: Running['subscriptions']): void {
+    for (const sub of subscriptions) {
+      try {
+        if (typeof sub === 'function') sub();
+        else sub.remove();
+      } catch {
+        // already gone
+      }
+    }
   }
 
   // -- settings -------------------------------------------------------------------
 
   async updateSettings(patch: Partial<HostSettings>): Promise<void> {
-    const store = this.activeStore() ?? (await this.loadConfig());
-    this.configStore = store;
+    const store = await this.loadConfig();
     const tokenBefore = relayToken(store.snapshot());
     const config = await store.save(configPatchFromSettings(patch, this.productName));
     const run = this.run_;
@@ -863,6 +953,7 @@ export class AppHost implements HostStore {
   async adopt(uid: string): Promise<CommandOutcome> {
     const run = this.run_;
     if (run === null) return fail('not_running');
+    this.adoptedAt.set(normalizeListUid(uid), this.clock.nowMs());
     const result = await run.runtime.operations().adopt(uid);
     this.changed();
     return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };

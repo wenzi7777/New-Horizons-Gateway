@@ -188,7 +188,12 @@ export class UpstreamClient implements UpstreamLink {
     this.gatewayId = gatewayId;
   }
 
+  /**
+   * Points the link at a server (and token): reconnects only when either
+   * actually changed, so re-applying an unchanged config keeps the link up.
+   */
   updateServer(serverUrl: string, authToken?: string): void {
+    if (serverUrl === this.serverUrl && (authToken === undefined || authToken === this.authTokenSource())) return;
     this.serverUrl = serverUrl;
     if (authToken !== undefined) this.authTokenSource = () => authToken;
     this.authRejected = false;

@@ -155,6 +155,11 @@ describe('AppHost (pocket)', () => {
     const probeReply = (current: string) => ({ type: 'findme_discover', device_uid: UID, current_gateway_id: current });
     native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }), dev);
     expect(host.devices().map((d) => d.uid)).toEqual([UID]);
+    // Just adopted (claim in flight): the device may still name the relay it is leaving.
+    native.receive(22346, enc(probeReply('my-old-gateway')), dev);
+    await settle();
+    expect(host.devices().map((d) => d.uid)).toEqual([UID]);
+    native.nowUs += 31_000_000; // the claim and the adopt grace are over
     native.receive(22346, enc(probeReply('my-old-gateway')), dev); // any other relay id counts, not only studio-/pocket-
     await settle();
     expect(host.devices()).toEqual([]);
@@ -199,6 +204,36 @@ describe('AppHost (pocket)', () => {
     const outcomes = await recoverCaptures({ native, logger: { info() {}, warn() {}, error() {} }, yieldToUi: async () => {} });
     expect(outcomes[0]!.error).not.toBe('');
     expect(native.files.has(`${PATHS.rawDir}/AAAAAAAAAAAA-1.nhraw.failed`)).toBe(true);
+  });
+
+  it('a conversion that fails keeps the partial recording and closes what it opened', async () => {
+    const native = new FakeNative();
+    const first = makeHost(native).host;
+    await first.start();
+    await first.adopt(UID);
+    native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }));
+    await first.setRecording(UID, true);
+    for (let i = 1; i <= 20; i++) frame(native, i, [i, 2 * i]);
+    hosts.splice(hosts.indexOf(first), 1);
+    native.kill();
+    const sidecar = [...native.files.keys()].find((path) => path.startsWith(`${PATHS.rawDir}/`) && path.endsWith('.json'))!;
+    const liveDir = JSON.parse(native.text(sidecar)!).live_directory as string;
+    const partial = new Map([...native.files].filter(([path]) => path.startsWith(`${liveDir}/`)));
+    expect([...partial.keys()].some((path) => path.endsWith('.data.csv'))).toBe(true);
+    // The capture reads once, then the storage fails mid-conversion.
+    const realRead = native.readBytes.bind(native);
+    let reads = 0;
+    native.readBytes = (path: string, offset: number, length: number) => {
+      reads += 1;
+      if (reads > 1) throw new Error('EIO');
+      return realRead(path, offset, Math.min(length, 200));
+    };
+    const outcomes = await recoverCaptures({ native, logger: { info() {}, warn() {}, error() {} }, yieldToUi: async () => {} });
+    expect(outcomes[0]!.error).toBe('EIO');
+    for (const [path, bytes] of partial) expect(native.files.get(path), path).toEqual(bytes);
+    expect([...native.files.keys()].filter((path) => path.startsWith(`${PATHS.rawDir}/.convert`))).toEqual([]);
+    expect((native as unknown as { handles: Map<number, unknown> }).handles.size).toBe(0);
+    expect([...native.files.keys()].some((path) => path.endsWith('.nhraw.failed'))).toBe(true);
   });
 
   it('quick commands go to the device and fail fast when it is unreachable', async () => {

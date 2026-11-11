@@ -171,6 +171,24 @@ export class FakeNative implements HostNative {
   }
   movePath(from: string, to: string) {
     const bytes = this.files.get(from);
+    if (!bytes && this.dirs.has(from)) {
+      // A folder, as File.renameTo / fs.rename move one: refused onto an existing path.
+      if (this.fileExists(to)) return false;
+      for (const key of [...this.files.keys()]) {
+        if (!key.startsWith(`${from}/`)) continue;
+        const moved = this.files.get(key)!;
+        this.files.delete(key);
+        this.files.set(`${to}${key.slice(from.length)}`, moved);
+        this.touch(`${to}${key.slice(from.length)}`);
+      }
+      for (const key of [...this.dirs]) {
+        if (key !== from && !key.startsWith(`${from}/`)) continue;
+        this.dirs.delete(key);
+        this.dirs.add(`${to}${key.slice(from.length)}`);
+      }
+      this.touch(`${to}/x`);
+      return true;
+    }
     if (!bytes) return false;
     this.files.delete(from);
     this.files.set(to, bytes);

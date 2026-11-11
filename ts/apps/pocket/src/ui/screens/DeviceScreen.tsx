@@ -2,6 +2,8 @@ import { Stack, useRouter } from 'expo-router';
 import {
   Activity,
   CircleDot,
+  Gauge,
+  RotateCcw,
   Crosshair,
   Eraser,
   Power,
@@ -14,7 +16,7 @@ import {
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import type { QuickCommand } from '../../host/contract';
+import type { QuickCommand, VrefZone } from '../../host/contract';
 import { errorText } from '../../i18n/strings';
 import { useConfirm, useToast, type ConfirmOptions } from '../components/feedback';
 import {
@@ -35,6 +37,7 @@ import {
   SegmentedControl,
   StatusDot,
   TextField,
+  type Tone,
 } from '../components/primitives';
 import { batteryLabel, modeLabel } from '../deviceText';
 import { formatDateTime, formatDuration } from '../format';
@@ -44,6 +47,15 @@ import { syncErrorCode } from '../../host/sync';
 import { useTheme } from '../theme';
 
 type CommandKey = QuickCommand['kind'] | 'release' | 'recording';
+
+const VREF_ZONE_TONE: Record<VrefZone, Tone> = {
+  safe: 'success',
+  raised: 'accent',
+  near: 'warning',
+  risk: 'danger',
+  auto: 'accent',
+  unknown: 'muted',
+};
 
 /** The elapsed time of a device's recording in progress (null when none). */
 export function useRecordingElapsed(uid: string | undefined): number | null {
@@ -304,6 +316,68 @@ export function DeviceScreen({ uid }: { uid: string }) {
           />
         </View>
       </Card>
+
+      {device.vref ? (
+        <>
+          <SectionHeader title={t('vrefSection')} />
+          <Card padded={false}>
+            <FactRow
+              label="Vref"
+              value={<Badge label={`${device.vref.mv ?? '-'} mV · ${t(`vrefZone_${device.vref.zone}`)}`} tone={VREF_ZONE_TONE[device.vref.zone]} />}
+            />
+            <Divider />
+            <FactRow
+              label="Rfb"
+              value={
+                device.vref.rfbMedianOhm !== null
+                  ? `${(device.vref.rfbMedianOhm / 1000).toFixed(2)} kΩ · ${t('rfbRowsMeasured', { n: device.vref.rfbMeasuredRows, total: device.vref.rfbRows })}`
+                  : t('rfbNotMeasured')
+              }
+            />
+            <Divider />
+            <FactRow label={t('rangeSaturated')} value={device.vref.saturatedRows ?? '-'} />
+            <Divider inset={0} />
+            <View style={{ padding: 16, gap: 8 }}>
+              <Caption>{t('rangeMode')}</Caption>
+              <SegmentedControl
+                accessibilityLabel={t('rangeMode')}
+                options={[
+                  { value: 'raw' as const, label: t('rangeMode_raw') },
+                  { value: 'virtual' as const, label: t('rangeMode_virtual') },
+                  { value: 'auto' as const, label: t('rangeMode_auto') },
+                ]}
+                value={device.vref.mode}
+                disabled={offline || busy === 'range_mode'}
+                onChange={(mode) => {
+                  if (mode !== 'raw' && device.vref && device.vref.rfbMeasuredRows === 0) {
+                    toast.show(t('rangeNeedsRfb'), 'danger');
+                    return;
+                  }
+                  void run('range_mode', { kind: 'range_mode', mode });
+                }}
+              />
+              <Caption>{t(`rangeModeHint_${device.vref.mode}`)}</Caption>
+            </View>
+            <Divider inset={48} />
+            <ActionRow
+              label={t('rfbMeasure')}
+              icon={Gauge}
+              busy={busy === 'rfb_measure'}
+              disabled={offline}
+              onPress={() => run('rfb_measure', { kind: 'rfb_measure' }, undefined, t('rfbMeasured'))}
+            />
+            <Divider inset={48} />
+            <ActionRow
+              label={t('vrefReset')}
+              icon={RotateCcw}
+              busy={busy === 'vref_reset'}
+              disabled={offline || device.vref.zone === 'safe' || device.vref.mode === 'auto'}
+              onPress={() => run('vref_reset', { kind: 'vref_reset' })}
+            />
+          </Card>
+          <Caption style={{ paddingHorizontal: 4 }}>{t('vrefMoreInStudio')}</Caption>
+        </>
+      ) : null}
 
       <SectionHeader title={t('nicknameLabel')} />
       <Card>

@@ -18,6 +18,8 @@ import {
   hostDefaultConfig,
   recordingSummary,
   settingsFromConfig,
+  vrefOf,
+  vrefZone,
   timelineView,
 } from '../src/views';
 import { FakeNative } from './fakeNative';
@@ -65,7 +67,39 @@ describe('views', () => {
       matrix: { rows: 2, cols: 3 },
       recording: { enabled: true, finishing: false, error: '' },
       lastSeenMs: Date.UTC(2026, 10, 10, 3, 0, 0),
+      vref: null,
     });
+  });
+
+  it('maps the v2.0.F Vref and range block', () => {
+    const status = {
+      vref: { supported: true, ok: true, mv: 720, limit_mv: 800, calibration_on: false },
+      range: { mode: 'virtual', ref_rfb_ohm: 20000, leak_compensation: true, rfb_ohm: [20010, 0, 19990, 20030], rfb_known_rows: 3, saturated_rows: 1 },
+    };
+    expect(vrefOf(status)).toEqual({
+      mv: 720,
+      zone: 'near',
+      limitMv: 800,
+      mode: 'virtual',
+      refRfbOhm: 20000,
+      leakCompensation: true,
+      rfbMeasuredRows: 3,
+      rfbRows: 4,
+      rfbMedianOhm: 20010,
+      saturatedRows: 1,
+      calibrationOn: false,
+    });
+    expect(vrefOf({ vref: { supported: false } })).toBeNull();
+    expect(vrefOf({})).toBeNull();
+    expect(deviceView({ ...entry, last_status: status }, 1500).vref?.zone).toBe('near');
+    expect([vrefZone(330, 'raw'), vrefZone(500, 'raw'), vrefZone(750, 'virtual'), vrefZone(820, 'raw'), vrefZone(820, 'auto'), vrefZone(null, 'raw')]).toEqual([
+      'safe',
+      'raised',
+      'near',
+      'risk',
+      'auto',
+      'unknown',
+    ]);
   });
 
   it('fps drops to 0 once frames stop; nickname wins; no battery block -> null', () => {
@@ -154,6 +188,15 @@ describe('quick commands', () => {
   it('match the Desktop payloads', () => {
     expect(quickCommandPayload({ kind: 'status' })).toEqual({ command: 'status' });
     expect(quickCommandPayload({ kind: 'reboot' })).toEqual({ command: 'reboot' });
+    expect(quickCommandPayload({ kind: 'range_mode', mode: 'auto' })).toEqual({ command: 'set_range', mode: 'auto' });
+    expect(quickCommandPayload({ kind: 'range_mode', mode: 'virtual', refRfbOhm: 22000, leakCompensation: false })).toEqual({
+      command: 'set_range',
+      mode: 'virtual',
+      ref_rfb_ohm: 22000,
+      leak_comp: false,
+    });
+    expect(quickCommandPayload({ kind: 'vref_reset' })).toEqual({ command: 'set_vref', mv: 330 });
+    expect(quickCommandPayload({ kind: 'rfb_measure' })).toEqual({ command: 'rfb_measure' });
     expect(quickCommandPayload({ kind: 'enter_maintenance' })).toEqual({ command: 'enter_maintenance', reason: 'manual' });
     expect(quickCommandPayload({ kind: 'exit_maintenance' })).toEqual({ command: 'exit_maintenance' });
     expect(quickCommandPayload({ kind: 'scan_rate', fps: 60 })).toEqual({ command: 'set_scan_timing', target_fps: 60, settle_us: 20, send_every_n_frames: 1 });

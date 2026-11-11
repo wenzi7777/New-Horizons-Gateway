@@ -9,6 +9,7 @@ export function createMockSync(): PocketSync {
   let status: SyncStatus = {
     configured: false,
     tokenMasked: '',
+    tokenRejected: false,
     account: '',
     baseUrl: 'https://isensing-s1.u-aizu.ac.jp/newhorizons',
     policy: 'manual',

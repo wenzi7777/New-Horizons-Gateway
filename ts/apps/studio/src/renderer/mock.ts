@@ -529,6 +529,17 @@ export class MockStudioApi implements StudioApi {
         return this.sendCommand(uid, { command: 'calibration_tare_capture', duration_ms: 1000 });
       case 'tare_clear':
         return this.sendCommand(uid, { command: 'calibration_tare_clear' });
+      case 'range_mode':
+        return this.sendCommand(uid, {
+          command: 'set_range',
+          mode: command.mode,
+          ...(command.refRfbOhm !== undefined ? { ref_rfb_ohm: command.refRfbOhm } : {}),
+          ...(command.leakCompensation !== undefined ? { leak_comp: command.leakCompensation } : {}),
+        });
+      case 'vref_reset':
+        return this.sendCommand(uid, { command: 'set_vref', mv: 330 });
+      case 'rfb_measure':
+        return this.sendCommand(uid, { command: 'rfb_measure' });
     }
   }
 

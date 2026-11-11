@@ -65,4 +65,34 @@ describe('sync area', () => {
       await area.dispose?.();
     }
   });
+
+  it('concurrent calls build one client, and a host swap replaces it once', async () => {
+    const http: SyncHttp = { request: async () => ({ status: 200, text: JSON.stringify({ items: [] }) }) };
+    const controller = { host: fakeHost(), native: new FakeNative() };
+    const area = createSyncArea({ http, autoStart: false });
+    const context = {
+      controller: controller as unknown as AreaContext['controller'],
+      emit: () => undefined,
+      logger: { info() {}, warn() {}, error() {} },
+      userDataDir: '/tmp',
+      version: 'v0',
+    } as AreaContext;
+    const handlers = area.register(context) as Record<string, (...args: unknown[]) => Promise<any>>;
+    try {
+      await Promise.all([handlers.status!(), handlers.status!(), handlers.status!()]);
+      const first = area.client();
+      expect(first).not.toBeNull();
+      await handlers.status!();
+      expect(area.client()).toBe(first);
+      controller.host = fakeHost();
+      await Promise.all([handlers.status!(), handlers.status!()]);
+      const second = area.client();
+      expect(second).not.toBe(first);
+      expect(second!.host).toBe(controller.host);
+      await handlers.status!();
+      expect(area.client()).toBe(second);
+    } finally {
+      await area.dispose?.();
+    }
+  });
 });

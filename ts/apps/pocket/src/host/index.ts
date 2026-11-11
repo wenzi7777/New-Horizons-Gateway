@@ -6,7 +6,7 @@ import { AppHost, type HostNative } from '@nhgw/host';
 
 import NhGatewayNative from '../../modules/nh-gateway-native/src/NhGatewayNativeModule';
 import type { PocketStore } from './contract';
-import { createPocketSync, type PocketSync } from './sync';
+import { createPocketSync, networkReader, type PocketSync } from './sync';
 
 export type { PocketStore } from './contract';
 
@@ -38,6 +38,6 @@ export function getPocketSync(): PocketSync | null {
   if (syncInstance !== null) return syncInstance;
   if (createPocketStore() === null || instance === null) return null;
   const model = String((Platform.constants as { Model?: unknown } | undefined)?.Model ?? '').trim();
-  syncInstance = createPocketSync(instance, NhGatewayNative as unknown as HostNative, model || 'Android');
+  syncInstance = createPocketSync(instance, NhGatewayNative as unknown as HostNative, model || 'Android', networkReader(NhGatewayNative));
   return syncInstance;
 }

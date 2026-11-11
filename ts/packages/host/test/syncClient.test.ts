@@ -385,3 +385,102 @@ describe('SyncClient labels and profiles', () => {
     expect(JSON.parse(ctx.native.text('profiles/mine.json')!)).toEqual({ rows: 5 });
   });
 });
+
+describe('SyncClient failures and changes', () => {
+  it('a 401 mid-round ends the round: the other recordings wait, not fail, until a new sign-in', async () => {
+    const ctx = await started(setup());
+    ctx.host.policy = 'auto';
+    const first = addRecording(ctx.native, ctx.host, '100000', 10);
+    const second = addRecording(ctx.native, ctx.host, '110000', 10);
+    const third = addRecording(ctx.native, ctx.host, '120000', 10);
+    const real = ctx.server.request.bind(ctx.server);
+    let revoked = false;
+    let completes = 0;
+    ctx.server.request = async (req) => {
+      if (revoked) return { status: 401, text: JSON.stringify({ error: 'unauthorized' }) };
+      const response = await real(req);
+      if (req.url.endsWith('/complete') && ++completes === 1) revoked = true; // the token is revoked after the first upload
+      return response;
+    };
+    await ctx.client.tick();
+    const states = () => Object.fromEntries(ctx.client.status().recordings.map((r) => [r.id, [r.state, r.error]]));
+    expect(states()[first]).toEqual(['synced', '']);
+    expect(states()[second]![0]).not.toBe('failed');
+    expect(states()[third]![0]).not.toBe('failed');
+    expect(ctx.client.status().tokenRejected).toBe(true);
+    expect(ctx.client.status().connection?.error).toBe('unauthorized');
+    // Nothing more is sent with the refused token.
+    const sent = ctx.server.requests.length;
+    await ctx.client.tick();
+    expect(ctx.server.requests.length).toBe(sent);
+    // A new sign-in clears it and the rest go up.
+    revoked = false;
+    await ctx.client.setToken(TOKEN);
+    await ctx.client.tick();
+    expect(ctx.client.status().tokenRejected).toBe(false);
+    expect(states()[second]![0]).toBe('synced');
+    expect(states()[third]![0]).toBe('synced');
+  });
+
+  it('an upload whose offset does not move fails instead of looping', async () => {
+    const ctx = await started(setup());
+    const id = addRecording(ctx.native, ctx.host, '100000', 2500);
+    const real = ctx.server.request.bind(ctx.server);
+    ctx.server.request = async (req) => {
+      if (req.method === 'PUT') {
+        ctx.server.puts += 1;
+        return { status: 200, text: JSON.stringify({ received: Number(new URL(req.url).searchParams.get('offset')) }) };
+      }
+      return real(req);
+    };
+    await ctx.client.uploadNow(id);
+    await ctx.client.tick();
+    expect(ctx.server.puts).toBe(1);
+    const entry = ctx.client.status().recordings[0]!;
+    expect([entry.state, entry.error]).toEqual(['failed', 'upload_stalled']);
+  });
+
+  it('a synced recording whose files changed is uploaded again under a new id; one only touched is not', async () => {
+    const ctx = await started(setup());
+    const id = addRecording(ctx.native, ctx.host, '100000', 100);
+    await ctx.client.uploadNow(id);
+    await ctx.client.tick();
+    expect(ctx.server.uploads.size).toBe(1);
+    const dataPath = `recordings/${id}/100000.data.csv`;
+    // Rewritten with the same bytes (a new mtime): nothing to send.
+    ctx.native.writeAtomic(dataPath, 'x'.repeat(100));
+    await ctx.client.uploadNow();
+    await ctx.client.tick();
+    expect(ctx.server.uploads.size).toBe(1);
+    expect(ctx.client.status().recordings[0]!.state).toBe('synced');
+    // Different content: a second upload, as revision 2.
+    ctx.native.writeAtomic(dataPath, 'y'.repeat(120));
+    await ctx.client.uploadNow();
+    await ctx.client.tick();
+    expect([...ctx.server.uploads.keys()]).toEqual(['studio-abcd1234:3CDC7545CCD0.20261110.100000', 'studio-abcd1234:3CDC7545CCD0.20261110.100000:r2']);
+    expect(ctx.client.status().recordings[0]!.state).toBe('synced');
+    // And it stays synced afterwards.
+    await ctx.client.uploadNow();
+    await ctx.client.tick();
+    expect(ctx.server.uploads.size).toBe(2);
+  });
+
+  it('hashing a large file lets timers run between chunks', async () => {
+    const ctx = await started(setup({ chunkBytes: 4 << 20 }));
+    const id = addRecording(ctx.native, ctx.host, '100000', 3 * (1 << 20) + 5);
+    let fired = false;
+    let firedBeforeFirstRequest: boolean | null = null;
+    const real = ctx.server.request.bind(ctx.server);
+    ctx.server.request = async (req) => {
+      if (req.url.endsWith('/api/sync/recordings') && firedBeforeFirstRequest === null) firedBeforeFirstRequest = fired;
+      return real(req);
+    };
+    await ctx.client.uploadNow(id);
+    setTimeout(() => {
+      fired = true;
+    }, 0);
+    await ctx.client.tick();
+    expect(firedBeforeFirstRequest).toBe(true);
+    expect(ctx.client.status().recordings[0]!.state).toBe('synced');
+  });
+});
