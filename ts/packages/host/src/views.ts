@@ -139,6 +139,15 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
   };
 }
 
+/** Marks a listed device another relay took over (see DeviceView.takenOver). */
+export function withOwnership(view: DeviceView, owner: { isYielded(uid: string): boolean; attachedTo(uid: string): string }): DeviceView {
+  if (!owner.isYielded(view.uid)) return view;
+  const by = owner.attachedTo(view.uid);
+  // Online here: the new owner is gone and this relay serves it as the fallback.
+  if (view.online && !by) return view;
+  return { ...view, takenOver: true, takenOverBy: by };
+}
+
 /** A DeviceService.nearby() item. `attachedTo`: the relay the device last said it is attached to (not us). */
 export function nearbyView(item: Record<string, unknown>, attachedTo: string): NearbyDeviceView {
   return {

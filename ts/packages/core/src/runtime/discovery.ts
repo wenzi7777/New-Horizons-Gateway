@@ -31,11 +31,22 @@ export const OFFER_TTL_MS = 10000;
  */
 export const NON_OWNER_OFFER_DELAY_MS = 250;
 /**
- * Under offer_policy "managed", the floor for a managed device's offer: above
- * the Desktop server's own FindMe responder (100), so the App that manages a
- * device wins it over the server. A claim adds CLAIM_PRIORITY_BOOST on top.
+ * The floor for an OWNED device's offer (managed here and not taken over),
+ * under either policy: above every relay's base priority (100) and the
+ * Desktop server's own FindMe responder (100), so the relay that adopted a
+ * device -- or took it over last -- wins it when the device chooses again
+ * (firmware: highest priority first, then upstream, RTT and load). A claim
+ * adds CLAIM_PRIORITY_BOOST on top. The device reports the priority it
+ * attached at as `current_priority`: below this means it is only with a
+ * fallback relay, and its owner takes it back.
  */
 export const MANAGED_OFFER_PRIORITY = 200;
+/**
+ * Offer format. 2 adds `served_devices` (the relay's load). Firmware from the
+ * relay-ownership release ignores offers below 2 -- the legacy Python
+ * Gateway's -- so a device never attaches to one again.
+ */
+export const OFFER_VERSION = 2;
 /** A device this host released: declined (with a cooldown) until it is adopted again. */
 export const DEVICE_RELEASED_REASON = 'device_released';
 /** Under "managed", a device not in the managed list: no offer, only noted as nearby. */
@@ -60,6 +71,10 @@ export interface FindmeContext {
   offerPolicy?: OfferPolicy;
   isManaged?(deviceUid: string): boolean;
   isReleased?(deviceUid: string): boolean;
+  /** Managed and not taken over by another relay. Absent: same as isManaged. */
+  isOwned?(deviceUid: string): boolean;
+  /** Devices this relay streams now (the offer's `served_devices`). */
+  servedDevices?: number;
 }
 
 export interface FindmeDecision {
@@ -86,7 +101,7 @@ export function decodeFindmeRequest(data: Uint8Array): Dict | null {
 
 function offerPayload(ctx: FindmeContext, denied: boolean, claimId: string, priority = ctx.priority): Dict {
   return {
-    version: 1,
+    version: OFFER_VERSION,
     gateway_name: ctx.gatewayName,
     gateway_id: ctx.gatewayId,
     udp_port: pyInt(ctx.udpPort),
@@ -95,6 +110,7 @@ function offerPayload(ctx: FindmeContext, denied: boolean, claimId: string, prio
     upstream_status: ctx.upstreamStatus,
     ttl_ms: OFFER_TTL_MS,
     server_time: Math.floor(ctx.nowMs),
+    served_devices: pyInt(ctx.servedDevices ?? 0),
   };
 }
 
@@ -134,7 +150,9 @@ export function decideFindme(request: Dict, ctx: FindmeContext): FindmeDecision 
     // Not ours to take: remembered as nearby (the UI offers to adopt it), never offered.
     return { record: { accepted: false, reason: DEVICE_UNMANAGED_REASON }, reply: null };
   }
-  const priority = managedPolicy ? Math.max(ctx.priority, MANAGED_OFFER_PRIORITY) : ctx.priority;
+  // The owner outranks every fallback, whatever its policy (a headless relay owns what it took over).
+  const owned = Boolean(deviceUid) && (ctx.isOwned ?? ctx.isManaged)?.(deviceUid) === true;
+  const priority = owned ? Math.max(ctx.priority, MANAGED_OFFER_PRIORITY) : ctx.priority;
   const reason = denied ? 'device_rejected' : '';
   const claim = deviceUid && !denied ? ctx.activeClaim(deviceUid) : null;
   let claimId = strOr((claim ?? {}).claim_id);
@@ -168,6 +186,8 @@ export interface DiscoveryResponderOptions {
   offerPolicy?: () => OfferPolicy;
   isManaged?: (deviceUid: string) => boolean;
   isReleased?: (deviceUid: string) => boolean;
+  isOwned?: (deviceUid: string) => boolean;
+  servedDevices?: () => number;
   /** Whether the device streams to this host now; one that does not gets its offer `nonOwnerDelayMs` later. */
   isServing?: (deviceUid: string) => boolean;
   /** Default 0 (answer at once); the runtime uses NON_OWNER_OFFER_DELAY_MS. */
@@ -196,6 +216,8 @@ export class DiscoveryResponder {
   private readonly offerPolicy: () => OfferPolicy;
   private readonly isManaged: (deviceUid: string) => boolean;
   private readonly isReleased: (deviceUid: string) => boolean;
+  private readonly isOwned: ((deviceUid: string) => boolean) | undefined;
+  private readonly servedDevices: () => number;
   private readonly isServing: ((deviceUid: string) => boolean) | undefined;
   private readonly nonOwnerDelayMs: number;
   private readonly defer: (run: () => void, ms: number) => void;
@@ -215,6 +237,8 @@ export class DiscoveryResponder {
     this.offerPolicy = options.offerPolicy ?? (() => 'all');
     this.isManaged = options.isManaged ?? (() => false);
     this.isReleased = options.isReleased ?? (() => false);
+    this.isOwned = options.isOwned;
+    this.servedDevices = options.servedDevices ?? (() => 0);
     this.isServing = options.isServing;
     this.nonOwnerDelayMs = Math.max(0, options.nonOwnerDelayMs ?? 0);
     this.defer = options.defer ?? ((run, ms) => void setTimeout(run, ms));
@@ -237,6 +261,8 @@ export class DiscoveryResponder {
       offerPolicy: this.offerPolicy(),
       isManaged: this.isManaged,
       isReleased: this.isReleased,
+      isOwned: this.isOwned,
+      servedDevices: this.servedDevices(),
     };
   }
 
@@ -249,7 +275,13 @@ export class DiscoveryResponder {
       this.onRequest(request, from, decision.record.accepted, decision.record.reason);
     }
     if (decision.reply !== null) {
-      const packet = utf8Encode(pyJsonDumpsCompact(decision.reply));
+      const reply = decision.reply;
+      const uid = strOr(reply.device_uid);
+      const contested =
+        this.nonOwnerDelayMs > 0 && this.isServing !== undefined && reply.accept === true && !strOr(reply.claim_id) && uid !== '' && !this.isServing(uid);
+      // Firmware ranks offers by RTT; it subtracts what was held back on purpose.
+      if (contested) reply.held_ms = this.nonOwnerDelayMs;
+      const packet = utf8Encode(pyJsonDumpsCompact(reply));
       const send = () => {
         try {
           this.socket.send(packet, from);
@@ -257,10 +289,6 @@ export class DiscoveryResponder {
           this.lastError = error instanceof Error ? error.message : String(error);
         }
       };
-      const reply = decision.reply;
-      const uid = strOr(reply.device_uid);
-      const contested =
-        this.nonOwnerDelayMs > 0 && this.isServing !== undefined && reply.accept === true && !strOr(reply.claim_id) && uid !== '' && !this.isServing(uid);
       if (contested) this.defer(send, this.nonOwnerDelayMs);
       else send();
     }

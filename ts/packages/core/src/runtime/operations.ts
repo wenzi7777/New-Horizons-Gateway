@@ -192,19 +192,13 @@ export class GatewayOperations {
   }
 
   /**
-   * Asks a nearby device to switch to this Gateway (a FindMe claim): the
-   * Backend is told (gateway_claim_request) and the device is sent
-   * findme_switch_gateway at the address its last FindMe came from.
+   * Takes a device over (the Relays page's / web UI's "take over"): the same
+   * as adopt() -- this relay becomes its owner -- under either offer policy.
+   * Before, serve() only claimed the device; under "managed" (NH Studio /
+   * NH Pocket) the device was then not offered to, so the claim timed out.
    */
-  serve(deviceUid: unknown): OpResult {
-    const locked = this.locked();
-    if (locked !== null) return locked;
-    const uid = upperUid(deviceUid);
-    if (!uid) return opFail('device_uid_required');
-    if (this.configStore.isDenied(uid)) return opFail('device_denied', 409);
-    if (!this.upstream.isConnected()) return opFail('upstream_offline', 503);
-    const { claim } = this.claimAndSwitch(uid);
-    return opOk({ claim });
+  serve(deviceUid: unknown): Promise<OpResult> {
+    return this.adopt(deviceUid);
   }
 
   /**
@@ -249,11 +243,11 @@ export class GatewayOperations {
   }
 
   /**
-   * Takes a device on: it joins managed_devices (persisted), then is claimed
-   * and asked to switch here exactly as serve() does. Unlike serve() the
-   * Backend need not be reachable (NH Pocket adopts offline); the claim is
-   * then only local, which is all the device needs -- the preferred host
-   * mirrors the device's claim_id in its offer.
+   * Takes a device on, or over from another relay: it joins managed_devices
+   * (persisted; off yielded_devices), then is claimed and asked to switch
+   * here. The Backend need not be reachable (NH Pocket adopts offline); the
+   * claim is then only local, which is all the device needs -- the preferred
+   * host mirrors the device's claim_id in its offer.
    */
   async adopt(deviceUid: unknown): Promise<OpResult> {
     const locked = this.locked();

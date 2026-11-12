@@ -1,11 +1,11 @@
 // Devices: the managed devices (grouped) and Nearby on the left, the selected
 // device on the right with Overview / Settings / Calibration tabs.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 
 import type { DeviceView } from '../../shared/contract';
-import { BatteryIndicator, StatusDot } from '../components/ui';
+import { BatteryIndicator, StatusDot, useConfirm } from '../components/ui';
 import { connectionRank, connectionStateOf } from '../lib/deviceStatus';
 import { formatAgo } from '../lib/format';
 import { DEVICE_TABS, type DeviceTab, type Route } from '../lib/navigation';
@@ -51,6 +51,7 @@ function groupDevices(devices: readonly DeviceView[]): { group: string; items: D
 
 export function DevicesPage({ route, navigate }: Props) {
   const { snapshot, t, exec, api } = useStudio();
+  const [confirmUi, confirm] = useConfirm();
   const devices = snapshot?.devices ?? [];
   const nearby = snapshot?.nearby ?? [];
   const groups = useMemo(() => groupDevices(devices), [devices]);
@@ -58,15 +59,25 @@ export function DevicesPage({ route, navigate }: Props) {
   const now = Date.now();
   const selected = route.uid ? devices.find((d) => d.uid === route.uid) ?? null : null;
 
-  const adopt = async (uid: string, name: string) => {
+  useTakenOverToasts(devices);
+
+  // Add a free device, or take one over from the relay using it (Studio, Pocket or headless alike).
+  const adopt = async (uid: string, name: string, from = '') => {
+    if (from) {
+      const ok = await confirm({ title: t('takeOverTitle', { device: name }), message: t('takeOverMessage', { relay: from }), confirmLabel: t('takeOverDevice') });
+      if (!ok) return;
+    }
     setAdopting(uid);
-    const outcome = await exec(t('addDevice'), () => api.adopt(uid), { uid, success: t('deviceAdded', { device: name }) });
+    const label = from ? t('takeOverDevice') : t('addDevice');
+    const success = from ? t('deviceTakenOver', { device: name }) : t('deviceAdded', { device: name });
+    const outcome = await exec(label, () => api.adopt(uid), { uid, success });
     setAdopting('');
     if (outcome.ok) navigate({ area: 'devices', uid, tab: 'overview' });
   };
 
   return (
     <div className="split">
+      {confirmUi}
       <section className="split-list" aria-labelledby="my-devices-title">
         <div className="list-head">
           <h2 id="my-devices-title">{t('myDevices')}</h2>
@@ -93,10 +104,17 @@ export function DevicesPage({ route, navigate }: Props) {
                         <span className="device-title">
                           <strong>{d.displayName}</strong>
                           {d.recording.enabled ? <span className="tag rec">{t('recBadge')}</span> : null}
+                          {d.takenOver ? <span className="tag waiting">{t('takenOverTag')}</span> : null}
                         </span>
                         <span className="device-detail">
-                          {d.online ? t('fpsValue', { fps: d.fps }) : d.lastSeenMs ? t('lastSeen', { time: formatAgo(d.lastSeenMs, now) }) : t('deviceOffline')}
-                          {d.mode !== 'normal' && d.online ? ` · ${modeLabel(t, d.mode)}` : ''}
+                          {d.takenOver
+                            ? takenOverText(t, d)
+                            : d.online
+                              ? t('fpsValue', { fps: d.fps })
+                              : d.lastSeenMs
+                                ? t('lastSeen', { time: formatAgo(d.lastSeenMs, now) })
+                                : t('deviceOffline')}
+                          {d.mode !== 'normal' && d.online && !d.takenOver ? ` · ${modeLabel(t, d.mode)}` : ''}
                         </span>
                       </span>
                       {d.battery ? <BatteryIndicator percent={d.battery.percent} charging={d.battery.charging} label={`${t('infoBattery')}: ${batteryText(t, d)}`} /> : null}
@@ -130,7 +148,15 @@ export function DevicesPage({ route, navigate }: Props) {
                 ) : null}
               </span>
               {n.attachedTo ? (
-                <span className="tag waiting">{t('attachedElsewhere')}</span>
+                <button
+                  className="button tiny"
+                  type="button"
+                  disabled={adopting !== ''}
+                  onClick={() => void adopt(n.uid, n.name, n.attachedTo)}
+                  aria-label={`${t('takeOverDevice')} ${n.name}`}
+                >
+                  {adopting === n.uid ? t('takingOver') : t('takeOverDevice')}
+                </button>
               ) : (
                 <button className="button tiny" type="button" disabled={adopting !== ''} onClick={() => void adopt(n.uid, n.name)} aria-label={`${t('addDevice')} ${n.name}`}>
                   <Plus size={13} aria-hidden="true" />
@@ -158,6 +184,52 @@ export function DevicesPage({ route, navigate }: Props) {
   );
 }
 
+function TakenOverNotice({ device }: { device: DeviceView }) {
+  const { t, exec, api } = useStudio();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="notice warning taken-over-notice" role="status">
+      <span>
+        <strong>{takenOverText(t, device)}</strong> {t('takenOverCopy')}
+      </span>
+      <button
+        className="button tiny"
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await exec(t('takeBack'), () => api.adopt(device.uid), { uid: device.uid, success: t('deviceTakenOver', { device: device.displayName }) });
+          setBusy(false);
+        }}
+      >
+        {busy ? t('takingOver') : t('takeBack')}
+      </button>
+    </div>
+  );
+}
+
+function takenOverText(t: T, d: DeviceView): string {
+  return d.takenOverBy ? t('takenOverBy', { name: d.takenOverBy }) : t('takenOverByUnknown');
+}
+
+/** One toast when a listed device is taken over by another relay. */
+function useTakenOverToasts(devices: DeviceView[]) {
+  const { t, toast } = useStudio();
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const now = new Set(devices.filter((d) => d.takenOver).map((d) => d.uid));
+    // The first snapshot is the state at launch, not news.
+    if (seen.current !== null) {
+      for (const d of devices) {
+        if (d.takenOver && !seen.current.has(d.uid)) {
+          toast('info', t('takenOverToast', { device: d.displayName, name: d.takenOverBy || t('takenOverByUnknown') }));
+        }
+      }
+    }
+    seen.current = now;
+  }, [devices, t, toast]);
+}
+
 const TAB_LABEL = { overview: 'tabOverview', settings: 'tabSettings', calibration: 'tabCalibration' } as const;
 
 function DeviceDetail({ device, tab, navigate }: { device: DeviceView; tab: DeviceTab; navigate: (route: Route) => void }) {
@@ -178,6 +250,7 @@ function DeviceDetail({ device, tab, navigate }: { device: DeviceView; tab: Devi
           {device.online ? t('deviceOnline') : t('deviceOffline')}
         </span>
       </header>
+      {device.takenOver ? <TakenOverNotice device={device} /> : null}
       <div className="tabs" role="tablist" aria-label={t('deviceTabs')}>
         {DEVICE_TABS.map((id, index) => (
           <button

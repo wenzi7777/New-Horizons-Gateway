@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-import { LOCAL_URL, PRODUCTION_URL, validateGatewayId, type GatewayRuntime, type Json, type Logger, type OpResult, silentLogger } from '@nhgw/core';
+import { LOCAL_URL, PRODUCTION_URL, validateGatewayId, type GatewayRuntime, type GatewayStateSnapshot, type Json, type Logger, type OpResult, silentLogger } from '@nhgw/core';
 
 import { PortInUseError } from '../adapters/udp';
 import { readAsset, TOKENS_CSS } from '../assets';
@@ -182,7 +182,7 @@ export class GatewayWebServer {
         const ops = this.getRuntime().operations();
         if (action === 'reject') return this.reply(await ops.deny(uid));
         if (action === 'allow') return this.reply(await ops.allow(uid));
-        return this.reply(ops.serve(uid));
+        return this.reply(await ops.serve(uid));
       });
     return [
       { method: 'GET', pattern: /^\/$/ },
@@ -315,7 +315,7 @@ export class GatewayWebServer {
         version: this.version,
         upstream: runtime.upstream.status(),
         udp_control: runtime.udpCommands.snapshot(),
-        state: runtime.state.snapshot(config.denied_devices ?? []),
+        state: withOwnership(runtime.state.snapshot(config.denied_devices ?? []), runtime),
         update_state: updateState,
         ...this.extraStatus(),
       },
@@ -333,6 +333,22 @@ export class GatewayWebServer {
     if ('remote_management' in body) settings.remote_management = pyBool(body.remote_management);
     return this.reply(await this.getRuntime().operations().saveSettings(settings));
   }
+}
+
+/**
+ * Adds who owns each nearby device: `attached_to` (the relay its FindMe said it
+ * is attached to, when not this one), `owned` (this relay adopted or took it
+ * over) and `taken_over` (it did, and another relay took it over since).
+ */
+function withOwnership(state: GatewayStateSnapshot, runtime: GatewayRuntime): GatewayStateSnapshot {
+  const store = runtime.configStore;
+  return {
+    ...state,
+    nearby_devices: state.nearby_devices.map((item) => {
+      const uid = String(item.device_uid ?? '');
+      return { ...item, attached_to: runtime.attachedTo(uid), owned: store.isOwned(uid), taken_over: store.isYielded(uid) };
+    }),
+  };
 }
 
 /** Flask's request.get_json(silent=True) or {}: only a JSON content type is parsed; anything unusable is {}. */

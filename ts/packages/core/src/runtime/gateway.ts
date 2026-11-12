@@ -14,7 +14,7 @@ import { RESULT_CHUNK_TYPE, ResultChunkReassembler } from '../resultChunks';
 import { parseJsonKeepFloats } from '../floatJson';
 import { buildTimeResponse, isTimeRequest } from '../time';
 import { PROTOCOL } from '../wire';
-import { DiscoveryResponder, NON_OWNER_OFFER_DELAY_MS } from './discovery';
+import { DiscoveryResponder, MANAGED_OFFER_PRIORITY, NON_OWNER_OFFER_DELAY_MS } from './discovery';
 import { GatewayOperations } from './operations';
 import { type Dict, dictOr, looksLikeJson, pyGet, pyOr, setDefault, strOr } from './pyCompat';
 import { GatewayCommandHandler } from './remoteCommands';
@@ -28,6 +28,8 @@ export const TICK_INTERVAL_MS = 500;
 export const GATEWAY_STATUS_INTERVAL_MS = 5000;
 /** The update check never runs more often than this, whatever the updater says. */
 export const MIN_UPDATE_CHECK_INTERVAL_MS = 60_000;
+/** An owner takes a device back from a fallback relay at most this often (per device). */
+export const RECLAIM_COOLDOWN_MS = 30_000;
 
 /** Device JSON control frames the Gateway relays upstream as device_<type>. */
 const RELAYED_CONTROL_TYPES = ['hello', 'status', 'update_progress', 'result'];
@@ -103,6 +105,13 @@ export interface GatewayRuntimeObserver {
   onUpstreamCommand?(deviceUid: string, payload: Json): boolean;
   /** A command the device never acked (after the runtime reported it upstream). */
   onDeliveryTimeout?(deviceUid: string, payload: Json): void;
+  /**
+   * A device this relay owned was taken over by `relayId` (it adopted the
+   * device there): it is now in yielded_devices. Called once per takeover.
+   */
+  onTakenOver?(deviceUid: string, relayId: string): void;
+  /** This relay, the owner, asked a device back from the fallback relay `relayId`. */
+  onReclaim?(deviceUid: string, relayId: string): void;
 }
 
 export interface GatewayRuntimeOptions {
@@ -166,6 +175,10 @@ export class GatewayRuntime {
   private lastUpdateCheckAt: number | null = null;
   private updateCheck: Promise<void> | null = null;
   private observer: GatewayRuntimeObserver;
+  /** device uid -> monotonic ms of the last automatic reclaim. */
+  private readonly reclaimedAt = new Map<string, number>();
+  /** device uid -> the relay it is attached to, when that is not this one (from its FindMe). */
+  private readonly attachedElsewhere = new Map<string, string>();
 
   constructor(options: GatewayRuntimeOptions) {
     this.options = options;
@@ -221,11 +234,14 @@ export class GatewayRuntime {
           activeClaim: (uid) => this.state.activeClaimFor(uid),
           onRequest: (payload, addr, accepted, reason) => {
             this.state.recordFindmeRequest(payload, addr, accepted, reason);
+            this.guard('ownership', () => this.observeAttachment(payload));
             this.notify('findme', (o) => o.onFindmeRequest?.(payload, addr, accepted, reason));
           },
           offerPolicy: () => this.configStore.offerPolicy(),
           isManaged: (uid) => this.configStore.isManaged(uid),
           isReleased: (uid) => this.configStore.isReleased(uid),
+          isOwned: (uid) => this.configStore.isOwned(uid),
+          servedDevices: () => this.state.servingCount(),
           // The host the device streams to answers first and keeps it (see NON_OWNER_OFFER_DELAY_MS).
           isServing: (uid) => this.state.isServing(uid),
           nonOwnerDelayMs: options.findmeNonOwnerDelayMs ?? NON_OWNER_OFFER_DELAY_MS,
@@ -247,6 +263,63 @@ export class GatewayRuntime {
       clock: this.clock,
       logger: this.logger,
     });
+  }
+
+  /** This relay's id, or one it went by before (a device attached to that is attached here). */
+  isOwnRelayId(id: string): boolean {
+    return id === pyStr(this.configStore.snapshot().gateway_id) || this.configStore.previousGatewayIds().includes(id);
+  }
+
+  /** The relay a device last said it is attached to, when that is not this one ('' otherwise). */
+  attachedTo(deviceUid: string): string {
+    return this.attachedElsewhere.get(normalizeDeviceUid(deviceUid)) ?? '';
+  }
+
+  /**
+   * One owner per device, decided by where the device is attached (its FindMe
+   * `current_gateway_id`). For a device this relay owns that is attached to
+   * another relay:
+   *  - it attached there at the owner priority or above (`current_priority`,
+   *    a claim included): that relay took it over. This one yields: the
+   *    device stays managed, offered only as a fallback, no automatic reclaim.
+   *  - below it (the owner was away and a relay that serves any device took
+   *    it): this owner asks it back, at most every RECLAIM_COOLDOWN_MS.
+   *  - no `current_priority` (firmware before it): treated as a takeover, the
+   *    old behaviour, so two relays never trade the device.
+   * A claim in flight or just completed (activeClaimFor, until its TTL) means
+   * this relay is adopting the device right now: the device may still name
+   * the relay it is leaving.
+   */
+  private observeAttachment(request: Dict): void {
+    const uid = normalizeDeviceUid(request.device_uid);
+    if (!uid) return;
+    const current = strOr(request.current_gateway_id);
+    if (!current || this.isOwnRelayId(current)) {
+      this.attachedElsewhere.delete(uid);
+      return;
+    }
+    this.attachedElsewhere.set(uid, current);
+    if (!this.configStore.isOwned(uid) || this.configStore.isDenied(uid)) return;
+    if (this.state.activeClaimFor(uid) !== null) return;
+    const reported = request.current_priority;
+    const fallback = typeof reported === 'number' && Number.isFinite(reported) && reported < MANAGED_OFFER_PRIORITY;
+    if (fallback) {
+      const now = this.clock.monotonicMs();
+      const last = this.reclaimedAt.get(uid);
+      if (last !== undefined && now - last < RECLAIM_COOLDOWN_MS) return;
+      this.reclaimedAt.set(uid, now);
+      this.logger.info(`${uid} is with fallback relay ${current}: taking it back`);
+      void this.operations()
+        .adopt(uid)
+        .then(() => this.notify('reclaim', (o) => o.onReclaim?.(uid, current)))
+        .catch((error: unknown) => this.logger.warn(`reclaim ${uid}: ${errorMessage(error)}`));
+      return;
+    }
+    this.logger.info(`${uid} was taken over by ${current}`);
+    void this.configStore
+      .yieldDevice(uid)
+      .then(() => this.notify('taken over', (o) => o.onTakenOver?.(uid, current)))
+      .catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorMessage(error)}`));
   }
 
   /** Replaces the observer (an engine attaches after building on the runtime). */

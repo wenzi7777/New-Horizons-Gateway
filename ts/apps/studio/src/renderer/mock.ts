@@ -454,10 +454,19 @@ export class MockStudioApi implements StudioApi {
 
   async adopt(uid: string): Promise<CommandOutcome> {
     await this.sleep(900);
+    const listed = this.find(uid);
+    if (listed?.takenOver) {
+      // Taking it back from the relay that took it over.
+      listed.takenOver = false;
+      listed.takenOverBy = '';
+      listed.online = true;
+      this.emit();
+      return { ok: true, message: '', data: null };
+    }
     const index = this.nearby.findIndex((n) => n.uid === uid);
     const nearby = this.nearby[index];
     if (!nearby) return { ok: false, message: 'device_not_found', data: null };
-    if (nearby.attachedTo) return { ok: false, message: 'device_attached_elsewhere', data: null };
+    // A device attached to another relay is taken over from it.
     this.nearby.splice(index, 1);
     const fw = 'v1.19.0';
     this.devices.push({

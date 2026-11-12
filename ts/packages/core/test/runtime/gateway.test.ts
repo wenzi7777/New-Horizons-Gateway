@@ -252,7 +252,8 @@ describe('FindMe claims (serve)', () => {
     const h = await started();
     h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'gw-z' }), { ip: '10.0.0.9', port: 22346 });
     expect(h.findme.sent).toEqual([]); // attached elsewhere: recorded, not offered
-    const result = h.runtime.operations().serve(UID.toLowerCase());
+    const result = await h.runtime.operations().serve(UID.toLowerCase());
+    expect(h.runtime.configStore.isOwned(UID)).toBe(true);
     expect(result.ok).toBe(true);
     expect((result.data.claim as Json).state).toBe('requested');
     expect(h.upstream().claims).toEqual([[UID, 'claim-1', 30000]]);
@@ -274,7 +275,7 @@ describe('FindMe claims (serve)', () => {
   it('a switch command that is never delivered fails the claim', async () => {
     const h = await started();
     h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'gw-z' }), { ip: '10.0.0.9', port: 22346 });
-    h.runtime.operations().serve(UID);
+    await h.runtime.operations().serve(UID);
     for (let i = 0; i < 62; i++) {
       h.clock.advance(0.5);
       await h.runtime.tick();
@@ -285,15 +286,16 @@ describe('FindMe claims (serve)', () => {
     expect(h.upstream().deviceMessages.at(-1)![1].message).toBe('command_delivery_timeout');
   });
 
-  it('serve() refuses while upstream is offline', async () => {
+  it('serve() works while upstream is offline (a local claim only)', async () => {
     const h = await started();
     h.upstream().connected = false;
-    expect(h.runtime.operations().serve(UID)).toMatchObject({ ok: false, error: 'upstream_offline', status: 503 });
+    expect(await h.runtime.operations().serve(UID)).toMatchObject({ ok: true });
+    expect(h.upstream().claims).toEqual([]);
   });
 
   it('gateway_claim_update updates the claim', async () => {
     const h = await started();
-    h.runtime.operations().serve(UID);
+    await h.runtime.operations().serve(UID);
     h.runtime.onUpstreamMessage({ type: 'gateway_claim_update', claim_id: 'claim-1', state: 'rejected', message: 'owner_busy' });
     const claim = h.runtime.state.snapshot([]).claims[0]!;
     expect(claim.state).toBe('rejected');

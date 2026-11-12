@@ -223,7 +223,7 @@ export class GatewayCommandHandler {
       case 'device_allow':
         return [GatewayCommandHandler.fromOp(await ops.allow(payload.device_uid), 'device_allowed'), null];
       case 'device_serve':
-        return [GatewayCommandHandler.fromOp(ops.serve(payload.device_uid), 'claim_requested'), null];
+        return [GatewayCommandHandler.fromOp(await ops.serve(payload.device_uid), 'claim_requested'), null];
     }
   }
 }

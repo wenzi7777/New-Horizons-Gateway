@@ -51,6 +51,12 @@ export interface GatewayConfig {
   /** UIDs released by this host: FindMe declines them (device_released) until adopted again. */
   released_devices?: string[];
   /**
+   * Managed UIDs another relay took over (it adopted the device, so it is the
+   * owner now). Still listed here; offered only at the base priority, as a
+   * fallback for when the new owner is gone. Cleared by adopting it again.
+   */
+  yielded_devices?: string[];
+  /**
    * Ids this host went by before (newest last), recorded when gateway_id
    * changes under offer_policy "managed": a device still attached to one of
    * them is attached to this host, not adopted elsewhere.
@@ -218,6 +224,7 @@ export function normalizeConfig(raw: RawConfig): GatewayConfig {
   if ('offer_policy' in config) config.offer_policy = normalizeOfferPolicy(config.offer_policy);
   if ('managed_devices' in config) config.managed_devices = normalizeUidList(config.managed_devices);
   if ('released_devices' in config) config.released_devices = normalizeUidList(config.released_devices);
+  if ('yielded_devices' in config) config.yielded_devices = normalizeUidList(config.yielded_devices);
   if ('previous_gateway_ids' in config) config.previous_gateway_ids = normalizePreviousIds(config.previous_gateway_ids, config.gateway_id as string);
   config.server_url = resolveServerUrl(config);
   return config as GatewayConfig;
@@ -252,6 +259,7 @@ export class GatewayConfigStore {
     const out: GatewayConfig = { ...this.config, denied_devices: [...this.config.denied_devices] };
     if (this.config.managed_devices) out.managed_devices = [...this.config.managed_devices];
     if (this.config.released_devices) out.released_devices = [...this.config.released_devices];
+    if (this.config.yielded_devices) out.yielded_devices = [...this.config.yielded_devices];
     if (this.config.previous_gateway_ids) out.previous_gateway_ids = [...this.config.previous_gateway_ids];
     return out;
   }
@@ -262,7 +270,8 @@ export class GatewayConfigStore {
     if (next.gateway_id) next.gateway_id = validateGatewayId(next.gateway_id);
     if (next.enabled) next.gateway_id = validateGatewayId(next.gateway_id);
     const before = this.config.gateway_id;
-    if (before && next.gateway_id !== before && normalizeOfferPolicy(next.offer_policy) === 'managed') {
+    // Any relay can own devices now (a takeover), so every one remembers its old ids.
+    if (before && next.gateway_id !== before) {
       next.previous_gateway_ids = normalizePreviousIds([...(next.previous_gateway_ids ?? []), before], next.gateway_id);
     }
     // Python assigned before writing, so a failed write still changes the live config.
@@ -311,6 +320,20 @@ export class GatewayConfigStore {
     return Boolean(uid) && (this.config.managed_devices ?? []).includes(uid);
   }
 
+  yieldedDevices(): string[] {
+    return [...(this.config.yielded_devices ?? [])];
+  }
+
+  isYielded(deviceUid: unknown): boolean {
+    const uid = normalizeListUid(deviceUid);
+    return Boolean(uid) && (this.config.yielded_devices ?? []).includes(uid);
+  }
+
+  /** Managed and not taken over: this relay is the device's owner (offers at MANAGED_OFFER_PRIORITY). */
+  isOwned(deviceUid: unknown): boolean {
+    return this.isManaged(deviceUid) && !this.isYielded(deviceUid);
+  }
+
   isReleased(deviceUid: unknown): boolean {
     const uid = normalizeListUid(deviceUid);
     return Boolean(uid) && (this.config.released_devices ?? []).includes(uid);
@@ -323,15 +346,25 @@ export class GatewayConfigStore {
     return this.save({ offer_policy: normalized });
   }
 
-  /** Adds to managed_devices (and takes it off released_devices). */
+  /** Adds to managed_devices (and takes it off released_devices and yielded_devices): this relay owns it. */
   manage(deviceUid: unknown): Promise<GatewayConfig> {
     const uid = normalizeListUid(deviceUid);
     const managed = new Set(this.config.managed_devices ?? []);
     if (uid) managed.add(uid);
-    return this.save({
+    const patch: RawConfig = {
       managed_devices: [...managed],
       released_devices: (this.config.released_devices ?? []).filter((item) => item !== uid),
-    });
+    };
+    if (this.config.yielded_devices) patch.yielded_devices = this.config.yielded_devices.filter((item) => item !== uid);
+    return this.save(patch);
+  }
+
+  /** Another relay took the device over: it stays managed here, but only as a fallback. */
+  yieldDevice(deviceUid: unknown): Promise<GatewayConfig> {
+    const uid = normalizeListUid(deviceUid);
+    const yielded = new Set(this.config.yielded_devices ?? []);
+    if (uid) yielded.add(uid);
+    return this.save({ yielded_devices: [...yielded] });
   }
 
   /** Removes from managed_devices and adds to released_devices (FindMe declines it from now on). */
@@ -339,9 +372,11 @@ export class GatewayConfigStore {
     const uid = normalizeListUid(deviceUid);
     const released = new Set(this.config.released_devices ?? []);
     if (uid) released.add(uid);
-    return this.save({
+    const patch: RawConfig = {
       managed_devices: (this.config.managed_devices ?? []).filter((item) => item !== uid),
       released_devices: [...released],
-    });
+    };
+    if (this.config.yielded_devices) patch.yielded_devices = this.config.yielded_devices.filter((item) => item !== uid);
+    return this.save(patch);
   }
 }

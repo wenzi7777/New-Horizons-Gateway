@@ -86,12 +86,14 @@ describe('config: offer_policy / managed_devices / released_devices', () => {
 });
 
 describe('decideFindme under "all" is the Gateway behaviour', () => {
-  it('ignores the managed list entirely', () => {
+  it('offers to every device; one it owns (took over) at the owner priority', () => {
     const plain = decideFindme({ device_uid: UID }, ctx());
     const withList = decideFindme({ device_uid: UID }, ctx({ offerPolicy: 'all', isManaged: () => false }));
     expect(withList).toEqual(plain);
     expect(plain.reply).toMatchObject({ accept: true, priority: 100 });
-    expect(decideFindme({ device_uid: UID }, ctx({ offerPolicy: 'all', isManaged: () => true })).reply!.priority).toBe(100);
+    expect(decideFindme({ device_uid: UID }, ctx({ offerPolicy: 'all', isManaged: () => true })).reply!.priority).toBe(MANAGED_OFFER_PRIORITY);
+    // Taken over by another relay since: only a fallback.
+    expect(decideFindme({ device_uid: UID }, ctx({ offerPolicy: 'all', isManaged: () => true, isOwned: () => false })).reply!.priority).toBe(100);
   });
 });
 
@@ -210,8 +212,8 @@ describe('adopt', () => {
     const result = await h.runtime.operations().adopt(OTHER);
     expect(result).toMatchObject({ ok: true, data: { switch_sent: true } });
     expect(h.upstream().claims).toEqual([]);
-    // serve() keeps refusing offline.
-    expect(h.runtime.operations().serve(OTHER)).toMatchObject({ ok: false, error: 'upstream_offline' });
+    // serve() is adopt() now: it works offline too.
+    expect(await h.runtime.operations().serve(OTHER)).toMatchObject({ ok: true });
   });
 
   it('without a known address it only joins the list', async () => {
@@ -363,5 +365,76 @@ describe('runtime observer', () => {
     }
     expect(calls.at(-1)).toEqual(['timeout', UID, 'status']);
     expect(h.upstream().deviceMessages.at(-1)![1]).toMatchObject({ message: 'command_delivery_timeout' });
+  });
+});
+
+describe('ownership: takeover, fallback, reclaim', () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const attachedTo = (gw: string, priority?: number) =>
+    jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: gw, ...(priority === undefined ? {} : { current_priority: priority }) });
+
+  it('a remote device_serve under "managed" adopts the device, so its FindMe is then answered', async () => {
+    const h = await managedRuntime({ managed_devices: [] });
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER, current_gateway_id: 'nh-studio-rpi' }), FINDME_FROM);
+    h.runtime.onUpstreamMessage({ type: 'gateway_command', request_id: 'q1', payload: { command: 'device_serve', device_uid: OTHER } });
+    await h.runtime.idle();
+    expect(h.upstream().commandResults[0]![1]).toMatchObject({ ok: true, message: 'claim_requested' });
+    expect(h.runtime.configStore.isOwned(OTHER)).toBe(true);
+    const claim = h.runtime.state.activeClaimFor(OTHER)!;
+    h.runtime.onFindmePacket(
+      jsonFrame({ type: 'findme_discover', device_uid: OTHER, preferred_gateway_id: 'gw-a', claim_id: claim.claim_id }),
+      FINDME_FROM,
+    );
+    expect(h.findme.json(0)).toMatchObject({ accept: true, claim_id: claim.claim_id });
+  });
+
+  it('attached elsewhere at the owner priority (a takeover): yields once, stays managed, offers only as a fallback', async () => {
+    const h = await managedRuntime();
+    const taken: string[] = [];
+    h.runtime.setObserver({ onTakenOver: (uid, by) => taken.push(`${uid}@${by}`) });
+    h.runtime.onFindmePacket(attachedTo('studio-1234abcd', 10200), FINDME_FROM);
+    await settle();
+    expect(taken).toEqual([`${UID}@studio-1234abcd`]);
+    expect(h.runtime.configStore.isManaged(UID)).toBe(true);
+    expect(h.runtime.configStore.isOwned(UID)).toBe(false);
+    expect(h.runtime.attachedTo(UID)).toBe('studio-1234abcd');
+    h.runtime.onFindmePacket(attachedTo('studio-1234abcd', 200), FINDME_FROM);
+    await settle();
+    expect(taken).toHaveLength(1);
+    expect(h.stream.sent).toEqual([]); // never asked back
+    // The new owner is gone: this relay is a fallback (base priority).
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
+    expect(h.findme.json(0)).toMatchObject({ accept: true, priority: 100 });
+  });
+
+  it('firmware that does not report current_priority is treated as a takeover', async () => {
+    const h = await managedRuntime();
+    h.runtime.onFindmePacket(attachedTo('nh-studio-rpi'), FINDME_FROM);
+    await settle();
+    expect(h.runtime.configStore.isYielded(UID)).toBe(true);
+  });
+
+  it('attached to a fallback (below the owner priority): the owner takes it back, at most every RECLAIM_COOLDOWN_MS', async () => {
+    const h = await managedRuntime();
+    h.runtime.onFindmePacket(attachedTo('nh-studio-rpi', 100), FINDME_FROM);
+    await settle();
+    expect(h.runtime.configStore.isOwned(UID)).toBe(true);
+    const switches = () => h.stream.sent.filter((_, i) => JSON.stringify(h.stream.json(i)).includes('findme_switch_gateway')).length;
+    expect(switches()).toBe(1);
+    // The claim is live: nothing more.
+    h.runtime.onFindmePacket(attachedTo('nh-studio-rpi', 100), FINDME_FROM);
+    await settle();
+    expect(switches()).toBe(1);
+  });
+
+  it('a relay serving every device (headless) owns what it took over too', async () => {
+    const h = await makeRuntime({ offer_policy: 'all' });
+    await h.runtime.start();
+    expect((await h.runtime.operations().serve(OTHER)).ok).toBe(true);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER }), FINDME_FROM);
+    // Owner priority, plus the boost while its claim is live.
+    expect(h.findme.json(0)).toMatchObject({ accept: true, priority: MANAGED_OFFER_PRIORITY + CLAIM_PRIORITY_BOOST });
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
+    expect(h.findme.json(1)).toMatchObject({ accept: true, priority: 100 });
   });
 });

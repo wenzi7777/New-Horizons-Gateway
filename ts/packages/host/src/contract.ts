@@ -55,6 +55,13 @@ export interface DeviceView {
   lastSeenMs: number | null;
   /** TIA-CTL v2.0.F: its Vref DAC and range; null (or absent) on a board without one. */
   vref?: VrefView | null;
+  /**
+   * Another relay took this device over (it is in yielded_devices) and it is
+   * not streaming here. It stays listed; adopting it again takes it back.
+   */
+  takenOver?: boolean;
+  /** The relay it is attached to now, when its FindMe said so ('' when unknown). */
+  takenOverBy?: string;
 }
 
 /** Where a Vref sits against the GPIO45 boot strap (see vrefZone in views.ts). */
@@ -80,7 +87,7 @@ export interface NearbyDeviceView {
   uid: string;
   name: string;
   ip: string;
-  /** Set when the device said it is attached to another Gateway/Studio/Pocket/server. */
+  /** Set when the device said it is attached to another relay; adopting it takes it over from there. */
   attachedTo: string;
   lastSeenMs: number;
 }

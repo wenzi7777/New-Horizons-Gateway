@@ -335,7 +335,7 @@ describe('web API', () => {
     expect(suggest.json.gateway_id).toMatch(/^nh-studio-[0-9a-f]{6}$/);
   });
 
-  it('rejects and allows devices, and serve needs the server', async () => {
+  it('rejects and allows devices; serve takes a device over', async () => {
     const { base, host } = await start({ gateway_id: 'gw-dev' });
     let r = await api(base, '/api/devices/aabbccddeeff/reject', {});
     expect(r).toMatchObject({ status: 200, json: { ok: true, denied_devices: ['AABBCCDDEEFF'] } });
@@ -346,7 +346,7 @@ describe('web API', () => {
     r = await api(base, '/api/devices/AABBCCDDEEFF/allow', {});
     expect(r).toMatchObject({ status: 200, json: { ok: true, denied_devices: [] } });
     r = await api(base, '/api/devices/AABBCCDDEEFF/serve', {});
-    expect(r).toMatchObject({ status: 503, json: { ok: false, error: 'upstream_offline' } });
+    expect(r).toMatchObject({ status: 200, json: { ok: true, managed_devices: ['AABBCCDDEEFF'] } });
     expect((await api(base, '/api/discover', {})).json).toEqual({ ok: true });
   });
 

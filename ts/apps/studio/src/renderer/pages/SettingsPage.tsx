@@ -303,9 +303,21 @@ function DevicesSection({ st }: { st: ST }) {
               ) : (
                 <span className="row-main">
                   <strong>{device.displayName}</strong> <code className="mono muted">{device.uid}</code>
+                  {device.takenOver ? (
+                    <span className="muted"> · {device.takenOverBy ? t('takenOverBy', { name: device.takenOverBy }) : t('takenOverByUnknown')}</span>
+                  ) : null}
                 </span>
               )}
               <span className="row-actions">
+                {device.takenOver ? (
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => void exec(t('takeBack'), () => api.adopt(device.uid), { success: t('deviceTakenOver', { device: device.displayName }) })}
+                  >
+                    {t('takeBack')}
+                  </button>
+                ) : null}
                 <button type="button" className="button" onClick={() => setEditing({ uid: device.uid, name: device.nickname })}>
                   {st('rename')}
                 </button>
@@ -333,9 +345,23 @@ function DevicesSection({ st }: { st: ST }) {
                 {item.attachedTo ? <span className="muted"> · {st('attachedTo', { relay: item.attachedTo })}</span> : null}
               </span>
               <span className="row-actions">
-                <button type="button" className="button" onClick={() => void exec(st('add'), () => api.adopt(item.uid))}>
-                  {st('add')}
-                </button>
+                {item.attachedTo ? (
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={async () => {
+                      const name = item.name || item.uid;
+                      const ok = await confirm({ title: t('takeOverTitle', { device: name }), message: t('takeOverMessage', { relay: item.attachedTo }), confirmLabel: t('takeOverDevice') });
+                      if (ok) void exec(t('takeOverDevice'), () => api.adopt(item.uid), { success: t('deviceTakenOver', { device: name }) });
+                    }}
+                  >
+                    {t('takeOverDevice')}
+                  </button>
+                ) : (
+                  <button type="button" className="button" onClick={() => void exec(st('add'), () => api.adopt(item.uid))}>
+                    {st('add')}
+                  </button>
+                )}
               </span>
             </li>
           ))}

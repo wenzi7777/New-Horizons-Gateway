@@ -145,26 +145,53 @@ describe('AppHost (pocket)', () => {
     expect(host.recordings()).toHaveLength(0);
   });
 
-  it("a device adopted by another relay leaves this host's devices, whatever that relay's id is", async () => {
+  it('a device another relay took over stays listed, marked taken over, until it is adopted again', async () => {
     const native = new FakeNative();
     const { host } = makeHost(native);
     await host.start();
     await host.adopt(UID);
     const enc = (o: object) => new TextEncoder().encode(JSON.stringify(o));
     const dev = { ip: '192.168.1.250', port: 5000 };
-    const probeReply = (current: string) => ({ type: 'findme_discover', device_uid: UID, current_gateway_id: current });
+    const probeReply = (current: string, priority?: number) => ({
+      type: 'findme_discover',
+      device_uid: UID,
+      current_gateway_id: current,
+      ...(priority === undefined ? {} : { current_priority: priority }),
+    });
     native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }), dev);
     expect(host.devices().map((d) => d.uid)).toEqual([UID]);
     // Just adopted (claim in flight): the device may still name the relay it is leaving.
     native.receive(22346, enc(probeReply('my-old-gateway')), dev);
     await settle();
-    expect(host.devices().map((d) => d.uid)).toEqual([UID]);
-    native.nowUs += 31_000_000; // the claim and the adopt grace are over
-    native.receive(22346, enc(probeReply('my-old-gateway')), dev); // any other relay id counts, not only studio-/pocket-
+    expect(host.devices()[0]!.takenOver).toBeUndefined();
+    native.nowUs += 31_000_000; // the claim is over
+    // Attached at the owner priority (a takeover there): yield, keep it listed.
+    native.receive(22346, enc(probeReply('studio-1234abcd', 10200)), dev);
     await settle();
-    expect(host.devices()).toEqual([]);
-    expect(JSON.parse(native.text(PATHS.config)!).managed_devices).toEqual([]);
-    expect(host.nearby().map((d) => [d.uid, d.attachedTo])).toEqual([[UID, 'my-old-gateway']]);
+    const config = JSON.parse(native.text(PATHS.config)!);
+    expect(config.managed_devices).toEqual([UID]);
+    expect(config.yielded_devices).toEqual([UID]);
+    expect(host.devices()).toMatchObject([{ uid: UID, takenOver: true, takenOverBy: 'studio-1234abcd' }]);
+    expect(host.nearby()).toEqual([]);
+    // Taking it back: owner again.
+    await host.adopt(UID);
+    expect(JSON.parse(native.text(PATHS.config)!).yielded_devices).toEqual([]);
+  });
+
+  it('a device a fallback relay picked up while the owner was away is taken back', async () => {
+    const native = new FakeNative();
+    const { host } = makeHost(native);
+    await host.start();
+    await host.adopt(UID);
+    const enc = (o: object) => new TextEncoder().encode(JSON.stringify(o));
+    const dev = { ip: '192.168.1.250', port: 5000 };
+    native.nowUs += 31_000_000;
+    const sentBefore = native.sent.length;
+    native.receive(22346, enc({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'nh-studio-rpi', current_priority: 100 }), dev);
+    await settle();
+    expect(JSON.parse(native.text(PATHS.config)!).yielded_devices ?? []).toEqual([]);
+    const switches = native.sent.slice(sentBefore).filter((p) => utf8Decode(base64ToBytes(p.data)).includes('findme_switch_gateway'));
+    expect(switches).toHaveLength(1);
   });
 
   it('a killed recording is rebuilt from its .nhraw on the next start', async () => {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { utf8Decode } from '../../src/bytes';
 import type { Json } from '../../src/contracts';
-import { DiscoveryResponder, GatewayState, type DiscoveryResponderOptions, decideFindme, decodeFindmeRequest } from '../../src/runtime';
+import { DiscoveryResponder, GatewayState, OFFER_VERSION, type DiscoveryResponderOptions, decideFindme, decodeFindmeRequest } from '../../src/runtime';
 import { FakeClock, FakeSocket, jsonFrame } from './helpers';
 
 const UID = '3CDC7545CCD0';
@@ -156,8 +156,10 @@ describe('DiscoveryResponder (TS additions)', () => {
       },
     );
     expect(Object.keys(decision.reply!)).toEqual([
-      'version', 'gateway_name', 'gateway_id', 'udp_port', 'priority', 'accept', 'upstream_status', 'ttl_ms', 'server_time', 'type', 'device_uid',
+      'version', 'gateway_name', 'gateway_id', 'udp_port', 'priority', 'accept', 'upstream_status', 'ttl_ms', 'server_time', 'served_devices', 'type', 'device_uid',
     ]);
+    expect(decision.reply!.version).toBe(OFFER_VERSION);
+    expect(decision.reply!.served_devices).toBe(0);
     expect(decision.reply!.device_uid).toBe('AA');
     expect(decision.reply!.upstream_status).toBe('offline');
     expect(decision.reply!.server_time).toBe(clock.wallMs);

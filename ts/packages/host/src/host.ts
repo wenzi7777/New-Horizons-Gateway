@@ -65,6 +65,7 @@ import {
   newRelayId,
   productName,
   settingsFromConfig,
+  withOwnership,
 } from './views';
 
 /** Reported upstream when the app passes no version. */
@@ -97,12 +98,6 @@ export function commandTimeoutMs(payload: Record<string, unknown>): number {
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
 const NOTIFY_INTERVAL_MS = 250;
-/**
- * A device adopted this recently is not given up to another relay its FindMe
- * names: the device may still be answering with the relay it is leaving.
- */
-export const ADOPT_GRACE_MS = 30_000;
-
 /**
  * The relay id a damaged config file still shows (`"gateway_id": "…"`), so a
  * config that will not parse keeps the id the Backend and devices know.
@@ -218,8 +213,6 @@ export class AppHost implements HostStore {
   private configStore: GatewayConfigStore | null = null;
   /** The one config load in flight (appConfig / saveAppConfig / updateSettings / start share it). */
   private configLoading: Promise<GatewayConfigStore> | null = null;
-  /** UID (normalized) -> wall ms of this host's last adopt(). */
-  private readonly adoptedAt = new Map<string, number>();
 
   // Cached views: getters return the same object until something changed
   // (useSyncExternalStore needs stable snapshots).
@@ -237,8 +230,6 @@ export class AppHost implements HostStore {
   private batteryIgnored: boolean | null = null;
   private freeBytes = 0;
   private findmeRequests = 0;
-  /** UID -> the relay a device's last FindMe said it is attached to (current_gateway_id). */
-  private readonly attachedTo = new Map<string, string>();
   private recovery: Promise<void> = Promise.resolve();
   /** Recording id -> upload state, set by the sync client (sync/); absent = 'local'. */
   private syncStates: ReadonlyMap<string, RecordingSummary['syncState']> = new Map();
@@ -462,7 +453,10 @@ export class AppHost implements HostStore {
       .listDevices()
       .filter((entry) => this.isMine(str(entry.device_uid)))
       .map((entry) => {
-        const view = deviceView(entry, now);
+        const view = withOwnership(deviceView(entry, now), {
+          isYielded: (uid) => run.runtime.configStore.isYielded(uid),
+          attachedTo: (uid) => run.runtime.attachedTo(uid),
+        });
         // The table's flag lags a capture that is still draining.
         const recorder = run.service.recorders.get(view.uid);
         return recorder ? { ...view, recording: { ...view.recording, finishing: recorder.finishing } } : view;
@@ -475,7 +469,7 @@ export class AppHost implements HostStore {
     return run.service
       .nearby()
       .filter((item) => !this.isMine(str(item.device_uid)) || item.released === true)
-      .map((item) => nearbyView(item, this.attachedTo.get(str(item.device_uid)) ?? ''));
+      .map((item) => nearbyView(item, run.runtime.attachedTo(str(item.device_uid))));
   }
 
   subscribeLive(uid: string, listener: (frame: LiveFrame) => void): () => void {
@@ -698,35 +692,6 @@ export class AppHost implements HostStore {
     this.changed();
   }
 
-  /**
-   * One owner per device: a device this host manages that says it is attached to
-   * another relay (its FindMe `current_gateway_id`) was adopted there, so it
-   * leaves this host's managed list. Any id counts, not just studio-/pocket-
-   * ones: a Studio that took over an old Gateway's config keeps that id. The
-   * Backend's FindMe responder never offers to an attached device and Hubs do
-   * not speak FindMe, so nothing else can show up here.
-   */
-  private yieldToOtherHost(runtime: GatewayRuntime, uid: string, otherId: string): void {
-    const store = runtime.configStore;
-    if (store.offerPolicy() !== 'managed' || !store.isManaged(uid)) return;
-    // Adopting here right now: the device may still name the relay it is leaving.
-    if (runtime.state.activeClaimFor(uid) !== null) return;
-    const adopted = this.adoptedAt.get(normalizeListUid(uid));
-    if (adopted !== undefined && this.clock.nowMs() - adopted < ADOPT_GRACE_MS) return;
-    this.logger.info(`${uid} is now attached to ${otherId}: removed from this host's devices`);
-    void (async () => {
-      if (this.run_?.service.recordingEnabled(uid)) await this.setRecording(uid, false).catch(() => undefined);
-      await store.save({ managed_devices: store.managedDevices().filter((item) => item !== uid) });
-      this.changed();
-    })().catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorText(error)}`));
-  }
-
-  /** This host's relay id, or one it went by before (a device attached to that is still attached here). */
-  private isOwnId(runtime: GatewayRuntime, id: string): boolean {
-    const store = runtime.configStore;
-    return id === store.snapshot().gateway_id || store.previousGatewayIds().includes(id);
-  }
-
   /** Engine hooks the host adds: the FindMe count, raw capture of control replies and app_events requests. */
   private wrapRuntimeHooks(runtime: GatewayRuntime, service: DeviceService): void {
     const base = service.observer();
@@ -734,15 +699,21 @@ export class AppHost implements HostStore {
       ...base,
       onFindmeRequest: (request, from, accepted, reason) => {
         this.findmeRequests += 1;
-        const uid = str(request.device_uid).trim().toUpperCase();
-        const current = str(request.current_gateway_id);
-        if (uid) {
-          if (current && !this.isOwnId(runtime, current)) {
-            this.attachedTo.set(uid, current);
-            this.yieldToOtherHost(runtime, uid, current);
-          } else this.attachedTo.delete(uid);
-        }
         base.onFindmeRequest?.(request, from, accepted, reason);
+        this.changed();
+      },
+      // The runtime decides ownership (GatewayRuntime.observeAttachment); the
+      // device stays listed, marked taken over, and its recording here ends.
+      onTakenOver: (uid, relayId) => {
+        base.onTakenOver?.(uid, relayId);
+        this.logger.info(`${uid} was taken over by ${relayId}`);
+        void (async () => {
+          if (this.run_?.service.recordingEnabled(uid)) await this.setRecording(uid, false).catch(() => undefined);
+          this.changed();
+        })().catch((error: unknown) => this.logger.warn(`taken over ${uid}: ${errorText(error)}`));
+      },
+      onReclaim: (uid, relayId) => {
+        base.onReclaim?.(uid, relayId);
         this.changed();
       },
       onControlDatagram: (uid, datagram, from) => {
@@ -869,7 +840,7 @@ export class AppHost implements HostStore {
    * A managed device that went quiet may have been adopted by another host
    * (an attached device no longer broadcasts FindMe, so nothing else would
    * tell us). A probe makes it answer with the relay it is attached to, which
-   * yieldToOtherHost then acts on.
+   * the runtime then acts on (a takeover, or a fallback to take back).
    */
   private probeForMovedDevices(): void {
     const run = this.run_;
@@ -906,7 +877,6 @@ export class AppHost implements HostStore {
     for (const set of this.live.values()) for (const throttle of set) throttle.close();
     // A later start builds new subscriptions; the closed throttles must not linger.
     this.live.clear();
-    this.adoptedAt.clear();
     this.slowRefresh(true);
     this.changed();
   }
@@ -953,7 +923,6 @@ export class AppHost implements HostStore {
   async adopt(uid: string): Promise<CommandOutcome> {
     const run = this.run_;
     if (run === null) return fail('not_running');
-    this.adoptedAt.set(normalizeListUid(uid), this.clock.nowMs());
     const result = await run.runtime.operations().adopt(uid);
     this.changed();
     return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };

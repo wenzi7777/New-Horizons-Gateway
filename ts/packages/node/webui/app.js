@@ -616,13 +616,19 @@
         const failure = recentClaimFailure(claims, item.device_uid);
         if (failure) tag = { kind: "danger", text: tr("claimFailed"), title: failure.last_error || failure.state };
       }
+      // Taken over by another relay since this one owned it: offered back as "Take back".
+      if (!tag && item.taken_over) {
+        tag = { kind: "waiting", text: item.attached_to ? fmt("relayTakenOverBy", { relay: item.attached_to }) : tr("relayTakenOverTag") };
+      }
       updateDeviceRow(row, item, [
+        item.attached_to && !item.taken_over ? fmt("relayAttachedTo", { relay: item.attached_to }) : "",
         item.mode,
         item.addr,
         typeof item.wifi_rssi === "number" ? `${item.wifi_rssi} dBm` : "",
         item.last_findme_at ? fmt("lastSeenAt", { time: formatTime(item.last_findme_at) }) : "",
       ], tag, [
-        { action: "serve", label: "serve", cls: "tiny primary", disabled: !online, why: tr("upstreamOfflineNotice") },
+        // Works offline too: the claim then stays on this network.
+        { action: "serve", label: item.taken_over ? "relayTakeBack" : "serve", cls: "tiny primary" },
         { action: "reject", label: "deny", cls: "tiny" },
       ]);
     });

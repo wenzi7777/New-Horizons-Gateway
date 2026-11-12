@@ -356,10 +356,18 @@ export class MockPocketStore implements PocketStore {
 
   async adopt(uid: string): Promise<CommandOutcome> {
     await sleep(900);
+    const listed = this.deviceList.find((d) => d.uid === uid);
+    if (listed?.takenOver) {
+      listed.takenOver = false;
+      listed.takenOverBy = '';
+      listed.online = true;
+      this.emit();
+      return { ok: true, message: '', data: null };
+    }
     const index = this.nearbyList.findIndex((n) => n.uid === uid);
     const nearby = this.nearbyList[index];
     if (!nearby) return { ok: false, message: 'device_not_found', data: null };
-    if (nearby.attachedTo) return { ok: false, message: 'device_attached_elsewhere', data: null };
+    // A device attached to another relay is taken over from it.
     this.nearbyList.splice(index, 1);
     this.deviceList.push({
       uid,

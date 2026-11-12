@@ -83,9 +83,9 @@ describe('mock StudioApi', () => {
     expect(await m.sendCommand('NOPE', c.statusCommand())).toMatchObject({ ok: false, message: 'device_not_found' });
   });
 
-  it('adopts, refuses devices attached elsewhere, releases', async () => {
+  it('adopts, takes over devices attached elsewhere, releases', async () => {
     const m = make();
-    expect(await m.adopt('84F703B19A6C')).toMatchObject({ ok: false, message: 'device_attached_elsewhere' });
+    expect((await m.adopt('84F703B19A6C')).ok).toBe(true);
     expect((await m.adopt('3C84279A5E10')).ok).toBe(true);
     let snap = await m.snapshot();
     expect(snap.devices.map((d) => d.uid)).toContain('3C84279A5E10');
