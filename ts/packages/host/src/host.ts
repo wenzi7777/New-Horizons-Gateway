@@ -56,6 +56,7 @@ import { LatestThrottle } from './throttle';
 import {
   configPatchFromSettings,
   deviceView,
+  isNearbyFresh,
   isolationSuspected,
   liveFrame,
   APP_KEYS,
@@ -466,10 +467,13 @@ export class AppHost implements HostStore {
   private buildNearby(): NearbyDeviceView[] {
     const run = this.run_;
     if (run === null) return [];
+    // Re-run every tick (changed()), so an expired device drops out on its own.
+    const now = this.clock.nowMs();
     return run.service
       .nearby()
       .filter((item) => !this.isMine(str(item.device_uid)) || item.released === true)
-      .map((item) => nearbyView(item, run.runtime.attachedTo(str(item.device_uid))));
+      .map((item) => nearbyView(item, run.runtime.attachedTo(str(item.device_uid))))
+      .filter((view) => isNearbyFresh(view, now));
   }
 
   subscribeLive(uid: string, listener: (frame: LiveFrame) => void): () => void {

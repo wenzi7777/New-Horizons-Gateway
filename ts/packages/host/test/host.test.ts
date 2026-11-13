@@ -178,6 +178,28 @@ describe('AppHost (pocket)', () => {
     expect(JSON.parse(native.text(PATHS.config)!).yielded_devices).toEqual([]);
   });
 
+  it('a nearby device that stops sending FindMe drops out of Nearby', async () => {
+    const native = new FakeNative();
+    const { host } = makeHost(native);
+    await host.start();
+    const findme = () =>
+      native.receive(22346, new TextEncoder().encode(JSON.stringify({ type: 'findme_discover', device_uid: UID })), { ip: '192.168.1.250', port: 5000 });
+    findme();
+    await settle();
+    expect(host.nearby().map((n) => n.uid)).toEqual([UID]);
+    native.nowUs += 59_000_000;
+    host.invalidate();
+    expect(host.nearby().map((n) => n.uid)).toEqual([UID]);
+    // Switched off: past the TTL it is gone, though the runtime's FindMe log still holds it.
+    native.nowUs += 2_000_000;
+    host.invalidate();
+    expect(host.nearby()).toEqual([]);
+    // Back on: listed again.
+    findme();
+    await settle();
+    expect(host.nearby().map((n) => n.uid)).toEqual([UID]);
+  });
+
   it('a device a fallback relay picked up while the owner was away is taken back', async () => {
     const native = new FakeNative();
     const { host } = makeHost(native);

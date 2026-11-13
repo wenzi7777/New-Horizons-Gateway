@@ -148,6 +148,19 @@ export function withOwnership(view: DeviceView, owner: { isYielded(uid: string):
   return { ...view, takenOver: true, takenOverBy: by };
 }
 
+/**
+ * How long a nearby device stays listed after its last FindMe. A device sends
+ * one every round (~3 s) whether or not it is attached, so this is ~20 missed
+ * rounds. The runtime's FindMe log has no age limit (only a count), so without
+ * this a device switched off stayed in Nearby until newer FindMes pushed it out.
+ */
+export const NEARBY_TTL_MS = 60_000;
+
+/** Whether a nearby device was heard recently enough to list (wall-clock ms). */
+export function isNearbyFresh(view: NearbyDeviceView, nowMs: number): boolean {
+  return view.lastSeenMs > 0 && nowMs - view.lastSeenMs <= NEARBY_TTL_MS;
+}
+
 /** A DeviceService.nearby() item. `attachedTo`: the relay the device last said it is attached to (not us). */
 export function nearbyView(item: Record<string, unknown>, attachedTo: string): NearbyDeviceView {
   return {
