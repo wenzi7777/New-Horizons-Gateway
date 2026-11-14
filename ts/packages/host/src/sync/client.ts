@@ -16,7 +16,11 @@
 //   .nhsync/recordings.json   per-recording upload state (see RecordingIndex)
 //   .nhsync/labels.json       last known label values + their times
 //   .nhsync/profiles.json     last known profile hashes + their times
-// The app token is in the host config (SYNC_KEYS), never in logs or events.
+// Signing in: the account (username + password) is kept in the platform's
+// secure store (CredentialStore) and the app signs in again on every start,
+// when the server changes and when the server refuses the token. The app
+// token from the latest sign-in is in the host config (SYNC_KEYS: the relay
+// link reads it there), never in logs or events.
 import type { Logger } from '@nhgw/core';
 
 import type { HostClientType, HostSettings, RecordingSummary } from '../contract';
@@ -52,6 +56,25 @@ export interface SyncHost {
 
 export type NetworkInfo = { online: boolean; metered: boolean | null };
 
+export interface Credentials {
+  username: string;
+  password: string;
+}
+
+/**
+ * Where the account is remembered: encrypted by the platform (Studio: the OS
+ * keychain via Electron safeStorage; Pocket: Android Keystore). Without one
+ * the app still signs in, but has to be signed in again by hand.
+ */
+export interface CredentialStore {
+  load(): Promise<Credentials | null>;
+  /** null forgets them. */
+  save(credentials: Credentials | null): Promise<void>;
+}
+
+/** After a sign-in that failed for a network/server reason, the next automatic try waits this long. */
+export const AUTO_LOGIN_RETRY_MS = 60_000;
+
 export interface SyncClientOptions {
   host: SyncHost;
   /** The data folder (recordings/, profiles/, .nhsync/). */
@@ -69,6 +92,10 @@ export interface SyncClientOptions {
   chunkBytes?: number;
   backoff?: { baseMs: number; maxMs: number };
   requestTimeoutMs?: number;
+  /** Remembers the account for the automatic sign-in (absent: nothing is remembered). */
+  credentials?: CredentialStore;
+  /** The name the server lists the sign-in under (e.g. the computer's name). */
+  deviceName?: () => string;
 }
 
 export type UploadState = 'local' | 'queued' | 'uploading' | 'synced' | 'failed';
@@ -126,8 +153,10 @@ export interface SyncStatus {
   lastUploadMs: number;
   /** Labels and profiles can be edited now (they are edited on the server only). */
   editable: boolean;
-  /** The server refused the token (401/403): uploads wait until the user signs in again. */
+  /** The server refused the token (401/403) and the remembered account could not sign in again: the user has to. */
   tokenRejected: boolean;
+  /** An account is remembered: the app signs in by itself. */
+  remembered: boolean;
   labels: MetadataResult | null;
   profiles: MetadataResult | null;
 }
@@ -258,6 +287,16 @@ export class SyncClient {
   private pushedStates = '';
   /** The token the server last refused (401/403); nothing is uploaded with it again. */
   private rejectedToken = '';
+  private readonly credentialStore: CredentialStore | null;
+  private readonly deviceNameOf: () => string;
+  private remembered: Credentials | null = null;
+  /** The base the remembered account last signed in to in this run ('' = not yet: sign in on start). */
+  private autoLoginBase = '';
+  private nextAutoLoginMs = 0;
+  /** The remembered account was refused (wrong password now, account gone): no more automatic tries. */
+  private credentialsRefused = false;
+  private autoLoginBusy: Promise<void> | null = null;
+  private lastSignInMs = Number.NEGATIVE_INFINITY;
 
   constructor(options: SyncClientOptions) {
     this.host = options.host;
@@ -271,6 +310,8 @@ export class SyncClient {
     this.chunkBytes = Math.max(1, options.chunkBytes ?? 4 * 1024 * 1024);
     this.backoff = options.backoff ?? { baseMs: 10_000, maxMs: 30 * 60_000 };
     this.timeoutMs = options.requestTimeoutMs ?? 60_000;
+    this.credentialStore = options.credentials ?? null;
+    this.deviceNameOf = options.deviceName ?? (() => '');
   }
 
   // -- lifecycle --------------------------------------------------------------
@@ -278,6 +319,12 @@ export class SyncClient {
   /** Loads the persisted state and the token, publishes the recordings' states, starts the queue timer. */
   async start(): Promise<void> {
     await this.reload();
+    try {
+      this.remembered = (await this.credentialStore?.load()) ?? null;
+    } catch (error) {
+      this.log('warn', `credentials: ${error instanceof Error ? error.message : String(error)}`);
+      this.remembered = null;
+    }
     if (this.running) return;
     this.running = true;
     this.schedule(0);
@@ -350,8 +397,8 @@ export class SyncClient {
     return this.token && this.tokenServer === this.baseUrl() ? this.token : '';
   }
 
-  async setToken(token: string): Promise<ConnectionResult> {
-    const value = token.trim();
+  /** Takes a token the server just issued: stored for this server, failures it may fix are retried. */
+  private async applyToken(value: string): Promise<void> {
     if (!TOKEN_PATTERN.test(value)) throw new SyncError('token_invalid', false);
     const base = this.baseUrl();
     if (!base) throw new SyncError('no_server', false);
@@ -365,28 +412,51 @@ export class SyncClient {
     }
     this.saveIndex();
     this.log('info', `token set (${maskToken(value)}) for ${base}`);
+  }
+
+  /** Uses a token as is (tests, tools); the apps sign in with an account instead. */
+  async setToken(token: string): Promise<ConnectionResult> {
+    await this.applyToken(token.trim());
     const result = await this.testConnection();
     this.schedule(0);
     return result;
   }
 
   /**
-   * Signs in with a Desktop account: the server checks the password once and
-   * answers with an app token for this install (POST /api/app-tokens/login).
-   * The password is not kept; the token and the account name are.
+   * Signs in with a Desktop account (POST /api/app-tokens/login) and
+   * remembers it, so the app signs in again by itself from now on.
    */
   async login(username: string, password: string, deviceName = ''): Promise<ConnectionResult> {
-    const base = this.baseUrl();
-    if (!base) throw new SyncError('no_server', false);
     const user = username.trim();
     if (!user || !password) throw new SyncError('username_and_password_required', false);
+    await this.signIn(user, password, deviceName || this.deviceNameOf());
+    const credentials = { username: user, password };
+    this.remembered = credentials;
+    this.credentialsRefused = false;
+    this.autoLoginBase = this.baseUrl();
+    try {
+      await this.credentialStore?.save(credentials);
+    } catch (error) {
+      this.log('warn', `credentials: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const result = await this.testConnection();
+    this.schedule(0);
+    return result;
+  }
+
+  /** One sign-in: a fresh token for this install (it replaces the install's last one on the server). */
+  private async signIn(user: string, password: string, deviceName: string): Promise<void> {
+    const base = this.baseUrl();
+    if (!base) throw new SyncError('no_server', false);
+    // This install's relay id: the server ends the install's previous token, so they never pile up.
+    const relayId = text((await this.host.appConfig()).gateway_id);
     let response;
     try {
       response = await this.http.request({
         method: 'POST',
         url: `${base}/api/app-tokens/login`,
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ username: user, password, client_type: this.host.clientType, device_name: deviceName }),
+        body: JSON.stringify({ username: user, password, client_type: this.host.clientType, device_name: deviceName, relay_id: relayId }),
         timeoutMs: this.timeoutMs,
       });
     } catch {
@@ -406,22 +476,82 @@ export class SyncClient {
     await this.host.saveAppConfig({ [SYNC_KEYS.account]: account });
     this.account = account;
     this.log('info', `signed in as ${account}`);
-    return this.setToken(json.token);
+    this.lastSignInMs = this.timers.now();
+    await this.applyToken(json.token);
   }
 
-  /** Signs out: the server revokes this install's token (best effort), then it is forgotten here. */
+  /**
+   * Signs in with the remembered account when it is due: once per run (on
+   * start), when the server changed, and when the server refused the token.
+   * A wrong password stops further tries until the user signs in by hand.
+   */
+  async autoLogin(force = false): Promise<void> {
+    if (this.autoLoginBusy) return this.autoLoginBusy;
+    const credentials = this.remembered;
+    const base = this.baseUrl();
+    if (!credentials || !base || this.credentialsRefused) return;
+    const due = force || this.autoLoginBase !== base || !this.activeToken() || this.tokenRejected();
+    if (!due || this.timers.now() < this.nextAutoLoginMs) return;
+    this.autoLoginBusy = (async () => {
+      try {
+        await this.signIn(credentials.username, credentials.password, this.deviceNameOf());
+        this.autoLoginBase = base;
+        this.nextAutoLoginMs = 0;
+        await this.testConnection();
+      } catch (error) {
+        const code = error instanceof SyncError ? error.code : 'unexpected';
+        if (code === 'invalid_credentials' || code === 'forbidden') {
+          // The account no longer signs in: the user has to (ReauthDialog).
+          this.credentialsRefused = true;
+          if (this.activeToken()) this.rejectedToken = this.activeToken();
+          this.connection = { ok: false, error: code, checkedAtMs: this.timers.now(), username: '', role: '', clientType: '' };
+          this.log('warn', `automatic sign-in refused (${code}); sign in again`);
+        } else {
+          this.nextAutoLoginMs = this.timers.now() + AUTO_LOGIN_RETRY_MS;
+          this.log('warn', `automatic sign-in failed (${code}); trying again later`);
+        }
+        this.emit({ type: 'state' });
+      }
+    })().finally(() => {
+      this.autoLoginBusy = null;
+    });
+    return this.autoLoginBusy;
+  }
+
+  /**
+   * The relay link was refused (its token ended on the server): with a
+   * remembered account, sign in again. Not for a token just issued (a
+   * refusal then is not about the token; no sign-in loop).
+   */
+  relayRefused(): void {
+    const token = this.activeToken();
+    if (!token || this.remembered === null || this.credentialsRefused) return;
+    if (this.timers.now() - this.lastSignInMs < AUTO_LOGIN_RETRY_MS) return;
+    this.rejectedToken = token;
+    void this.autoLogin();
+  }
+
+  /** Signs out: the server ends this install's token (best effort), the account is forgotten here. */
   async logout(): Promise<void> {
     if (this.activeToken()) {
       try {
         await this.call('POST', '/api/app-tokens/self/revoke');
       } catch {
-        // Offline: the token is forgotten here anyway; an admin can revoke it on the Relays page.
+        // Offline: forgotten here anyway; an unused token ends by itself on the server.
       }
+    }
+    this.remembered = null;
+    this.credentialsRefused = false;
+    this.autoLoginBase = '';
+    try {
+      await this.credentialStore?.save(null);
+    } catch (error) {
+      this.log('warn', `credentials: ${error instanceof Error ? error.message : String(error)}`);
     }
     await this.clearToken();
   }
 
-  async clearToken(): Promise<void> {
+  private async clearToken(): Promise<void> {
     await this.host.saveAppConfig({ [SYNC_KEYS.token]: '', [SYNC_KEYS.tokenServer]: '', [SYNC_KEYS.account]: '' });
     this.token = '';
     this.tokenServer = '';
@@ -583,7 +713,9 @@ export class SyncClient {
       current: this.current ? { ...this.current } : null,
       lastUploadMs: this.index.last_upload_ms,
       editable: this.serverEditable(),
-      tokenRejected: this.tokenRejected(),
+      // With a remembered account the app signs in again by itself; only ask the user when that cannot work.
+      tokenRejected: this.tokenRejected() && (this.remembered === null || this.credentialsRefused),
+      remembered: this.remembered !== null,
       labels: this.labelState.server === this.baseUrl() ? this.labelState.last : null,
       profiles: this.profileState.server === this.baseUrl() ? this.profileState.last : null,
     };
@@ -605,6 +737,8 @@ export class SyncClient {
     this.rejectedToken = this.activeToken();
     this.connection = { ok: false, error: code, checkedAtMs: this.timers.now(), username: '', role: '', clientType: '' };
     this.emit({ type: 'state' });
+    // A remembered account gets a new token at once (e.g. this one idled out on the server).
+    if (this.remembered !== null && !this.credentialsRefused) this.schedule(0);
   }
 
   /** Pushes 'uploading' / 'synced' to the host so RecordingSummary.syncState shows them (both apps). */
@@ -699,13 +833,16 @@ export class SyncClient {
   }
 
   private async runQueue(): Promise<void> {
+    await this.autoLogin();
     const now = this.timers.now();
     if (!this.activeToken() || this.tokenRejected()) return;
     if (!this.paused && now - this.lastMetadataMs >= this.metadataIntervalMs) {
       this.lastMetadataMs = now;
       for (const sync of [() => this.syncLabelsNow(), () => this.syncProfilesNow()]) {
         try {
-          await sync();
+          // These report failures in their result rather than throwing.
+          const result = await sync();
+          if (result.error === 'unauthorized' || result.error === 'forbidden') throw new SyncError(result.error, false);
         } catch (error) {
           const code = SyncClient.authFailure(error);
           if (code) {

@@ -1,6 +1,11 @@
 // The sync area's handlers over a fake controller and server.
 import { describe, expect, it } from 'vitest';
 
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { CREDENTIALS_FILE, fileCredentialStore, type Cipher } from '../../src/main/areas/credentialStore';
 import { createSyncArea } from '../../src/main/areas/sync';
 import type { AreaContext } from '../../src/main/areas';
 import type { SyncHttp, SyncRequest } from '@nhgw/host';
@@ -26,43 +31,72 @@ function fakeHost() {
 }
 
 describe('sync area', () => {
-  it('sets a token, tests the connection, emits state, never returns the token', async () => {
+  it('signs in, remembers the account encrypted, emits state, never returns the token or password', async () => {
     const requests: SyncRequest[] = [];
     const http: SyncHttp = {
       async request(req) {
         requests.push(req);
+        if (req.url.endsWith('/api/app-tokens/login')) {
+          return { status: 200, text: JSON.stringify({ token: TOKEN, user: { username: 'nick', role: 'admin' } }) };
+        }
         if (req.url.endsWith('/api/auth/me')) return { status: 200, text: JSON.stringify({ authenticated: true, role: 'admin', username: 'app:0123456789ab' }) };
         return { status: 200, text: JSON.stringify({ items: [] }) };
       },
     };
-    const host = fakeHost();
+    const host = Object.assign(fakeHost(), { status: () => ({ authRejected: false }) });
+    const userDataDir = mkdtempSync(join(tmpdir(), 'nh-studio-sync-'));
+    // A stand-in for safeStorage: reversible but not the plain text.
+    const cipher: Cipher = {
+      isEncryptionAvailable: () => true,
+      encryptString: (plain) => Buffer.from(Buffer.from(plain, 'utf8').map((b) => b ^ 0x5a)),
+      decryptString: (encrypted) => Buffer.from(encrypted.map((b) => b ^ 0x5a)).toString('utf8'),
+    };
     const events: [string, unknown][] = [];
-    const area = createSyncArea({ http, autoStart: false });
+    const area = createSyncArea({ http, autoStart: false, credentials: (ctx) => fileCredentialStore(ctx.userDataDir, async () => cipher) });
     const context = {
       controller: { host, native: new FakeNative() } as unknown as AreaContext['controller'],
       emit: (event: string, payload?: unknown) => void events.push([event, payload]),
       logger: { info() {}, warn() {}, error() {} },
-      userDataDir: '/tmp',
+      userDataDir,
       version: 'v0',
     } as AreaContext;
     const handlers = area.register(context) as Record<string, (...args: unknown[]) => Promise<any>>;
     try {
-      await expect(handlers.setToken!('bogus')).rejects.toThrow('token_invalid');
-      const result = await handlers.setToken!(TOKEN);
+      expect(handlers.setToken).toBeUndefined();
+      expect(handlers.clearToken).toBeUndefined();
+      const result = await handlers.login!('nick', 'hunter2');
       expect(result.ok).toBe(true);
-      expect(requests[0]!.url).toBe('http://127.0.0.1:5051/newhorizons/api/auth/me');
+      expect(requests[0]!.url).toBe('http://127.0.0.1:5051/newhorizons/api/app-tokens/login');
       const status = await handlers.status!();
-      expect(status.configured).toBe(true);
+      expect(status).toMatchObject({ configured: true, account: 'nick', remembered: true });
       expect(JSON.stringify(status)).not.toContain('SECRET');
       expect(JSON.stringify(events)).not.toContain('SECRET');
+      expect(JSON.stringify(events)).not.toContain('hunter2');
+      const file = readFileSync(join(userDataDir, CREDENTIALS_FILE));
+      expect(file.toString('utf8')).not.toContain('hunter2');
+      expect(await fileCredentialStore(userDataDir, async () => cipher).load()).toEqual({ username: 'nick', password: 'hunter2' });
       expect(events.some(([name]) => name === 'state')).toBe(true);
       const paused = await handlers.pause!();
       expect(paused.paused).toBe(true);
-      const cleared = await handlers.clearToken!();
-      expect(cleared.configured).toBe(false);
+      const out = await handlers.logout!();
+      expect(out).toMatchObject({ configured: false, remembered: false });
+      expect(existsSync(join(userDataDir, CREDENTIALS_FILE))).toBe(false);
       await expect(handlers.uploadNow!('nope/1/2')).rejects.toThrow('recording_not_found');
     } finally {
       await area.dispose?.();
+      rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps nothing when the OS cannot encrypt', async () => {
+    const userDataDir = mkdtempSync(join(tmpdir(), 'nh-studio-sync-'));
+    try {
+      const store = fileCredentialStore(userDataDir, async () => ({ isEncryptionAvailable: () => false, encryptString: () => Buffer.alloc(0), decryptString: () => '' }));
+      await store.save({ username: 'nick', password: 'pw' });
+      expect(existsSync(join(userDataDir, CREDENTIALS_FILE))).toBe(false);
+      expect(await store.load()).toBeNull();
+    } finally {
+      rmSync(userDataDir, { recursive: true, force: true });
     }
   });
 

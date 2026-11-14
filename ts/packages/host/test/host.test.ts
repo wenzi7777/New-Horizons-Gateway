@@ -178,6 +178,24 @@ describe('AppHost (pocket)', () => {
     expect(JSON.parse(native.text(PATHS.config)!).yielded_devices).toEqual([]);
   });
 
+  it('Discover asks every device on the network to answer this host (FindMe probe)', async () => {
+    const native = new FakeNative();
+    const { host } = makeHost(native);
+    expect((await host.discoverNearby()).ok).toBe(false); // not started
+    await host.start();
+    expect((await host.discoverNearby()).ok).toBe(true);
+    const probes = native.sent.filter((p) => p.port === 22346).map((p) => JSON.parse(Buffer.from(p.data, 'base64').toString('utf8')) as { type: string });
+    expect(probes.map((p) => p.type)).toContain('findme_probe');
+    // A device attached elsewhere answers directly: listed under Nearby with its relay.
+    native.receive(
+      22346,
+      new TextEncoder().encode(JSON.stringify({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'nh-studio-85a957-rpi', current_priority: 200 })),
+      { ip: '192.168.1.250', port: 22346 },
+    );
+    await settle();
+    expect(host.nearby()).toMatchObject([{ uid: UID, attachedTo: 'nh-studio-85a957-rpi' }]);
+  });
+
   it('a nearby device that stops sending FindMe drops out of Nearby', async () => {
     const native = new FakeNative();
     const { host } = makeHost(native);

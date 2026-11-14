@@ -4,9 +4,10 @@
 // Studio counts wired and Wi-Fi alike: the network is never metered here.
 import { hostname } from 'node:os';
 
-import { estimateCapacity, FetchSyncHttp, runCpuBench, SyncClient, SyncError, type SyncHttp } from '@nhgw/host';
+import { estimateCapacity, FetchSyncHttp, runCpuBench, SyncClient, SyncError, type CredentialStore, type SyncHttp } from '@nhgw/host';
 
 import type { SyncAreaStatus } from '../../shared/areas/sync';
+import { electronCipher, fileCredentialStore } from './credentialStore';
 import type { AreaContext, AreaModule } from './registry';
 
 const REBIND_MS = 5_000;
@@ -15,6 +16,8 @@ export interface SyncAreaOptions {
   http?: SyncHttp;
   /** Start the client's queue timer (default true; tests drive tick() themselves). */
   autoStart?: boolean;
+  /** Where the account is remembered (default: userData, encrypted with safeStorage). */
+  credentials?: (context: AreaContext) => CredentialStore;
 }
 
 export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { client(): SyncClient | null } {
@@ -59,7 +62,16 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
   }
 
   async function build(ctx: AreaContext, host: AreaContext['controller']['host']): Promise<SyncClient> {
-    const next = new SyncClient({ host, files: ctx.controller.native, http, logger: ctx.logger, network: () => ({ online: true, metered: false }) });
+    const credentials = options.credentials?.(ctx) ?? fileCredentialStore(ctx.userDataDir, electronCipher);
+    const next = new SyncClient({
+      host,
+      files: ctx.controller.native,
+      http,
+      logger: ctx.logger,
+      network: () => ({ online: true, metered: false }),
+      credentials,
+      deviceName: () => hostname().replace(/\.local$/, ''),
+    });
     client = next;
     off = next.on((event) => {
       if (event.type === 'progress') ctx.emit('progress', { id: event.id, sentBytes: event.sentBytes, totalBytes: event.totalBytes });
@@ -93,15 +105,22 @@ export function createSyncArea(options: SyncAreaOptions = {}): AreaModule & { cl
     client: () => client,
     register(ctx) {
       context = ctx;
-      timer = setInterval(() => void ensure().catch(() => undefined), REBIND_MS);
+      timer = setInterval(
+        () =>
+          void ensure()
+            .then((c) => {
+              // The relay link was refused (its token ended): the remembered account signs in again.
+              if (ctx.controller.host.status().authRejected) c.relayRefused();
+            })
+            .catch(() => undefined),
+        REBIND_MS,
+      );
       (timer as { unref?: () => void }).unref?.();
       return {
         status: () => guarded(async (c) => plain(c.status())),
         login: (username: string, password: string) =>
           guarded((c) => c.login(typeof username === 'string' ? username : '', typeof password === 'string' ? password : '', hostname().replace(/\.local$/, ''))),
         logout: () => guarded(async (c) => (await c.logout(), plain(c.status()))),
-        setToken: (token: string) => guarded((c) => c.setToken(typeof token === 'string' ? token : '')),
-        clearToken: () => guarded(async (c) => (await c.clearToken(), plain(c.status()))),
         testConnection: () => guarded((c) => c.testConnection()),
         uploadNow: (id?: string) => guarded(async (c) => (await c.uploadNow(typeof id === 'string' ? id : undefined), plain(c.status()))),
         retry: (id?: string) => guarded(async (c) => (await c.retry(typeof id === 'string' ? id : undefined), plain(c.status()))),

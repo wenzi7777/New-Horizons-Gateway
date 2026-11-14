@@ -68,6 +68,8 @@ export interface StudioApi {
   updateSettings(patch: Partial<StudioSettings>): Promise<void>;
   adopt(uid: string): Promise<CommandOutcome>;
   release(uid: string): Promise<CommandOutcome>;
+  /** Asks every device on the network to announce itself to this computer (FindMe probe). */
+  discoverNearby(): Promise<CommandOutcome>;
   setNickname(uid: string, nickname: string): Promise<void>;
   setGroup(uid: string, group: string): Promise<void>;
   run(uid: string, command: QuickCommand): Promise<CommandOutcome>;

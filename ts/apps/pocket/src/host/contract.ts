@@ -41,6 +41,7 @@ export type PocketStore = Pick<
   | 'updateSettings'
   | 'adopt'
   | 'release'
+  | 'discoverNearby'
   | 'setNickname'
   | 'run'
   | 'setRecording'

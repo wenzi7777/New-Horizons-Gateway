@@ -10,8 +10,6 @@ export function syncApi(api: StudioApi) {
     status: () => call('status'),
     login: (username, password) => call('login', username, password),
     logout: () => call('logout'),
-    setToken: (token) => call('setToken', token),
-    clearToken: () => call('clearToken'),
     testConnection: () => call('testConnection'),
     uploadNow: (id) => (id === undefined ? call('uploadNow') : call('uploadNow', id)),
     retry: (id) => (id === undefined ? call('retry') : call('retry', id)),

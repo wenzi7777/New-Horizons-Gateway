@@ -40,6 +40,7 @@ export interface StudioBackend {
   readonly host: {
     adopt(uid: string): Promise<CommandOutcome>;
     release(uid: string): Promise<CommandOutcome>;
+    discoverNearby(): Promise<CommandOutcome>;
     setNickname(uid: string, nickname: string): Promise<void>;
     setGroup(uid: string, group: string): Promise<void>;
     run(uid: string, command: QuickCommand): Promise<CommandOutcome>;
@@ -248,6 +249,7 @@ export function registerStudioIpc(ipc: IpcMainLike, backend: StudioBackend, desk
     [CH.updateSettings]: (_event, patch) => backend.updateSettings(settingsArg(patch)),
     [CH.adopt]: (_event, uid) => backend.host.adopt(uidArg(uid)),
     [CH.release]: (_event, uid) => backend.host.release(uidArg(uid)),
+    [CH.discoverNearby]: () => backend.host.discoverNearby(),
     [CH.setNickname]: (_event, uid, nickname) => editLabel(uidArg(uid), { nickname: stringArg(nickname, 'nickname') }),
     [CH.setGroup]: (_event, uid, group) => editLabel(uidArg(uid), { group: stringArg(group, 'group') }),
     [CH.run]: (_event, uid, command) => backend.host.run(uidArg(uid), quickArg(command)),

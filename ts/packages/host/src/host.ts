@@ -932,6 +932,14 @@ export class AppHost implements HostStore {
     return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };
   }
 
+  async discoverNearby(): Promise<CommandOutcome> {
+    const run = this.run_;
+    if (run === null) return fail('not_running');
+    const result = run.runtime.operations().discover();
+    this.changed();
+    return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };
+  }
+
   async release(uid: string): Promise<CommandOutcome> {
     const run = this.run_;
     if (run === null) return fail('not_running');

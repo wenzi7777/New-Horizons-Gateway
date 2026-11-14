@@ -1,8 +1,18 @@
 // Pocket's side of server sync: one @nhgw/host SyncClient on the app host
 // and its data folder (the same client NH Studio runs). Signing in uses a
-// New Horizons Desktop account; the password goes to the server once and
-// only the app token it returns is kept (in the host config).
-import { FetchSyncHttp, SyncClient, SyncError, type AppHost, type HostFiles, type LinkBenchResult, type NetworkInfo, type SyncStatus } from '@nhgw/host';
+// New Horizons Desktop account, remembered in the secure store
+// (secureCredentials.ts); Pocket signs in again by itself on every start.
+import {
+  FetchSyncHttp,
+  SyncClient,
+  SyncError,
+  type AppHost,
+  type CredentialStore,
+  type HostFiles,
+  type LinkBenchResult,
+  type NetworkInfo,
+  type SyncStatus,
+} from '@nhgw/host';
 
 export type { SyncStatus };
 
@@ -42,8 +52,21 @@ export function networkReader(native: { networkState?(): { online: boolean; mete
   };
 }
 
-export function createPocketSync(host: AppHost, files: HostFiles, deviceName: string, network?: () => NetworkInfo): PocketSync {
-  const client = new SyncClient({ host, files, http: new FetchSyncHttp(), ...(network ? { network } : {}) });
+export function createPocketSync(
+  host: AppHost,
+  files: HostFiles,
+  deviceName: string,
+  network?: () => NetworkInfo,
+  credentials?: CredentialStore,
+): PocketSync {
+  const client = new SyncClient({
+    host,
+    files,
+    http: new FetchSyncHttp(),
+    deviceName: () => deviceName,
+    ...(network ? { network } : {}),
+    ...(credentials ? { credentials } : {}),
+  });
   const listeners = new Set<() => void>();
   // status() builds a fresh object; screens read it through
   // useSyncExternalStore, so hand out one snapshot per change.
@@ -53,7 +76,11 @@ export function createPocketSync(host: AppHost, files: HostFiles, deviceName: st
     for (const listener of [...listeners]) listener();
   };
   client.on(refresh);
-  host.subscribe(refresh);
+  host.subscribe(() => {
+    // The relay link was refused (its token ended): the remembered account signs in again.
+    if (host.status().authRejected) client.relayRefused();
+    refresh();
+  });
   void client.start().catch(() => undefined);
   return {
     status: () => snapshot,

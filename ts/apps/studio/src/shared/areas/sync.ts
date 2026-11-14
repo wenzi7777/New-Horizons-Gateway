@@ -55,6 +55,10 @@ export interface SyncAreaStatus {
   counts: Record<SyncUploadState, number>;
   current: { id: string; sentBytes: number; totalBytes: number } | null;
   lastUploadMs: number;
+  /** An account is remembered: Studio signs in by itself. */
+  remembered: boolean;
+  /** The remembered account (or none) cannot sign in by itself: the user has to. */
+  tokenRejected: boolean;
   labels: SyncMetadataResult | null;
   profiles: SyncMetadataResult | null;
 }
@@ -76,13 +80,10 @@ export interface RelayBenchReport {
 
 export interface SyncAreaApi {
   status(): SyncAreaStatus;
-  /** Signs in with a Desktop account (the password is sent once, never kept), stores the app token it yields, tests the connection. */
+  /** Signs in with a Desktop account, remembers it (encrypted by the OS) so Studio signs in again by itself on every start, tests the connection. */
   login(username: string, password: string): SyncConnectionResult;
-  /** Revokes this install's token on the server (best effort) and forgets it. */
+  /** Ends this install's token on the server (best effort) and forgets the account. */
   logout(): SyncAreaStatus;
-  /** Validates (nhapp_<id>_<secret>), stores, tests the connection. */
-  setToken(token: string): SyncConnectionResult;
-  clearToken(): SyncAreaStatus;
   testConnection(): SyncConnectionResult;
   /** One recording, or every finished one not yet synced; ignores the policy. */
   uploadNow(id?: string): SyncAreaStatus;

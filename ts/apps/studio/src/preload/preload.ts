@@ -62,6 +62,7 @@ const api: StudioApi = {
   updateSettings: (patch) => invoke(CH.updateSettings, patch),
   adopt: (uid) => invoke(CH.adopt, uid),
   release: (uid) => invoke(CH.release, uid),
+  discoverNearby: () => invoke(CH.discoverNearby),
   setNickname: (uid, nickname) => invoke(CH.setNickname, uid, nickname),
   setGroup: (uid, group) => invoke(CH.setGroup, uid, group),
   run: (uid, command) => invoke(CH.run, uid, command),

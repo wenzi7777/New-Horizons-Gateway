@@ -493,6 +493,13 @@ export class MockStudioApi implements StudioApi {
     return { ok: true, message: '', data: null };
   }
 
+  async discoverNearby(): Promise<CommandOutcome> {
+    await this.sleep(300);
+    const now = this.now();
+    for (const n of this.nearby) n.lastSeenMs = now;
+    return { ok: true, message: 'ok', data: null };
+  }
+
   async release(uid: string): Promise<CommandOutcome> {
     await this.sleep(600);
     const d = this.find(uid);

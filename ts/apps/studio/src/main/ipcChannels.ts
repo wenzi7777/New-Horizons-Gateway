@@ -12,6 +12,7 @@ export const CH = {
   updateSettings: 'nh-studio:update-settings',
   adopt: 'nh-studio:adopt',
   release: 'nh-studio:release',
+  discoverNearby: 'nh-studio:discover-nearby',
   setNickname: 'nh-studio:set-nickname',
   setGroup: 'nh-studio:set-group',
   run: 'nh-studio:run',

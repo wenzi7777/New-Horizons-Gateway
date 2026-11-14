@@ -1,5 +1,5 @@
 // The Sync section of the Settings page (owned by the sync area; the
-// Settings page renders it under #/settings/sync): app token, connection
+// Settings page renders it under #/settings/sync): sign-in, connection
 // test, upload policy, the upload queue, label / profile sync.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudUpload, Pause, Play, RefreshCw, Tags, FileJson, PlugZap, LogIn, LogOut } from 'lucide-react';

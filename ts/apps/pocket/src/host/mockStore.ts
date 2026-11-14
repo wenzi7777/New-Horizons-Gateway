@@ -391,6 +391,12 @@ export class MockPocketStore implements PocketStore {
     return { ok: true, message: '', data: null };
   }
 
+  async discoverNearby(): Promise<CommandOutcome> {
+    await sleep(300);
+    this.emit();
+    return { ok: true, message: 'ok', data: null };
+  }
+
   async release(uid: string): Promise<CommandOutcome> {
     await sleep(600);
     const device = this.find(uid);

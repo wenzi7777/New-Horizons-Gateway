@@ -215,6 +215,13 @@ export interface HostStore {
 
   adopt(uid: string): Promise<CommandOutcome>;
   release(uid: string): Promise<CommandOutcome>;
+  /**
+   * Broadcasts a FindMe probe: every device on the network answers this host
+   * directly (unicast), even one attached to another relay, so it shows under
+   * Nearby. For networks whose access point does not pass the devices' own
+   * broadcasts between Wi-Fi clients.
+   */
+  discoverNearby(): Promise<CommandOutcome>;
   setNickname(uid: string, nickname: string): Promise<void>;
   setGroup(uid: string, group: string): Promise<void>;
   run(uid: string, command: QuickCommand): Promise<CommandOutcome>;

@@ -111,6 +111,7 @@ function makeBackend() {
     host: {
       adopt: async (uid) => (calls.push(['adopt', uid]), ok),
       release: async (uid) => (calls.push(['release', uid]), ok),
+      discoverNearby: async () => (calls.push(['discoverNearby']), ok),
       setNickname: async (uid, nickname) => void calls.push(['setNickname', uid, nickname]),
       setGroup: async (uid, group) => void calls.push(['setGroup', uid, group]),
       run: async (uid, command) => (calls.push(['run', uid, command]), ok),

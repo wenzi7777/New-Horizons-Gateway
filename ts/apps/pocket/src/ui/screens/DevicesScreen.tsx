@@ -6,6 +6,7 @@ import {
   BatteryMedium,
   Link2,
   Plus,
+  Radar,
   RadioTower,
   Smartphone,
 } from 'lucide-react-native';
@@ -150,6 +151,27 @@ function NearbyRow({ device }: { device: NearbyDeviceView }) {
   );
 }
 
+/** Asks every device on the Wi-Fi to answer this phone directly (FindMe probe). */
+function DiscoverButton() {
+  const { t, locale } = useI18n();
+  const store = useStore();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const press = async () => {
+    setBusy(true);
+    try {
+      const outcome = await store.discoverNearby();
+      if (outcome.ok) toast.show(t('discoverNearbySent'));
+      else toast.show(t('actionFailed', { error: errorText(locale, outcome.message) }), 'danger');
+    } catch (error) {
+      toast.show(t('actionFailed', { error: String((error as Error)?.message ?? error) }), 'danger');
+    }
+    // Answers arrive within a few seconds (each device answers at most every 5 s).
+    setTimeout(() => setBusy(false), 3000);
+  };
+  return <Button label={t('discoverNearby')} icon={Radar} compact busy={busy} onPress={press} />;
+}
+
 export function DevicesScreen() {
   const { t } = useI18n();
   const devices = useDevices();
@@ -171,7 +193,7 @@ export function DevicesScreen() {
         )}
       </Card>
 
-      <SectionHeader title={t('nearbyTitle')} caption={t('nearbyHint')} />
+      <SectionHeader title={t('nearbyTitle')} caption={t('nearbyHint')} trailing={<DiscoverButton />} />
       <Card padded={false}>
         {nearby.length === 0 ? (
           <Empty icon={RadioTower}>{t('noNearbyPocket')}</Empty>

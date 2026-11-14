@@ -2,7 +2,7 @@
 // device on the right with Overview / Settings / Calibration tabs.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Radar } from 'lucide-react';
 
 import type { DeviceView } from '../../shared/contract';
 import { BatteryIndicator, StatusDot, useConfirm } from '../components/ui';
@@ -56,6 +56,7 @@ export function DevicesPage({ route, navigate }: Props) {
   const nearby = snapshot?.nearby ?? [];
   const groups = useMemo(() => groupDevices(devices), [devices]);
   const [adopting, setAdopting] = useState<string>('');
+  const [discovering, setDiscovering] = useState(false);
   const now = Date.now();
   const selected = route.uid ? devices.find((d) => d.uid === route.uid) ?? null : null;
 
@@ -73,6 +74,15 @@ export function DevicesPage({ route, navigate }: Props) {
     const outcome = await exec(label, () => api.adopt(uid), { uid, success });
     setAdopting('');
     if (outcome.ok) navigate({ area: 'devices', uid, tab: 'overview' });
+  };
+
+  // Devices answer a probe directly, so this finds them even where the access
+  // point does not pass their own broadcasts to this computer.
+  const discover = async () => {
+    setDiscovering(true);
+    await exec(t('discoverNearby'), () => api.discoverNearby(), { success: t('discoverNearbySent') });
+    // Answers arrive within a few seconds (each device answers at most every 5 s).
+    setTimeout(() => setDiscovering(false), 3000);
   };
 
   return (
@@ -128,7 +138,13 @@ export function DevicesPage({ route, navigate }: Props) {
 
         <div className="list-head nearby-head">
           <h2>{t('nearbyTitle')}</h2>
-          <span className="muted">{nearby.length}</span>
+          <span className="list-head-trail">
+            <span className="muted">{nearby.length}</span>
+            <button className="button tiny" type="button" disabled={discovering} onClick={() => void discover()}>
+              <Radar size={13} aria-hidden="true" />
+              {t('discoverNearby')}
+            </button>
+          </span>
         </div>
         <p className="list-hint">{t('nearbyHint')}</p>
         {nearby.length === 0 ? <p className="empty">{t('noNearbyDevices')}</p> : null}

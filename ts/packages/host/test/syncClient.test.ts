@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { HostSettings, RecordingSummary } from '../src/contract';
 import { syncBaseUrl, SYNC_KEYS } from '../src/sync/config';
-import { SyncClient, SYNC_PATHS, type SyncHost } from '../src/sync/client';
+import { AUTO_LOGIN_RETRY_MS, SyncClient, SYNC_PATHS, type CredentialStore, type Credentials, type SyncHost } from '../src/sync/client';
 import type { SyncHttp, SyncRequest, SyncResponse } from '../src/sync/http';
 import { sha256Hex } from '../src/sync/sha256';
 import { FakeNative } from './fakeNative';
@@ -24,6 +24,9 @@ class FakeServer implements SyncHttp {
   offline = false;
   loginBodies: Record<string, string>[] = [];
   revoked = 0;
+  password = 'pw';
+  /** false: the server has ended the token (idle, or the account's next sign-in replaced it). */
+  tokenValid = true;
 
   private reply(status: number, body: unknown): SyncResponse {
     return { status, text: JSON.stringify(body) };
@@ -37,11 +40,12 @@ class FakeServer implements SyncHttp {
     }
     if (req.url.endsWith('/api/app-tokens/login')) {
       const login = JSON.parse(String(req.body)) as Record<string, string>;
-      if (login.username !== 'nick' || login.password !== 'pw') return this.reply(401, { error: 'invalid_credentials' });
+      if (login.username !== 'nick' || login.password !== this.password) return this.reply(401, { error: 'invalid_credentials' });
       this.loginBodies.push(login);
+      this.tokenValid = true;
       return this.reply(200, { token: TOKEN, token_type: 'Bearer', item: { id: '0123456789ab' }, user: { username: 'nick', role: this.role } });
     }
-    if (req.headers.Authorization !== `Bearer ${TOKEN}`) return this.reply(401, { error: 'unauthorized' });
+    if (req.headers.Authorization !== `Bearer ${TOKEN}` || !this.tokenValid) return this.reply(401, { error: 'unauthorized' });
     if (req.url.endsWith('/api/app-tokens/self/revoke')) {
       this.revoked += 1;
       return this.reply(200, { status: 'revoked' });
@@ -189,7 +193,17 @@ class FakeHost implements SyncHost {
 
 const NOW = 1_800_000_000_000;
 
-function setup(options: { chunkBytes?: number } = {}) {
+class MemoryCredentials implements CredentialStore {
+  saved: Credentials | null = null;
+  async load(): Promise<Credentials | null> {
+    return this.saved;
+  }
+  async save(credentials: Credentials | null): Promise<void> {
+    this.saved = credentials;
+  }
+}
+
+function setup(options: { chunkBytes?: number; credentials?: CredentialStore } = {}) {
   const native = new FakeNative();
   const host = new FakeHost();
   const server = new FakeServer();
@@ -197,7 +211,16 @@ function setup(options: { chunkBytes?: number } = {}) {
   const logs: string[] = [];
   const timers = { now: () => clock.t, setTimeout: () => 0, clearTimeout: () => undefined };
   const logger = { info: (m: string) => logs.push(m), warn: (m: string) => logs.push(m), error: (m: string) => logs.push(m) };
-  const client = new SyncClient({ host, files: native, http: server, timers, logger, chunkBytes: options.chunkBytes ?? 1000, backoff: { baseMs: 1000, maxMs: 8000 } });
+  const client = new SyncClient({
+    host,
+    files: native,
+    http: server,
+    timers,
+    logger,
+    chunkBytes: options.chunkBytes ?? 1000,
+    backoff: { baseMs: 1000, maxMs: 8000 },
+    ...(options.credentials ? { credentials: options.credentials } : {}),
+  });
   return { native, host, server, clock, logs, client };
 }
 
@@ -330,13 +353,14 @@ describe('SyncClient recordings', () => {
 });
 
 describe('SyncClient sign-in', () => {
-  it('exchanges a Desktop account for a token, keeps no password, and signs out by revoking it', async () => {
+  it('exchanges a Desktop account for a token, keeps no password in the config, and signs out by revoking it', async () => {
     const { client, server, host, logs } = setup();
+    host.config.gateway_id = 'studio-0a1b2c3d';
     await client.reload();
     await expect(client.login('nick', 'wrong')).rejects.toMatchObject({ code: 'invalid_credentials' });
     const result = await client.login(' nick ', 'pw', 'Lab Mac');
     expect(result.ok).toBe(true);
-    expect(server.loginBodies).toEqual([{ username: 'nick', password: 'pw', client_type: 'studio', device_name: 'Lab Mac' }]);
+    expect(server.loginBodies).toEqual([{ username: 'nick', password: 'pw', client_type: 'studio', device_name: 'Lab Mac', relay_id: 'studio-0a1b2c3d' }]);
     expect(client.status()).toMatchObject({ configured: true, account: 'nick' });
     expect(JSON.stringify(host.config)).not.toContain('pw"');
     expect(host.config.sync_account).toBe('nick');
@@ -345,6 +369,75 @@ describe('SyncClient sign-in', () => {
     expect(server.revoked).toBe(1);
     expect(client.status()).toMatchObject({ configured: false, account: '' });
     expect(host.config.sync_app_token).toBe('');
+  });
+
+  it('remembers the account, signs in again on every start, and forgets it on sign-out', async () => {
+    const credentials = new MemoryCredentials();
+    const first = setup({ credentials });
+    await first.client.start();
+    await first.client.login('nick', 'pw');
+    expect(credentials.saved).toEqual({ username: 'nick', password: 'pw' });
+    expect(first.client.status().remembered).toBe(true);
+    await first.client.stop();
+
+    // Next start (same config and secure store): a fresh sign-in, no user involved.
+    const next = setup({ credentials });
+    next.host.config = { ...first.host.config };
+    await next.client.start();
+    await next.client.tick();
+    expect(next.server.loginBodies).toHaveLength(1);
+    expect(next.client.status()).toMatchObject({ configured: true, account: 'nick', tokenRejected: false });
+    await next.client.tick();
+    expect(next.server.loginBodies).toHaveLength(1); // once per start, not every pass
+
+    await next.client.logout();
+    expect(credentials.saved).toBeNull();
+    expect(next.client.status().remembered).toBe(false);
+  });
+
+  it('gets a new token by itself when the server ends the old one', async () => {
+    const ctx = setup({ credentials: new MemoryCredentials() });
+    await ctx.client.start();
+    await ctx.client.login('nick', 'pw');
+    ctx.server.tokenValid = false;
+    ctx.clock.t += 3 * 60_000; // metadata sync is due: it gets the 401
+    await ctx.client.tick();
+    expect(ctx.client.status().tokenRejected).toBe(false); // not the user's problem yet
+    await ctx.client.tick();
+    expect(ctx.server.loginBodies).toHaveLength(2);
+    expect(ctx.server.tokenValid).toBe(true);
+    expect(ctx.client.status()).toMatchObject({ configured: true, tokenRejected: false });
+  });
+
+  it('asks the user only when the remembered password no longer works', async () => {
+    const ctx = setup({ credentials: new MemoryCredentials() });
+    await ctx.client.start();
+    await ctx.client.login('nick', 'pw');
+    ctx.server.password = 'changed';
+    ctx.server.tokenValid = false;
+    ctx.clock.t += 3 * 60_000;
+    await ctx.client.tick();
+    await ctx.client.tick();
+    expect(ctx.client.status().tokenRejected).toBe(true);
+    const attempts = ctx.server.requests.filter((r) => r.url.endsWith('/api/app-tokens/login')).length;
+    ctx.clock.t += 10 * 60_000;
+    await ctx.client.tick();
+    expect(ctx.server.requests.filter((r) => r.url.endsWith('/api/app-tokens/login')).length).toBe(attempts); // no more tries
+    await ctx.client.login('nick', 'changed');
+    expect(ctx.client.status().tokenRejected).toBe(false);
+  });
+
+  it('a refused relay link signs in again, but not right after a sign-in', async () => {
+    const ctx = setup({ credentials: new MemoryCredentials() });
+    await ctx.client.start();
+    await ctx.client.login('nick', 'pw');
+    ctx.client.relayRefused();
+    await ctx.client.autoLogin();
+    expect(ctx.server.loginBodies).toHaveLength(1);
+    ctx.clock.t += AUTO_LOGIN_RETRY_MS + 1;
+    ctx.client.relayRefused();
+    await ctx.client.autoLogin();
+    expect(ctx.server.loginBodies).toHaveLength(2);
   });
 });
 

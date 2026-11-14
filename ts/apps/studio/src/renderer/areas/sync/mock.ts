@@ -23,6 +23,8 @@ export const syncMock: AreaMock = (emit) => {
     counts: { local: 0, queued: 1, uploading: 0, synced: 1, failed: 1 },
     current: null,
     lastUploadMs: now - 3_600_000,
+    remembered: true,
+    tokenRejected: false,
     labels: null,
     profiles: null,
   };
@@ -41,19 +43,6 @@ export const syncMock: AreaMock = (emit) => {
     },
     logout: () => {
       Object.assign(status, { configured: false, tokenMasked: '', account: '', connection: null });
-      changed();
-      return status;
-    },
-    setToken: (token: string) => {
-      if (!/^nhapp_[0-9a-f]{12}_[A-Za-z0-9_-]{8,}$/.test(String(token).trim())) throw new Error('token_invalid');
-      status.configured = true;
-      status.tokenMasked = `${String(token).trim().slice(0, 18)}_…${String(token).trim().slice(-4)}`;
-      status.connection = ok();
-      changed();
-      return status.connection;
-    },
-    clearToken: () => {
-      Object.assign(status, { configured: false, tokenMasked: '', connection: null });
       changed();
       return status;
     },

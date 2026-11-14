@@ -1,5 +1,6 @@
-// Shown when the server refuses this Studio's app token (revoked, or the server
-// was reset): a sign-in form that gets a fresh token, applied right away.
+// Shown when the server refuses this Studio's relay link and the remembered
+// account cannot fix it by itself (password changed, account turned off, or
+// none remembered): a sign-in form, applied right away.
 import { useEffect, useMemo, useState } from 'react';
 import { LogIn } from 'lucide-react';
 
@@ -17,8 +18,17 @@ export default function ReauthDialog({ onLater }: { onLater: () => void }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A remembered account signs in again by itself within seconds: no dialog for that.
+  const [selfHealing, setSelfHealing] = useState(true);
   useEffect(() => {
-    sync.status().then((s) => s.account && setUsername((u) => u || s.account), () => undefined);
+    sync.status().then(
+      (s) => {
+        if (s.account) setUsername((u) => u || s.account);
+        setSelfHealing(s.remembered && !s.tokenRejected);
+      },
+      () => setSelfHealing(false),
+    );
+    return sync.on('state', (s) => setSelfHealing(s.remembered && !s.tokenRejected));
   }, [sync]);
 
   const submit = async () => {
@@ -34,6 +44,8 @@ export default function ReauthDialog({ onLater }: { onLater: () => void }) {
       setBusy(false);
     }
   };
+
+  if (selfHealing) return null;
 
   return (
     <div className="modal-backdrop">
