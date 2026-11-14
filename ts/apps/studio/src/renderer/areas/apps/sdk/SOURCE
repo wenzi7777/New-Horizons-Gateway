@@ -1,3 +1,3 @@
-Vendored from NHOS-App-Library at fc48367 (with uncommitted changes): lib/ from sdk/,
+Vendored from NHOS-App-Library at dd7ab2a: lib/ from sdk/,
 docs/ from docs/, examples/ from apps/.
 Do not edit these files here: change the library, then run sync.mjs in this folder.
