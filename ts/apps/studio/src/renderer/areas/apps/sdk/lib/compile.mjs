@@ -55,7 +55,10 @@ import {
   minOsFor,
   opSpec,
   windowFloats,
+  compareVersions,
 } from "./opset.mjs";
+import { lowerGraph, toBase64 } from "./vm.mjs";
+import { VM_MIN_OS } from "./vmset.mjs";
 
 /** An error at a place in the source. `line`/`col` are 1-based; either may be null. */
 export class CompileError extends Error {
@@ -1039,14 +1042,21 @@ class Parser {
     const manifest = { ...this.manifest };
     manifest.capabilities = [...this.capabilities].sort();
     if (!("name" in manifest)) manifest.name = this.appId;
-    manifest.min_os = minOsFor(this.builder.nodes, /** @type {string[]} */ (manifest.capabilities));
-    return {
+    const needed = minOsFor(this.builder.nodes, /** @type {string[]} */ (manifest.capabilities));
+    // The device runs the image, not the nodes: every package needs the VM.
+    manifest.min_os = compareVersions(needed, VM_MIN_OS) > 0 ? needed : VM_MIN_OS;
+    /** @type {Record<string, any>} */
+    const pkg = {
       nhapp: 1,
       kind: "flow",
       name: this.graphName,
       manifest,
       nodes: this.builder.nodes,
     };
+    // The nodes stay: the simulators, the analysis and the Desktop's graph
+    // view read them. The image is what the device runs, lowered from them.
+    if (this.builder.nodes.length <= MAX_NODES) pkg.vm = toBase64(lowerGraph(pkg));
+    return pkg;
   }
 }
 

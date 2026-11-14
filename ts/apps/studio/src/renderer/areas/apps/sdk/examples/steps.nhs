@@ -3,7 +3,7 @@
 # the action button starts it over.
 app steps {
   name    "Step Counter"
-  version 1.0.0
+  version 2.0.0
   author  wenzi7777
   summary "Counts heel strikes; kept across reboots, button resets."
   category biomechanics

@@ -78,6 +78,8 @@ import {
   isForbiddenCommand,
 } from "./panelset.mjs";
 import { canonicalBytes } from "./canonical.mjs";
+import { VmImageError, fromBase64, lowerGraph, verifyImage } from "./vm.mjs";
+import { VM_MIN_OS } from "./vmset.mjs";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const MIN_OS_RE = /^v?\d+\.\d+\.\d+$/;
@@ -689,6 +691,8 @@ export function validatePanel(panel, manifest) {
  * @property {number} [refreshMs]
  * @property {number} [actions] a panel's action count
  * @property {string[]} [permissions] a panel's declared permissions
+ * @property {number} [vmBytes] a flow package's image size
+ * @property {number} [poolBytes] RAM the image takes from the device's app pool
  */
 
 /**
@@ -698,6 +702,39 @@ export function validatePanel(panel, manifest) {
  * @param {ValidateOptions} [options]
  * @returns {PackageReport}
  */
+/**
+ * The package's NHVM/1 image: present, well formed, passes the device's
+ * verifier, and exactly what its nodes lower to -- so what the simulators run
+ * is what the device runs.
+ * @param {Record<string, any>} doc
+ * @param {Record<string, any>} manifest
+ * @param {number} cellCount
+ */
+function validateImage(doc, manifest, cellCount) {
+  require(typeof doc.vm === "string" && doc.vm.length > 0, "missing_vm:rebuild_with_sdk_2");
+  /** @type {Uint8Array} */
+  let image;
+  try {
+    image = fromBase64(doc.vm);
+  } catch {
+    throw new PackageError("invalid_vm_base64");
+  }
+  /** @type {import("./vm.mjs").VmVerified} */
+  let verified;
+  try {
+    verified = verifyImage(image, { capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [], cellCount });
+  } catch (error) {
+    if (error instanceof VmImageError) throw new PackageError(`invalid_vm:${error.code}`);
+    throw error;
+  }
+  const lowered = lowerGraph(doc);
+  require(lowered.length === image.length && lowered.every((byte, i) => byte === image[i]), "vm_does_not_match_nodes");
+  const declaredMinOs = text(manifest.min_os) || "v1.0.0";
+  require(compareVersions(declaredMinOs, VM_MIN_OS) >= 0,
+    `min_os_too_low:declares_v${declaredMinOs.replace(/^v/, "")}_needs_v${VM_MIN_OS.replace(/^v/, "")}`);
+  return { vmBytes: image.length, poolBytes: verified.poolBytes, minOs: compareVersions(VM_MIN_OS, declaredMinOs) > 0 ? VM_MIN_OS : declaredMinOs };
+}
+
 export function validatePackage(doc, raw = null, options = {}) {
   require(isObject(doc), "not_a_package");
   require(doc.nhapp === 1, `unsupported_package_version:${text(doc.nhapp)}`);
@@ -730,6 +767,7 @@ export function validatePackage(doc, raw = null, options = {}) {
     require(!("readout" in doc), "flow_must_not_declare_a_readout");
     require(!("panel" in doc), "flow_must_not_declare_a_panel");
     report = { ...validateGraph(doc.nodes, manifest, options), kind: "flow" };
+    report = { ...report, ...validateImage(doc, manifest, report.cellCount ?? 225) };
   }
 
   const bytes = raw ?? canonicalBytes(doc);

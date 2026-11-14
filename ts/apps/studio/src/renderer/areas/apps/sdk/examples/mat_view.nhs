@@ -3,7 +3,7 @@
 # 15x15 mat and a 5x7 sensor.
 app mat_view {
   name    "Mat View"
-  version 1.0.0
+  version 2.0.0
   author  wenzi7777
   summary "Front/rear load on the OLED; press the button for page 2."
   category display

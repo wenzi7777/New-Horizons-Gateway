@@ -201,6 +201,9 @@ export function DeviceAppsPage({ uid, go }: { uid: string; go: (path: string[]) 
           <strong>{nameOf(entry)}</strong>
           <span className="muted">v{entry.version}</span>
           {entry.state === 'load_failed' ? <span className="tag apps-danger">{t('appLoadFailed')}</span> : null}
+          {entry.state === 'needs_update' ? (
+            <span className="tag apps-danger" title={t('appNeedsUpdateHint')}>{t('appNeedsUpdate')}</span>
+          ) : null}
         </div>
         {summaryOf(entry) ? <div className="muted">{summaryOf(entry)}</div> : null}
         <div className="apps-row-meta">

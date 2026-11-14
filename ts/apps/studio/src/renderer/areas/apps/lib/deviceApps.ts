@@ -42,7 +42,7 @@ export type AppPackageEntry = {
   size: number;
   estimatedUs: number;
   slot: number;
-  state: "active" | "installed" | "load_failed" | string;
+  state: "active" | "installed" | "load_failed" | "needs_update" | string;
 };
 
 export type AppEventEntry = {
@@ -197,6 +197,8 @@ export const APP_ERROR_KEYS: Record<string, string> = {
   app_state_change_rejected: "appError_state_change_rejected",
   index_write_failed: "appError_index_write_failed",
   graph_invalid: "appError_graph_invalid",
+  needs_update: "appError_needs_update",
+  app_pool_exhausted: "appError_app_pool_exhausted",
   path_too_long: "appError_path_too_long",
 };
 
