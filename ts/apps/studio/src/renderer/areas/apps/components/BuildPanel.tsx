@@ -19,16 +19,13 @@ import {
   type MatrixTarget,
   type SdkProject,
 } from "../lib/sdkProject";
+import { dangerousCapabilities } from "../lib/appGrant";
 import {
   DEFAULT_BUDGET_US,
-  LEGACY_MAX_NODES,
-  MAX_NODES,
   MAX_PACKAGE_BYTES,
-  WINDOW_POOL,
   compareVersions,
   type Analysis,
   type Diagnostic,
-  type FlowNode,
 } from "../sdk/lib/index.mjs";
 import { TextInput } from '../../../components/ui';
 
@@ -94,19 +91,6 @@ function ManifestDetails({
       <p className="field-hint">{t("sdkDetailsHint")}</p>
     </section>
   );
-}
-
-/** Everything on a node except its op and wiring, as `key=value`. */
-function nodeParams(node: FlowNode): string {
-  return Object.entries(node)
-    .filter(([key]) => key !== "op" && key !== "in")
-    .map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`)
-    .join("  ");
-}
-
-function nodeInputs(node: FlowNode): string {
-  if (node.in === undefined) return "";
-  return (Array.isArray(node.in) ? node.in : [node.in]).map((index) => `#${index}`).join(", ");
 }
 
 function Meter({ label, value, limit, unit, warnAt }: {
@@ -201,8 +185,9 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
   const errors = analysis.diagnostics.filter((d) => d.severity === "error");
   const validation = analysis.validation;
   const report = analysis.report;
-  const nodes = (analysis.package?.nodes ?? []) as FlowNode[];
-  const costByIndex = new Map(report?.breakdown.map((item) => [item.index, item.us]) ?? []);
+  const symbols = report?.symbols ?? [];
+  const capabilities = (analysis.package?.manifest?.capabilities ?? []) as string[];
+  const asks = new Set(dangerousCapabilities(capabilities));
   const manifestVersion = String(analysis.package?.manifest?.version ?? "");
   // Accepted by current firmware, but not by the device chosen as the board.
   const firmwareTooOld = Boolean(validation && target.firmware && compareVersions(target.firmware, validation.minOs) < 0);
@@ -241,9 +226,6 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
             .replace("{device}", target.label.split(" · ")[0] ?? "")
             .replace("{firmware}", target.firmware)
             .replace("{minOs}", analysis.validation.minOs)}
-          {analysis.validation.nodes > LEGACY_MAX_NODES
-            ? ` ${t("sdkFirmwareTooOldNodes").replace("{nodes}", String(analysis.validation.nodes))}`
-            : ""}
         </p>
       ) : null}
 
@@ -266,19 +248,20 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
           <div className="sdk-meters">
             {validation.kind === "flow" ? (
               <>
-                <Meter label={t("sdkNodes")} value={validation.nodes} limit={MAX_NODES} warnAt={MAX_NODES - 2} />
-                <Meter
-                  label={t("sdkCost").replace("{cells}", String(validation.cellCount ?? ""))}
-                  value={validation.estimatedUs}
-                  limit={validation.budgetUs ?? DEFAULT_BUDGET_US}
-                  unit="µs"
-                />
-                <Meter label={t("sdkWindowPool")} value={validation.windowFloats ?? 0} limit={WINDOW_POOL} unit={t("sdkFloats")} />
+                {validation.loopFree === false ? null : (
+                  <Meter
+                    label={t("sdkCost").replace("{cells}", String(validation.cellCount ?? ""))}
+                    value={validation.estimatedUs}
+                    limit={validation.budgetUs ?? DEFAULT_BUDGET_US}
+                    unit="µs"
+                  />
+                )}
               </>
             ) : null}
             <Meter label={t("sdkPackageSize")} value={validation.size} limit={MAX_PACKAGE_BYTES} unit="B" warnAt={MAX_PACKAGE_BYTES * 0.85} />
           </div>
-          {validation.kind === "flow" ? (
+          {validation.kind === "flow" && validation.loopFree === false ? <p className="sdk-hint">{t("sdkCostLoop")}</p> : null}
+          {validation.kind === "flow" && validation.loopFree !== false ? (
             <div className="sdk-shares">
               <span>{t("sdkShareTitle")}</span>
               {runtimeShares(60).map(({ apps, us }) => (
@@ -292,7 +275,7 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
             <summary>{t("sdkLimitsHelp")}</summary>
             <dl>
               {(validation.kind === "flow"
-                ? ["Nodes", "Cost", "Pool", "Size", "Share"]
+                ? ["Cost", "Size", "Share"]
                 : ["Size"]
               ).map((name) => (
                 <div key={name}>
@@ -308,7 +291,7 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
           <dl className="sdk-facts">
             <div><dt>{t("sdkMinOs")}</dt><dd>{validation.minOs}</dd></div>
             {validation.kind === "flow" && report ? (
-              <div><dt>{t("sdkShared")}</dt><dd>{report.reused}</dd></div>
+              <div><dt>{t("sdkMemory")}</dt><dd>{report.poolBytes} B</dd></div>
             ) : null}
             {validation.kind === "readout" || validation.kind === "panel" ? (
               <>
@@ -322,7 +305,9 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
             <div>
               <dt>{t("sdkCapabilities")}</dt>
               <dd className="sdk-chips">
-                {((analysis.package?.manifest?.capabilities ?? []) as string[]).map((cap) => <span key={cap} className="sdk-chip">{cap}</span>)}
+                {capabilities.map((cap) => (
+                  <span key={cap} className={`sdk-chip${asks.has(cap) ? " sdk-ref-ask" : ""}`} title={asks.has(cap) ? t("sdkRefAskHint") : undefined}>{cap}</span>
+                ))}
               </dd>
             </div>
             {digest ? <div><dt>sha256</dt><dd className="sdk-mono sdk-digest" title={digest}>{digest.slice(0, 16)}…</dd></div> : null}
@@ -330,38 +315,28 @@ export function BuildPanel({ project, analysis, target, onRevealLine, onSourceCh
         </section>
       ) : null}
 
-      {nodes.length ? (
+      {symbols.length ? (
         <section className="sdk-section">
-          <h3>{t("sdkGraph")}</h3>
+          <h3>{t("sdkStateTitle")}</h3>
+          <p className="sdk-hint">{t("sdkStateHint")}</p>
           <table className="sdk-table">
             <thead>
               <tr>
                 <th>#</th>
+                <th>{t("sdkEmuName")}</th>
                 <th>{t("sdkOp")}</th>
-                <th>{t("sdkInputs")}</th>
-                <th>{t("sdkParams")}</th>
-                <th className="num">µs</th>
-                <th className="num">{t("sdkLine")}</th>
+                <th>{t("sdkStateType")}</th>
               </tr>
             </thead>
             <tbody>
-              {nodes.map((node, index) => {
-                const line = report?.nodeLines[index];
-                return (
-                  <tr key={index}>
-                    <td className="sdk-mono">{index}</td>
-                    <td className="sdk-mono">{node.op}</td>
-                    <td className="sdk-mono sdk-nowrap">{nodeInputs(node)}</td>
-                    <td className="sdk-mono sdk-params">{nodeParams(node)}</td>
-                    <td className="num sdk-mono">{costByIndex.get(index) ?? ""}</td>
-                    <td className="num">
-                      {line ? (
-                        <button type="button" className="sdk-link" onClick={() => onRevealLine(line)}>{line}</button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
+              {symbols.map((symbol, index) => (
+                <tr key={symbol.name}>
+                  <td className="sdk-mono">{index}</td>
+                  <td className="sdk-mono">{symbol.name}</td>
+                  <td className="sdk-mono">{symbol.kind}</td>
+                  <td className="sdk-mono">{symbol.type}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </section>

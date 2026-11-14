@@ -48,6 +48,8 @@ export type InstallRun = {
   devicePath: string;
   dataHex: string;
   sha256?: string;
+  /** Dangerous capabilities the operator allowed (app_install `grant`). */
+  grant?: string[];
   /** The device is already in maintenance: neither entered nor left. */
   alreadyInMaintenance: boolean;
   onStep?: (step: InstallStep | null) => void;
@@ -77,6 +79,7 @@ export async function runAppInstall(queue: CommandRunner, options: InstallRun): 
       devicePath: options.devicePath,
       dataHex: options.dataHex,
       sha256: options.sha256,
+      grant: options.grant,
       // The upload has already replaced the file by the time app_install runs, so the index must follow it.
       replace: true,
       onPhase: (phase: InstallPhase) => {

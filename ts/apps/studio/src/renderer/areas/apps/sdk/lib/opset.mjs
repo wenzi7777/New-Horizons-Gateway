@@ -91,6 +91,39 @@ export const CAPABILITIES = Object.freeze({
   read_mag: 1 << 12,
   // v1.6.0. `persist` counters survive a reboot, in the device's NVS.
   persist: 1 << 13,
+  // v2.1.0. store.*: a few named values in NVS and CSV files under
+  // /appdata/<id>/ (16 KB per app). Dangerous: needs the operator's consent.
+  storage: 1 << 14,
+  // v2.1.0. app.publish() and on("message", ...): values between apps.
+  app_ipc: 1 << 15,
+  // v2.1.0. device.configGet/configSet: a whitelist of scan/filter/IMU
+  // settings, never saved, restored when the app stops. Dangerous.
+  device_config: 1 << 16,
+  // v2.1.0. device.stream(): pause and resume streaming. Dangerous.
+  device_stream: 1 << 17,
+  // v2.1.0. i2c.*: the exposed I2C bus (v1.5.F / v2.0.F only). Dangerous.
+  io_i2c: 1 << 18,
+  // v2.1.0. uart.*: UART0 on the FPC (v1.5.F / v2.0.F only). Dangerous.
+  io_uart: 1 << 19,
+});
+
+/**
+ * Capabilities an operator must agree to before a package that declares them
+ * is installed: the Desktop and NH Studio ask, and pass the agreed ones as
+ * `app_install`'s `grant`; the device refuses a dangerous capability that was
+ * not granted (`capability_not_granted:<cap>`).
+ * @type {readonly string[]}
+ */
+export const DANGEROUS_CAPABILITIES = Object.freeze(["storage", "device_config", "device_stream", "io_i2c", "io_uart"]);
+
+/**
+ * Capabilities only some boards have. Installing one elsewhere is refused
+ * (`capability_unsupported:<cap>`); the board ids are DeviceConfig's.
+ * @type {Readonly<Record<string, readonly string[]>>}
+ */
+export const BOARD_CAPABILITIES = Object.freeze({
+  io_i2c: Object.freeze(["v1.5.F", "v2.0.F"]),
+  io_uart: Object.freeze(["v1.5.F", "v2.0.F"]),
 });
 
 /**
@@ -116,6 +149,12 @@ export const CAPABILITY_SINCE = Object.freeze({
   link: "v1.6.0",
   read_mag: "v1.6.0",
   persist: "v1.6.0",
+  storage: "v2.1.0",
+  app_ipc: "v2.1.0",
+  device_config: "v2.1.0",
+  device_stream: "v2.1.0",
+  io_i2c: "v2.1.0",
+  io_uart: "v2.1.0",
 });
 
 /**
@@ -434,7 +473,7 @@ export function capabilitiesMask(names) {
   for (const name of names) {
     const bit = CAPABILITIES[name];
     if (bit === undefined) throw new Error(`unknown capability ${name}`);
-    mask |= bit;
+    mask = (mask | bit) >>> 0;
   }
   return mask;
 }

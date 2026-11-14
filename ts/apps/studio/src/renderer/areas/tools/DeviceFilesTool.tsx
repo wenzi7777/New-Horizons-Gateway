@@ -5,7 +5,7 @@
 // need maintenance mode, exactly as on the Desktop.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Download, FileText, Gauge, RefreshCw, ScrollText, Trash2, Upload, UserRound, type LucideIcon } from 'lucide-react';
+import { Database, Download, FileText, Gauge, RefreshCw, ScrollText, Trash2, Upload, UserRound, type LucideIcon } from 'lucide-react';
 
 import { TOOLS_MAX_UPLOAD_BYTES, type ToolsUploadFile } from '../../../shared/areas/tools';
 import { Card, Notice, Segmented, useConfirm, TextInput } from '../../components/ui';
@@ -18,9 +18,9 @@ import { filesStrings, type FilesStringsKey } from './filesStrings';
 import { ToolDeviceHeader, ToolDevicePicker, type ToolProps } from './TerminalTool';
 import './tools-terminal-files.css';
 
-const SCOPES = ['user', 'logs', 'calibration'] as const;
+const SCOPES = ['user', 'appdata', 'logs', 'calibration'] as const;
 type FileScope = (typeof SCOPES)[number];
-const SCOPE_ICONS: Record<FileScope, LucideIcon> = { user: UserRound, logs: ScrollText, calibration: Gauge };
+const SCOPE_ICONS: Record<FileScope, LucideIcon> = { user: UserRound, appdata: Database, logs: ScrollText, calibration: Gauge };
 const LOG_PREVIEW_BYTES = 32768;
 
 type FileEntry = { scope: string; path: string; name: string; size: number };
@@ -104,7 +104,7 @@ export function DeviceFilesTool({ uid, navigate }: ToolProps) {
   const [busy, setBusy] = useState(0);
   const running = busy > 0;
   const [activeScope, setActiveScope] = useState<FileScope>('logs');
-  const [itemsByScope, setItemsByScope] = useState<Record<FileScope, FileEntry[]>>({ user: [], logs: [], calibration: [] });
+  const [itemsByScope, setItemsByScope] = useState<Record<FileScope, FileEntry[]>>({ user: [], appdata: [], logs: [], calibration: [] });
   const [statusMessage, setStatusMessage] = useState('');
   const [uploadFile, setUploadFile] = useState<ToolsUploadFile | null>(null);
   const [uploadPath, setUploadPath] = useState('');
@@ -158,7 +158,7 @@ export function DeviceFilesTool({ uid, navigate }: ToolProps) {
   );
 
   useEffect(() => {
-    setItemsByScope({ user: [], logs: [], calibration: [] });
+    setItemsByScope({ user: [], appdata: [], logs: [], calibration: [] });
     setSelectedFile(null);
     setUploadFile(null);
     setStatusMessage('');

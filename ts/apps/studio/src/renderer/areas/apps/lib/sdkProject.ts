@@ -9,7 +9,7 @@
 // pull request.
 
 import type { DeviceView } from "../../../../shared/contract";
-import { MAX_SLOTS, appShareUs, type Analysis } from "../sdk/lib/index.mjs";
+import { DANGEROUS_CAPABILITIES, MAX_SLOTS, appShareUs, type Analysis } from "../sdk/lib/index.mjs";
 
 /** "VD-CTL/R …" and "TIA-CTL/R …" are older names of "TIA-CTL …" (the Desktop's boardProfile.ts). */
 export function normalizeHardwareModel(value: string) {
@@ -25,7 +25,7 @@ export function isViewKind(kind: SdkKind): boolean {
 
 /** The source file a project exports as, and the App Library keeps. */
 export function sourceFilename(kind: SdkKind): string {
-  return kind === "flow" ? "app.nhs" : kind === "panel" ? "panel.json" : "readout.json";
+  return kind === "flow" ? "app.ts" : kind === "panel" ? "panel.json" : "readout.json";
 }
 
 export type SdkProject = {
@@ -185,25 +185,29 @@ function shortBoardName(hardwareModel: string | undefined): string | undefined {
 
 
 export function flowTemplate(appId: string, author: string): string {
-  return `# A flow app: a small graph the device runs on every scanned frame.
-# Everything after '#' is a comment. The Reference tab lists every function.
-app ${appId} {
-  name    "${titleCase(appId)}"
-  version 0.1.0
-  author  ${safeWord(author)}
-  summary "What this app does, in one line."
-}
+  return `/// <reference path="../../sdk/types/nhos.d.ts" />
+// An app: TypeScript the device runs on every scanned frame. The Reference
+// tab lists the whole API; the compiler says when something is not allowed.
+export const manifest = {
+  id: "${appId}",
+  name: "${titleCase(appId)}",
+  version: "0.1.0",
+  author: "${safeWord(author)}",
+  summary: "What this app does, in one line.",
+} as const;
 
-# A rectangle of cells. Rows and columns count from 0.
-region front = rows 0..6, cols 0..14
+// A rectangle of cells: [first, last] rows and columns, counted from 0.
+const front = new Region({ rows: [0, 6], cols: [0, 14] });
+// On at 40, off again once the load drops below 34.
+const loaded = new Threshold(40, 6);
+// Ignores changes that last less than 30 ms.
+const pressed = new Debounce(30);
 
-signal load = sum(front)
-
-# 'pressed' rises when load reaches 40, falls once it drops to 34 or below
-# (hyst 6), and ignores changes that last less than 30 ms.
-event pressed when load > 40 hyst 6 for 30ms
-
-led green when pressed
+on("frame", () => {
+  const down = pressed.update(loaded.update(front.sum()));
+  event("pressed", down);
+  led.set(Color.Green, down);
+});
 `;
 }
 
@@ -299,7 +303,7 @@ export function panelTemplate(appId: string, author: string): string {
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
-/** @returns a name the .nhs lexer reads as one word. */
+/** @returns the author as one word, the way the App Library lists authors. */
 function safeWord(value: string): string {
   const word = value.trim().replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^[^A-Za-z_]+/, "");
   return word || "author";
@@ -322,7 +326,9 @@ export function freshAppId(projects: SdkProject[], base = "my_app"): string {
 /** The app id a project declares, read without compiling it. */
 export function appIdOf(project: Pick<SdkProject, "kind" | "source">): string {
   if (project.kind === "flow") {
-    return /(?:^|\n)\s*app\s+([A-Za-z_][A-Za-z0-9_.-]*)/.exec(project.source)?.[1] ?? "";
+    const range = flowManifestRange(project.source);
+    const text = range ? project.source.slice(range[0], range[1]) : project.source;
+    return FLOW_FIELD("id").exec(text)?.[4] ?? "";
   }
   try {
     const id = JSON.parse(project.source)?.manifest?.id;
@@ -338,16 +344,29 @@ export type EditableManifest = Record<EditableManifestField, string>;
 
 const EDITABLE_FIELDS: EditableManifestField[] = ["name", "author", "summary"];
 
-/** The `app <id> { ... }` header block of a flow app, as [start, end) offsets. */
-function flowHeaderRange(source: string): [number, number] | null {
-  const open = /(?:^|\n)\s*app\s+[A-Za-z_][A-Za-z0-9_.-]*\s*\{/.exec(source);
+/** The body of `export const manifest = { ... }`, as [start, end) offsets. */
+function flowManifestRange(source: string): [number, number] | null {
+  const open = /export\s+const\s+manifest\s*=\s*\{/.exec(source);
   if (!open) return null;
   const start = open.index + open[0].length;
-  const close = source.indexOf("}", start);
-  return close < 0 ? null : [start, close];
+  // Strings may hold braces; nothing else in a manifest nests.
+  let quote: string | null = null;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === "\\") i += 1;
+      else if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "}") {
+      return [start, i];
+    }
+  }
+  return null;
 }
 
-const FLOW_FIELD_LINE = (field: string) => new RegExp(`(^|\\n)([ \\t]*)${field}([ \\t]+)([^\\n]*)`);
+/** `field: "value"` inside the manifest; group 4 is the value. */
+const FLOW_FIELD = (field: string) => new RegExp(`(^|[\\s{,])(${field})(\\s*:\\s*)["']((?:[^"'\\\\\\n]|\\\\.)*)["']`);
 
 /**
  * name / author / summary as the source currently states them. The source is
@@ -356,14 +375,12 @@ const FLOW_FIELD_LINE = (field: string) => new RegExp(`(^|\\n)([ \\t]*)${field}(
 export function readManifestFields(project: Pick<SdkProject, "kind" | "source">): EditableManifest {
   const out: EditableManifest = { name: "", author: "", summary: "" };
   if (project.kind === "flow") {
-    const range = flowHeaderRange(project.source);
+    const range = flowManifestRange(project.source);
     if (!range) return out;
-    const header = project.source.slice(range[0], range[1]);
+    const body = project.source.slice(range[0], range[1]);
     for (const field of EDITABLE_FIELDS) {
-      const match = FLOW_FIELD_LINE(field).exec(header);
-      if (!match) continue;
-      const raw = (match[4] ?? "").trim();
-      out[field] = raw.startsWith('"') ? raw.replace(/^"|"$/g, "") : raw;
+      const match = FLOW_FIELD(field).exec(body);
+      if (match) out[field] = (match[4] ?? "").replace(/\\(.)/g, "$1");
     }
     return out;
   }
@@ -379,25 +396,23 @@ export function readManifestFields(project: Pick<SdkProject, "kind" | "source">)
 }
 
 /**
- * The source with one manifest field set. The author is one word (the .nhs
- * lexer splits on spaces), so it goes through the same safeWord() as the
- * templates. Returns the source unchanged when the field cannot be located
- * (e.g. a flow header without that line, or JSON mid-edit).
+ * The source with one manifest field set. The author is one word, as the
+ * templates make it (safeWord). Returns the source unchanged when the field
+ * cannot be located (a manifest without that field, or JSON mid-edit).
  */
 export function writeManifestField(
   project: Pick<SdkProject, "kind" | "source">,
   field: EditableManifestField,
   value: string,
 ): string {
-  const clean = field === "author" ? safeWord(value) : value.replace(/["\\\n]/g, "").trim();
+  const clean = field === "author" ? safeWord(value) : value.replace(/["'\\\n]/g, "").trim();
   if (project.kind === "flow") {
-    const range = flowHeaderRange(project.source);
+    const range = flowManifestRange(project.source);
     if (!range) return project.source;
-    const header = project.source.slice(range[0], range[1]);
-    const pattern = FLOW_FIELD_LINE(field);
-    if (!pattern.test(header)) return project.source;
-    const literal = field === "author" ? clean : `"${clean}"`;
-    const next = header.replace(pattern, (_all, lead, indent, gap) => `${lead}${indent}${field}${gap}${literal}`);
+    const body = project.source.slice(range[0], range[1]);
+    const pattern = FLOW_FIELD(field);
+    if (!pattern.test(body)) return project.source;
+    const next = body.replace(pattern, (_all, lead, name, gap) => `${lead}${name}${gap}"${clean}"`);
     return project.source.slice(0, range[0]) + next + project.source.slice(range[1]);
   }
   try {
@@ -410,7 +425,7 @@ export function writeManifestField(
   }
 }
 
-/** One-word author name as the .nhs lexer reads it (spaces become `_`). */
+/** One-word author name (spaces become `_`), as the templates write it. */
 export function normalizeAuthor(value: string): string {
   return value.trim() ? safeWord(value) : "";
 }
@@ -445,7 +460,7 @@ export function viewKindOfSource(source: string): "readout" | "panel" | null {
 
 /** Kind of a file an author opens, from its name and content. */
 export function kindOfFile(name: string, text: string): SdkKind | null {
-  if (name.endsWith(".nhs")) return "flow";
+  if (name.endsWith(".ts")) return "flow";
   if (name.endsWith(".json")) {
     return viewKindOfSource(text);
   }
@@ -461,7 +476,7 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
 export type ExportFile = { filename: string; mime: string; content: string | Uint8Array };
 
 /**
- * The files an app needs in the App Library: apps/<id>/{app.nhs|readout.json|panel.json,
+ * The files an app needs in the App Library: apps/<id>/{app.ts|readout.json|panel.json,
  * app.nha, meta.json, README.md}. The package bytes are the canonical ones
  * the library's own build would produce.
  */
@@ -482,23 +497,28 @@ export function exportFiles(project: SdkProject, analysis: Analysis): ExportFile
     license: "MPL-2.0",
   };
   files.push({ filename: "meta.json", mime: "application/json", content: `${JSON.stringify(meta, null, 2)}\n` });
-  files.push({ filename: "README.md", mime: "text/markdown", content: readmeFor(manifest, analysis) });
+  files.push({ filename: "README.md", mime: "text/markdown", content: readmeFor(project, manifest, analysis) });
   return files;
 }
 
-function readmeFor(manifest: Record<string, string>, analysis: Analysis): string {
+function readmeFor(project: SdkProject, manifest: Record<string, string>, analysis: Analysis): string {
   const lines = [`# ${manifest.name}`, "", manifest.summary, ""];
   if (analysis.kind === "flow" && analysis.package) {
-    const events = (analysis.package.nodes as { op: string; event?: string }[])
-      .filter((node) => node.op === "emit" || node.op === "emit_value")
-      .map((node) => node.event);
+    const events = emittedEvents(project.source);
     if (events.length) {
       lines.push("## Events", "", ...events.map((event) => `- \`${event}\``), "");
+    }
+    const capabilities = (analysis.package.manifest as { capabilities?: string[] }).capabilities ?? [];
+    const asks = DANGEROUS_CAPABILITIES.filter((name) => capabilities.includes(name));
+    if (asks.length) {
+      lines.push("## Asks at install", "", ...asks.map((name) => `- \`${name}\``), "");
     }
     lines.push(
       "## Cost",
       "",
-      `${analysis.validation?.nodes} nodes, about ${analysis.validation?.estimatedUs} us per frame on a ${analysis.validation?.cellCount}-cell board; needs ${analysis.validation?.minOs}.`,
+      analysis.validation?.loopFree === false
+        ? `Has a loop, so no worst case is known; time-sliced on the device. Needs ${analysis.validation?.minOs}.`
+        : `About ${analysis.validation?.estimatedUs} us per frame on a ${analysis.validation?.cellCount}-cell board; needs ${analysis.validation?.minOs}.`,
       "",
     );
   }
@@ -514,6 +534,20 @@ function readmeFor(manifest: Record<string, string>, analysis: Analysis): string
     }
   }
   return `${lines.join("\n")}`;
+}
+
+/**
+ * The names an app emits (`emit("x", ...)` and `event("x", ...)`), in source
+ * order, read from the source: the package carries code, not a node list.
+ */
+export function emittedEvents(source: string): string[] {
+  const names: string[] = [];
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  for (const match of code.matchAll(/\b(?:emit|event)\(\s*["']([^"']+)["']/g)) {
+    const name = match[1] ?? "";
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
 }
 
 /** Per-app run-time share the Build tab shows, for one to four running apps. */

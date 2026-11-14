@@ -8,8 +8,7 @@ import * as sdk from '../../src/renderer/areas/apps/sdk/lib/index.mjs';
 
 const modules = Promise.resolve({ emu, sdk });
 
-
-const HEADER = 'app demo {\n  name "Demo"\n  version 1.0.0\n  author me\n  summary "x"\n}\n';
+const HEADER = 'export const manifest = { id: "demo", name: "Demo", version: "1.0.0", author: "me", summary: "x" } as const;\n';
 
 async function compile(body) {
   const { sdk } = await modules;
@@ -19,8 +18,6 @@ async function compile(body) {
 function frames(values, msStep = 16) {
   return values.map((v, i) => ({ seq: 100 + i, timestampMs: i * msStep, values: [v], rows: 1, cols: 1 }));
 }
-
-
 
 test("frames the browser never received are counted from frame_seq gaps", async () => {
   const { emu } = await modules;
@@ -48,7 +45,7 @@ test("the frame counter wrapping past uint32 is not a gap either", async () => {
 test("seeking backwards replays from the start, so debounce state is right", async () => {
   // Stepping back by undoing is impossible: the debounce timer IS the history.
   const { emu } = await modules;
-  const pkg = await compile("signal a = total()\nevent hit when a > 10 for 50ms\n");
+  const pkg = await compile('const over = new Threshold(10);\nconst held = new Debounce(50);\non("frame", () => { event("hit", held.update(over.update(matrix.total()))); });\n');
   const run = frames([0, 20, 20, 20, 20, 20, 0, 0]);
   const cursor = new emu.RecordingCursor(pkg, run);
   cursor.seek(7);
@@ -62,7 +59,7 @@ test("seeking backwards replays from the start, so debounce state is right", asy
 
 test("seek returns the events of the frame it lands on", async () => {
   const { emu } = await modules;
-  const pkg = await compile("signal a = total()\nevent hit when a > 10\n");
+  const pkg = await compile('const over = new Threshold(10);\non("frame", () => { event("hit", over.update(matrix.total())); });\n');
   const cursor = new emu.RecordingCursor(pkg, frames([0, 20, 20, 0]));
   assert.deepEqual(cursor.seek(1).map((e) => e.detail), ["rise"]);
   assert.deepEqual(cursor.seek(2), []);
@@ -71,20 +68,20 @@ test("seek returns the events of the frame it lands on", async () => {
 
 test("injected budget pressure survives a replay", async () => {
   const { emu } = await modules;
-  const pkg = await compile("signal load = budget_load()\ngate (load < 0.9) {\n  signal p = peak()\n  event spike when p > 10\n}\n");
+  const pkg = await compile('const spike = new Threshold(10);\non("frame", () => {\n  // An app that does less under pressure says so (docs/authoring.md).\n  const reduced = budget.load >= 0.9;\n  event("reduced", reduced);\n  if (!reduced) event("spike", spike.update(matrix.peak()));\n});\n');
   const cursor = new emu.RecordingCursor(pkg, frames([50, 50, 50]));
   cursor.setBudget(1.5, 1);
   cursor.seek(2);
   cursor.seek(0);
-  assert.deepEqual(cursor.simulator.events.map((e) => e.event), ["degraded"]);
+  assert.deepEqual(cursor.simulator.events.map((e) => e.event), ["reduced"]);
 });
 
-test("the editor marks the statement whose event fired", async () => {
-  const { emu, sdk } = await modules;
-  const { package: pkg, report } = sdk.compileSource(`${HEADER}signal a = total()\nevent hit when a > 10\n`);
+test("the editor marks the call whose event fired", async () => {
+  const { emu } = await modules;
+  const source = `${HEADER}const over = new Threshold(10);\non("frame", () => {\n  event("hit", over.update(matrix.total()));\n});\n`;
   const events = [{ seq: 1, frameSeq: 1, timestampMs: 0, app: "x", event: "hit", detail: "rise", value: null }];
-  assert.deepEqual([...emu.linesForEvents(pkg, report.nodeLines, events)], [8]);
-  assert.deepEqual([...emu.linesForEvents(pkg, report.nodeLines, [])], []);
+  assert.deepEqual([...emu.linesForEvents(source, events)], [4]);
+  assert.deepEqual([...emu.linesForEvents(source, [])], []);
 });
 
 test("a recording's sidecar is found by name and kept out of the file list", async () => {
@@ -98,7 +95,7 @@ test("a button press in a recording survives scrubbing back past it", async () =
   // Stepping backwards replays from the start; a press that was only sent to
   // the simulator would be lost the first time that happened.
   const { emu } = await modules;
-  const pkg = await compile('show 0 "n" counter(button())\n');
+  const pkg = await compile('const n = new Counter();\non("frame", () => { oled.text(0, "n", n.update(button.pressed())); });\n');
   const run = frames([0, 0, 0, 0, 0]);
   const cursor = new emu.RecordingCursor(pkg, run, new Set([1, 3]));
   cursor.seek(4);
@@ -111,7 +108,7 @@ test("a button press in a recording survives scrubbing back past it", async () =
 
 test("the whole-run timeline sees the same presses", async () => {
   const { emu } = await modules;
-  const pkg = await compile("event pressed when counter(button()) > 0.5\n");
+  const pkg = await compile('const n = new Counter();\non("frame", () => { event("pressed", n.update(button.pressed()) > 0.5); });\n');
   assert.deepEqual(emu.simulateAll(pkg, frames([0, 0, 0]), new Set([2])).map((e) => e.frameSeq), [102]);
   assert.deepEqual(emu.simulateAll(pkg, frames([0, 0, 0])), []);
 });
@@ -161,23 +158,10 @@ test("a mouse press builds up while held and fades after release", async () => {
 
 test("a generated frame runs through the simulator", async () => {
   const { emu, sdk } = await modules;
-  const pkg = await compile("signal a = total()\nevent pressed when a > 100\n");
+  const pkg = await compile('const over = new Threshold(100);\non("frame", () => { event("pressed", over.update(matrix.total())); });\n');
   const sim = new sdk.Simulator(pkg);
   const feed = new emu.SyntheticFeed(4, 4, { pattern: "hold", noise: 0 });
   const period = 1000 / emu.SYNTH_FPS;
   for (let t = 0; t < 2000; t += period) sim.step(feed.frame(t));
   assert.ok(sim.events.some((event) => event.event === "pressed"));
-});
-
-
-test('a Studio live frame becomes a simulator frame numbered by the emulator', async () => {
-  const { emu } = await modules;
-  const frame = emu.frameFromLiveFrame({ values: [1, 2, 3, 4], rows: 2, cols: 2, timestampMs: 5000.7 }, 77);
-  assert.ok(frame);
-  assert.deepEqual([frame.seq, frame.timestampMs, frame.rows, frame.cols], [77, 5000, 2, 2]);
-  assert.deepEqual([...frame.values], [1, 2, 3, 4]);
-  // A size that disagrees with the shape is one row, never reshaped.
-  const odd = emu.frameFromLiveFrame({ values: [1, 2, 3], rows: 2, cols: 2, timestampMs: 1 }, 9);
-  assert.deepEqual([odd?.rows, odd?.cols, odd?.seq], [1, 3, 9]);
-  assert.equal(emu.frameFromLiveFrame({ values: [], rows: 2, cols: 2, timestampMs: 1 }, 0), null);
 });

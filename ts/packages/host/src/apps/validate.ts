@@ -165,6 +165,14 @@ function validatePanelActions(panel: Rec, permissions: readonly string[]): void 
 }
 
 /** Structural checks, no I/O. Throws AppPackageError, returns a summary. */
+/** True when `text` is strict base64 of an NHVM/1 image (magic "NV"). */
+function isVmImage(text: string): boolean {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(text) || text.length % 4 !== 0) return false;
+  // The first two bytes, "NV", fix the first two characters and four
+  // choices for the third (it also takes two bits of the third byte).
+  return /^Tl[YZab]/.test(text);
+}
+
 export function validatePackage(doc: unknown): PackageSummary {
   require_(isRecord(doc), 'not_a_package');
   require_(doc.nhapp === 1, 'unsupported_package_version');
@@ -218,9 +226,16 @@ export function validatePackage(doc: unknown): PackageSummary {
   }
 
   require_(!('readout' in doc) && !('panel' in doc), 'flow_must_not_declare_a_readout');
-  const nodes = doc.nodes;
-  require_(Array.isArray(nodes), 'missing_nodes');
-  require_(nodes.length > 0, 'empty_graph');
+  // Since App Library 3.0.0 (firmware v2.1.0) a flow carries only its
+  // bytecode image, `vm`; older ones also carry the node graph it came from.
+  const vm = doc.vm;
+  const nodes = doc.nodes ?? [];
+  require_(Array.isArray(nodes), 'invalid_node');
+  if (vm === undefined) {
+    require_(nodes.length > 0, 'missing_vm');
+  } else {
+    require_(typeof vm === 'string' && vm.length > 0 && isVmImage(vm), 'invalid_vm');
+  }
   require_(nodes.length <= MAX_NODES, 'too_many_nodes');
   nodes.forEach((node, index) => {
     require_(isRecord(node), 'invalid_node');

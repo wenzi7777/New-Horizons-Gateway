@@ -230,7 +230,7 @@ export class AppLibrary {
 
   /**
    * The source an app's package was built from, for App Studio to open: found
-   * where the library keeps it (apps/<id>/app.nhs | readout.json | panel.json
+   * where the library keeps it (apps/<id>/app.ts | readout.json | panel.json
    * beside dist/). No checksum: Studio recompiles it and compares the result
    * with the package's sha256 instead.
    */
@@ -238,7 +238,7 @@ export class AppLibrary {
     if (!APP_ID_RE.test(appId)) throw new AppPackageError('invalid_id');
     const entry = await this.entry(appId);
     const kind: PackageKind = entry.kind === 'readout' || entry.kind === 'panel' ? entry.kind : 'flow';
-    const filename = kind === 'readout' ? 'readout.json' : kind === 'panel' ? 'panel.json' : 'app.nhs';
+    const filename = kind === 'readout' ? 'readout.json' : kind === 'panel' ? 'panel.json' : 'app.ts';
     const pkg = isRecord(entry.package) ? entry.package : {};
     const packageUrl = String(pkg.url ?? '');
     if (!packageUrl.includes('/dist/')) throw new AppLibraryError('source_unavailable');

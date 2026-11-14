@@ -19,9 +19,23 @@ export const KNOWN_OPS: ReadonlySet<string> = new Set([
 
 /** Capabilities a package may declare. */
 export const CAPABILITIES: ReadonlySet<string> = new Set([
-  'button', 'display', 'drive_ext_led', 'drive_led', 'emit_event', 'link', 'persist',
-  'power', 'read_imu', 'read_mag', 'read_matrix', 'tick', 'write_file',
+  'app_ipc', 'button', 'device_config', 'device_stream', 'display', 'drive_ext_led',
+  'drive_led', 'emit_event', 'io_i2c', 'io_uart', 'link', 'persist', 'power',
+  'read_imu', 'read_mag', 'read_matrix', 'storage', 'tick', 'write_file',
 ]);
+
+/**
+ * Capabilities the operator must agree to before install (firmware v2.1.0):
+ * app_install carries them as `grant`, and the device refuses a package
+ * declaring one that is missing (capability_not_granted).
+ */
+export const DANGEROUS_CAPABILITIES: readonly string[] = ['storage', 'device_config', 'device_stream', 'io_i2c', 'io_uart'];
+
+/** Capabilities only some boards have, by the boards' short names. */
+export const BOARD_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
+  io_i2c: ['v1.5.F', 'v2.0.F'],
+  io_uart: ['v1.5.F', 'v2.0.F'],
+};
 
 export const MAX_NODES = 24;
 export const MAX_PACKAGE_BYTES = 8192;

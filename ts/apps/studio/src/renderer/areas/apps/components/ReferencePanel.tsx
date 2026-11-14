@@ -3,31 +3,27 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 
 import { useAppsT } from "../strings";
-import { STATEMENT_FORMS, functionDoc } from "../lib/nhsLanguage";
+import { API_REFERENCE } from "../lib/appLanguage";
 import { PANEL_FORMS, READOUT_SECTION_FORMS } from "../lib/sdkPrompt";
 import type { SdkKind } from "../lib/sdkProject";
 import {
   DEFAULT_BUDGET_US,
-  FEATURE_FIELDS,
-  LANGUAGE,
   LED_COLOURS,
   MAX_DEBOUNCE_MS,
   MAX_EVENT_NAME,
   MAX_EXT_LEDS,
-  MAX_NODES,
   MAX_OLED_DIGITS,
   MAX_OLED_LABEL,
   MAX_PACKAGE_BYTES,
-  MAX_WINDOW,
   OLED_ROWS,
-  OPS,
-  WINDOW_POOL,
+  VM_STORE_QUOTA_BYTES,
   panelset,
   readoutset,
 } from "../sdk/lib/index.mjs";
 import { TextInput } from '../../../components/ui';
 
-// Everything here is read from the SDK itself, so the reference cannot
+// Everything here is read from the SDK itself -- an app's API from the
+// nhos.d.ts an author's own editor checks against -- so the reference cannot
 // describe a language the compiler does not accept.
 
 export function ReferencePanel({ kind }: { kind: SdkKind }) {
@@ -36,17 +32,21 @@ export function ReferencePanel({ kind }: { kind: SdkKind }) {
   const needle = query.trim().toLowerCase();
   const match = (...texts: string[]) => !needle || texts.some((text) => text.toLowerCase().includes(needle));
 
-  const functions = useMemo(() => LANGUAGE.functions.map((name) => ({ name, ...functionDoc(name) })), []);
-  const ops = useMemo(() => Object.values(OPS), []);
+  const sections = useMemo(
+    () => API_REFERENCE.map((section) => ({
+      ...section,
+      entries: section.entries.filter((entry) => match(entry.name, entry.signature, entry.doc)),
+    })).filter((section) => section.entries.length > 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [needle],
+  );
 
   const limits: [string, string][] = [
-    [t("sdkLimitNodes"), String(MAX_NODES)],
     [t("sdkLimitBudget"), `${DEFAULT_BUDGET_US} µs`],
-    [t("sdkLimitWindow"), `${MAX_WINDOW}`],
-    [t("sdkLimitPool"), `${WINDOW_POOL}`],
     [t("sdkLimitEvent"), `${MAX_EVENT_NAME}`],
     [t("sdkLimitDebounce"), `${MAX_DEBOUNCE_MS} ms`],
     [t("sdkLimitPackage"), `${MAX_PACKAGE_BYTES} B`],
+    [t("sdkLimitStore"), `${VM_STORE_QUOTA_BYTES / 1024} KB`],
     [t("sdkLimitOledRows"), `0–${OLED_ROWS - 1}`],
     [t("sdkLimitOledLabel"), `${MAX_OLED_LABEL}`],
     [t("sdkLimitOledDigits"), `0–${MAX_OLED_DIGITS}`],
@@ -62,58 +62,30 @@ export function ReferencePanel({ kind }: { kind: SdkKind }) {
 
       {kind === "flow" ? (
         <>
-          <section className="sdk-section">
-            <h3>{t("sdkRefStatements")}</h3>
-            <div className="sdk-ref-list">
-              {STATEMENT_FORMS.filter(([name, form]) => match(name, form)).map(([, form]) => (
-                <code key={form} className="sdk-ref-form">{form}</code>
-              ))}
-            </div>
-            <p className="sdk-hint">{t("sdkRefComparisonNote")}</p>
-          </section>
+          {sections.map((section) => (
+            <section className="sdk-section" key={section.title}>
+              <h3>{section.title}</h3>
+              <table className="sdk-table">
+                <tbody>
+                  {section.entries.map((entry) => (
+                    <tr key={entry.signature}>
+                      <td className="sdk-mono sdk-ref-signature">{entry.signature}</td>
+                      <td>
+                        {entry.ask ? <span className="sdk-chip sdk-ref-ask" title={t("sdkRefAskHint")}>{t("sdkRefAsk")}</span> : null}
+                        {entry.doc}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
 
           <section className="sdk-section">
-            <h3>{t("sdkRefFunctions")}</h3>
-            <table className="sdk-table">
-              <tbody>
-                {functions.filter((fn) => match(fn.name, fn.info ?? "")).map((fn) => (
-                  <tr key={fn.name}>
-                    <td className="sdk-mono sdk-nowrap">{fn.name}{fn.args}</td>
-                    <td>{fn.info}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="sdk-section">
-            <h3>{t("sdkRefValues")}</h3>
-            <dl className="sdk-facts">
-              <div><dt>{t("sdkRefFeatureFields")}</dt><dd className="sdk-chips">{FEATURE_FIELDS.map((f) => <span key={f} className="sdk-chip sdk-mono">{f}</span>)}</dd></div>
-              <div><dt>{t("sdkRefColours")}</dt><dd className="sdk-chips">{Object.entries(LED_COLOURS).map(([name, [r, g, b]]) => (
-                <span key={name} className="sdk-chip"><i className="sdk-swatch" style={{ background: `rgb(${r}, ${g}, ${b})` }} />{name}</span>
-              ))}</dd></div>
-            </dl>
-          </section>
-
-          <section className="sdk-section">
-            <h3>{t("sdkRefOps")}</h3>
-            <p className="sdk-hint">{t("sdkRefOpsHint")}</p>
-            <table className="sdk-table">
-              <thead>
-                <tr><th>{t("sdkOp")}</th><th>{t("sdkRefCost")}</th><th>{t("sdkMinOs")}</th><th /></tr>
-              </thead>
-              <tbody>
-                {ops.filter((op) => match(op.name, op.summary)).map((op) => (
-                  <tr key={op.name}>
-                    <td className="sdk-mono sdk-nowrap">{op.name}</td>
-                    <td className="sdk-mono sdk-nowrap">{op.sweep ? `${op.nsPerCell} ns/cell` : `${op.nsFlat} ns`}</td>
-                    <td className="sdk-mono">{op.since}</td>
-                    <td>{op.summary}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h3>{t("sdkRefColours")}</h3>
+            <div className="sdk-chips">{Object.entries(LED_COLOURS).filter(([name]) => match(name)).map(([name, [r, g, b]]) => (
+              <span key={name} className="sdk-chip"><i className="sdk-swatch" style={{ background: `rgb(${r}, ${g}, ${b})` }} />Color.{name.charAt(0).toUpperCase() + name.slice(1)}</span>
+            ))}</div>
           </section>
         </>
       ) : (

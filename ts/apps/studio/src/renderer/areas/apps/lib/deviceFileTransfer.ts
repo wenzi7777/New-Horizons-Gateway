@@ -146,6 +146,8 @@ export type InstallOptions = {
   /** Slot to bind to, or undefined to let the device pick a free one. */
   slot?: number;
   replace?: boolean;
+  /** Dangerous capabilities the operator consented to (firmware v2.1.0, lib/appGrant.ts). */
+  grant?: string[];
   onPhase?: (phase: InstallPhase) => void;
   onProgress?: (progress: TransferProgress) => void;
   abortRef?: AbortRef;
@@ -153,7 +155,7 @@ export type InstallOptions = {
 
 /** Upload the package, register it, and optionally bind it to a slot. */
 export async function installAppPackage(queue: CommandRunner, options: InstallOptions) {
-  const { appId, devicePath, dataHex, sha256, slot, replace, onPhase, onProgress, abortRef } = options;
+  const { appId, devicePath, dataHex, sha256, slot, replace, grant, onPhase, onProgress, abortRef } = options;
 
   onPhase?.("upload");
   await writeDeviceFile(queue, {
@@ -170,6 +172,9 @@ export async function installAppPackage(queue: CommandRunner, options: InstallOp
     path: devicePath,
     ...(sha256 ? { sha256 } : {}),
     ...(replace ? { replace: true } : {}),
+    // Only when there is something to grant: firmware before v2.1.0 has no
+    // such argument, and no app it can run needs one.
+    ...(grant && grant.length ? { grant } : {}),
   });
   ensureWriteOk(installed.result);
 

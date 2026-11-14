@@ -39,6 +39,9 @@ export const VM_STARVED_MS = 5000;
 export const VM_INSN_NS = 80;
 // The first version that runs NHVM/1 images. A package carrying an image needs it.
 export const VM_MIN_OS = "v2.0.0";
+// The first version that runs packages from the TypeScript compiler (no
+// `nodes`, message handlers, the v2.1.0 system calls).
+export const VM_TS_MIN_OS = "v2.1.0";
 
 /** Handler entry points, by event. Numbers are written into images. */
 export const VM_EVENTS = Object.freeze({
@@ -222,7 +225,79 @@ export const VM_SYSCALLS = Object.freeze([
   { name: "cell", cap: "read_matrix", args: 2, results: 1, fuel: 2 },
   { name: "emit_value", cap: "emit_event", args: 2, results: 0, fuel: 16 },
   { name: "log", cap: null, args: 2, results: 0, fuel: 16 },
+  // v2.1.0. Strings are string-table indices; a key or file is matched on
+  // the device by its FNV-1a hash, so a new version keeps its values.
+  // store_get(key) -> value (0 if unset); store_set(key, v).
+  { name: "store_get", cap: "storage", args: 1, results: 1, fuel: 8 },
+  { name: "store_set", cap: "storage", args: 2, results: 0, fuel: 8 },
+  // store_append(file, a, b, c, d) -> 1 written, 0 the 16 KB quota is full
+  // (a NaN argument is an empty column).
+  { name: "store_append", cap: "storage", args: 5, results: 1, fuel: 32 },
+  { name: "store_clear", cap: "storage", args: 1, results: 0, fuel: 16 },
+  // app_publish(topic, v): to every running app with a handler for topic.
+  { name: "app_publish", cap: "app_ipc", args: 2, results: 0, fuel: 16 },
+  // In a message handler: the value, and whether the topic is this string.
+  { name: "msg_value", cap: "app_ipc", args: 0, results: 1, fuel: 1 },
+  { name: "msg_is", cap: "app_ipc", args: 1, results: 1, fuel: 2 },
+  // device_config_get(key) -> value; device_config_set(key, v) -> 1 applied,
+  // 0 refused (not whitelisted, out of range, or more than once a second).
+  // key is a string: a ConfigRegistry key on the whitelist.
+  { name: "device_config_get", cap: "device_config", args: 1, results: 1, fuel: 8 },
+  { name: "device_config_set", cap: "device_config", args: 2, results: 1, fuel: 32 },
+  { name: "device_stream", cap: "device_stream", args: 1, results: 0, fuel: 8 },
+  // I2C: addr, reg are 7-bit address and register. -1 on a NACK, a timeout or
+  // a refused (system) address. read/write move n <= 32 bytes between the bus
+  // and arena slots [base, base + n) of a Float32Array, one byte per slot.
+  { name: "i2c_read8", cap: "io_i2c", args: 2, results: 1, fuel: 32 },
+  { name: "i2c_read16", cap: "io_i2c", args: 2, results: 1, fuel: 32 },
+  { name: "i2c_write8", cap: "io_i2c", args: 3, results: 1, fuel: 32 },
+  { name: "i2c_read", cap: "io_i2c", args: 4, results: 1, fuel: 64 },
+  { name: "i2c_write", cap: "io_i2c", args: 3, results: 1, fuel: 64 },
+  // UART0 on the FPC. open(baud) -> 1 / 0; write -> bytes queued; read -> a
+  // byte or -1; write_buf(base, n) like i2c_write.
+  { name: "uart_open", cap: "io_uart", args: 1, results: 1, fuel: 32 },
+  { name: "uart_close", cap: "io_uart", args: 0, results: 0, fuel: 16 },
+  { name: "uart_write", cap: "io_uart", args: 1, results: 1, fuel: 4 },
+  { name: "uart_write_buf", cap: "io_uart", args: 2, results: 1, fuel: 32 },
+  { name: "uart_available", cap: "io_uart", args: 0, results: 1, fuel: 2 },
+  { name: "uart_read", cap: "io_uart", args: 0, results: 1, fuel: 2 },
 ].map((spec, id) => Object.freeze({ ...spec, id })));
+
+/**
+ * Device settings an app with `device_config` may read and change, all
+ * ConfigRegistry keys (spec/config.md). Changes are never saved and are
+ * undone when the app stops; ranges are ConfigRegistry's own.
+ */
+export const VM_DEVICE_CONFIG_KEYS = Object.freeze([
+  "scan.target_fps",
+  "scan.send_every_n_frames",
+  "filter.enabled",
+  "filter.median",
+  "filter.alpha",
+  "imu.enabled",
+]);
+// device_config_set is accepted at most once per this many ms per app.
+export const VM_DEVICE_CONFIG_INTERVAL_MS = 1000;
+// store_append: per-app flash quota, RAM buffer, and the flush period.
+export const VM_STORE_QUOTA_BYTES = 16384;
+export const VM_STORE_BUFFER_BYTES = 256;
+export const VM_STORE_FLUSH_MS = 10000;
+// store_get/store_set: named values per app.
+export const VM_STORE_MAX_KEYS = 16;
+// app_publish: messages held per receiving app.
+export const VM_MESSAGE_QUEUE = 4;
+// A store file name: becomes <id>/<name>.csv in the device's appdata scope
+// (/a/<id>/<name>.csv on flash; SPIFFS names stop at 31 characters, so 8 here
+// with a 15-character id).
+export const VM_STORE_FILE_RE = /^[a-z0-9_]{1,8}$/;
+
+// I2C on the exposed bus: 7-bit addresses 0x08-0x77, except the board's own
+// chips (BMM350 0x14, MAX17048 0x36, OLED 0x3C/0x3D, PCA9536 0x41, MCP4725
+// 0x60, BMI270 0x68, BQ25180 0x6A).
+export const I2C_DENIED = Object.freeze([0x14, 0x36, 0x3c, 0x3d, 0x41, 0x60, 0x68, 0x6a]);
+export const I2C_MAX_TRANSFER = 32;
+export const UART_MIN_BAUD = 1200;
+export const UART_MAX_BAUD = 921600;
 
 /** Why a running app stopped itself. Indexed by fault code (0 = none). */
 export const VM_FAULTS = Object.freeze([

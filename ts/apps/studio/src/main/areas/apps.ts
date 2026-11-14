@@ -27,11 +27,11 @@ const MAX_PROJECT_SOURCE = 256 * 1024;
 const MAX_SOURCE_FILE = 256 * 1024;
 const MAX_README_BYTES = 256 * 1024;
 const MAX_ICON_BYTES = 256 * 1024;
-const EXPORT_NAME_RE = /^(app\.nhs|readout\.json|panel\.json|app\.nha|meta\.json|README\.md)$/;
+const EXPORT_NAME_RE = /^(app\.ts|readout\.json|panel\.json|app\.nha|meta\.json|README\.md)$/;
 const KINDS: readonly AppKind[] = ['flow', 'readout', 'panel'];
 
 export function sourceFilename(kind: AppKind): string {
-  return kind === 'flow' ? 'app.nhs' : kind === 'panel' ? 'panel.json' : 'readout.json';
+  return kind === 'flow' ? 'app.ts' : kind === 'panel' ? 'panel.json' : 'readout.json';
 }
 
 export const sha256 = async (data: Uint8Array): Promise<string> => createHash('sha256').update(data).digest('hex');
@@ -308,7 +308,7 @@ export function appsHandlers(context: Pick<AreaContext, 'controller' | 'userData
       await rm(projectDir(id), { recursive: true, force: true });
     },
     async openSourceFile() {
-      const path = await ports.openFile({ title: 'App source', extensions: ['nhs', 'json'] });
+      const path = await ports.openFile({ title: 'App source', extensions: ['ts', 'json'] });
       if (!path) return null;
       const bytes = await readFile(path);
       if (bytes.length > MAX_SOURCE_FILE) throw new Error('source_too_large');

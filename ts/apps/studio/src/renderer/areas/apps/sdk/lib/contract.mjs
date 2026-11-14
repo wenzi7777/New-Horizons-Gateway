@@ -15,6 +15,7 @@
 
 import {
   CAPABILITIES,
+  DANGEROUS_CAPABILITIES,
   DEVICE_CAPABILITIES,
   FEATURE_FIELDS,
   IMU_FIELDS,
@@ -26,7 +27,18 @@ import {
   OPS,
 } from "./opset.mjs";
 import {
+  I2C_DENIED,
+  I2C_MAX_TRANSFER,
   NATIVE_LAYOUT,
+  UART_MAX_BAUD,
+  UART_MIN_BAUD,
+  VM_DEVICE_CONFIG_INTERVAL_MS,
+  VM_DEVICE_CONFIG_KEYS,
+  VM_MESSAGE_QUEUE,
+  VM_STORE_BUFFER_BYTES,
+  VM_STORE_FLUSH_MS,
+  VM_STORE_MAX_KEYS,
+  VM_STORE_QUOTA_BYTES,
   OPERAND_BYTES,
   VM_EVENTS,
   VM_FAULTS,
@@ -86,14 +98,14 @@ export function firmwareHeader() {
   // --- capabilities -----------------------------------------------------------
   out.push("// What an app may touch and, for the event sources, what it is woken for.");
   out.push("// Explained where it is used: App.h.");
-  out.push("enum AppCapability : uint16_t {");
+  out.push("enum AppCapability : uint32_t {");
   out.push("  kAppCapNone = 0,");
   for (const [name, bit] of allCapabilities()) out.push(`  ${capabilityConstant(name)} = 1 << ${shiftOf(bit)},`);
   out.push("};");
   out.push("");
   out.push("struct AppCapabilityName {");
   out.push("  const char* name;");
-  out.push("  uint16_t bit;");
+  out.push("  uint32_t bit;");
   out.push("};");
   out.push("// The names a package's manifest may use. `budget` is set by the device; the");
   out.push("// App Library never declares it, but a hand-made package may.");
@@ -236,7 +248,7 @@ export function firmwareHeader() {
   out.push("// System calls, by id; APPEND only.");
   out.push("struct VmSyscallInfo {");
   out.push("  const char* name;");
-  out.push("  uint16_t capability;");
+  out.push("  uint32_t capability;");
   out.push("  uint8_t args;");
   out.push("  uint8_t results;");
   out.push("  uint8_t fuel;");
@@ -247,6 +259,24 @@ export function firmwareHeader() {
     out.push(`    {"${sys.name}", ${sys.cap ? capabilityConstant(sys.cap) : "kAppCapNone"}, ${sys.args}, ${sys.results}, ${sys.fuel}},`);
   }
   out.push("};");
+  out.push("");
+  out.push("// v2.1.0: what the system calls above may touch (docs/vm.md §8).");
+  out.push(`static constexpr uint32_t kAppDangerousCapabilities = ${DANGEROUS_CAPABILITIES.map(capabilityConstant).join(" | ")};`);
+  out.push(`static constexpr uint16_t kVmStoreQuotaBytes = ${VM_STORE_QUOTA_BYTES};`);
+  out.push(`static constexpr uint16_t kVmStoreBufferBytes = ${VM_STORE_BUFFER_BYTES};`);
+  out.push(`static constexpr uint32_t kVmStoreFlushMs = ${VM_STORE_FLUSH_MS};`);
+  out.push(`static constexpr uint8_t kVmStoreMaxKeys = ${VM_STORE_MAX_KEYS};`);
+  out.push(`static constexpr uint8_t kVmMessageQueue = ${VM_MESSAGE_QUEUE};`);
+  out.push(`static constexpr uint32_t kVmDeviceConfigIntervalMs = ${VM_DEVICE_CONFIG_INTERVAL_MS};`);
+  out.push(`static constexpr uint8_t kVmDeviceConfigKeyCount = ${VM_DEVICE_CONFIG_KEYS.length};`);
+  out.push("static constexpr const char* kVmDeviceConfigKeys[kVmDeviceConfigKeyCount] = {");
+  for (const key of VM_DEVICE_CONFIG_KEYS) out.push(`    "${key}",`);
+  out.push("};");
+  out.push(`static constexpr uint8_t kVmI2cDeniedCount = ${I2C_DENIED.length};`);
+  out.push(`static constexpr uint8_t kVmI2cDenied[kVmI2cDeniedCount] = {${I2C_DENIED.map((a) => `0x${a.toString(16).padStart(2, "0")}`).join(", ")}};`);
+  out.push(`static constexpr uint8_t kVmI2cMaxTransfer = ${I2C_MAX_TRANSFER};`);
+  out.push(`static constexpr uint32_t kVmUartMinBaud = ${UART_MIN_BAUD};`);
+  out.push(`static constexpr uint32_t kVmUartMaxBaud = ${UART_MAX_BAUD};`);
   out.push("");
   out.push("}  // namespace nhos");
   out.push("");
@@ -283,6 +313,9 @@ export function backendModule() {
     "",
     "# Capabilities a package may declare.",
     `CAPABILITIES = ${pySet(Object.keys(CAPABILITIES))}`,
+    "",
+    "# Capabilities the operator must agree to before install (sent as `grant`).",
+    `DANGEROUS_CAPABILITIES = ${pySet(DANGEROUS_CAPABILITIES)}`,
     "",
     `MAX_NODES = ${MAX_NODES}`,
     `MAX_PACKAGE_BYTES = ${MAX_PACKAGE_BYTES}`,

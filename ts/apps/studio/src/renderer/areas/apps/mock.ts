@@ -65,7 +65,7 @@ export const appsMock: AreaMock = () => {
     libraryApp: (id: string) => find(id),
     librarySource: (id: string) => {
       const entry = find(id);
-      return { id, version: entry.version, kind: entry.kind ?? 'flow', filename: 'app.nhs', source: `app ${id} {\n  name "${id}"\n  version ${entry.version}\n  author nhos\n  summary "Preview"\n}\n\nsignal load = total()\nevent pressed when load > 40\n` };
+      return { id, version: entry.version, kind: entry.kind ?? 'flow', filename: 'app.ts', source: `export const manifest = {\n  id: "${id}",\n  name: "${id}",\n  version: "${entry.version}",\n  author: "nhos",\n  summary: "Preview",\n} as const;\n\nconst loaded = new Threshold(40);\non("frame", () => {\n  event("pressed", loaded.update(matrix.total()));\n});\n` };
     },
     libraryPackage: (id: string) => fakePackage(find(id)),
     libraryReadme: () => '# Preview\n\nThe README is fetched from the App Library in the real app.',

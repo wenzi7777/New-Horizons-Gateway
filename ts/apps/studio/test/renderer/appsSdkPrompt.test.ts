@@ -11,14 +11,14 @@ import * as panel from '../../src/renderer/areas/apps/lib/panelRules';
 
 const modules = Promise.resolve({ prompt, project, sdk, panel });
 
-
-const CURRENT = `app broken {
-  name "Broken"
-  version 0.1.0
-  author me
-  summary "Does not build."
-}
-signal load = wobble(front)
+const CURRENT = `export const manifest = {
+  id: "broken",
+  name: "Broken",
+  version: "0.1.0",
+  author: "me",
+  summary: "Does not build.",
+} as const;
+let load = wobble(front);
 `;
 
 async function flowPrompt(overrides = {}) {
@@ -30,7 +30,7 @@ async function flowPrompt(overrides = {}) {
     board: { rows: board.rows, cols: board.cols, board, label: "Virtual device" },
     includeCurrent: true,
     source: CURRENT,
-    diagnostics: [{ severity: "error", message: "unknown function wobble", line: 7, col: 15, code: null }],
+    diagnostics: [{ severity: "error", message: "unknown function wobble", line: 8, col: 12, code: null }],
     author: "tester",
     ...overrides,
   });
@@ -40,46 +40,46 @@ test("a flow prompt states the SDK's own limits and the target board", async () 
   const { sdk } = await modules;
   const text = await flowPrompt();
 
-  assert.match(text, new RegExp(`At most ${sdk.MAX_NODES} nodes`));
   assert.match(text, new RegExp(`at most ${sdk.MAX_PACKAGE_BYTES} bytes`));
-  assert.match(text, new RegExp(`at most ${sdk.MAX_WINDOW}; all windows in one app together at most ${sdk.WINDOW_POOL}`));
   assert.match(text, new RegExp(`within ${sdk.DEFAULT_BUDGET_US} µs per frame`));
   assert.match(text, new RegExp(`at most ${sdk.MAX_OLED_LABEL} printable ASCII`));
+  assert.match(text, new RegExp(`${sdk.VM_STORE_QUOTA_BYTES / 1024} KB of files per app`));
+  for (const name of sdk.DANGEROUS_CAPABILITIES) assert.ok(text.includes(`\`${name}\``), name);
   assert.match(text, /14 rows x 14 columns \(196 cells\)/);
   assert.match(text, /External LED strip: 9 pixels/);
+  assert.match(text, /External I2C \(`i2c\.\*`\) and UART \(`uart\.\*`\) on the FPC: yes/);
   assert.match(text, /Use `tester` as the author/);
 });
 
-test("a flow prompt carries the language reference, the guide and the examples", async () => {
+test("a flow prompt carries the API, the guide and the examples", async () => {
   const { sdk } = await modules;
   const text = await flowPrompt();
 
-  for (const op of ["region_sum", "threshold", "debounce", "emit_value", "oled_text", "ext_pixel", "peak_since", "imu"]) {
-    assert.ok(text.includes(`\`${op}\``), `op ${op} missing`);
-    assert.ok(text.includes(sdk.OPS[op].summary), `summary of ${op} missing`);
-  }
-  for (const name of sdk.LANGUAGE.functions) assert.ok(text.includes(`\`${name}(`), `function ${name} missing`);
-  for (const field of sdk.IMU_FIELDS) assert.ok(text.includes(`\`${field}\``), `imu field ${field} missing`);
-  assert.ok(text.includes("`peak()` or `peak(region)`"));
-  assert.ok(text.includes("signal <name> = <expression> [persist]"));
+  // The API is nhos.d.ts itself: every name the compiler knows is in it.
+  for (const name of [...sdk.LANGUAGE.globals, ...sdk.LANGUAGE.classes]) assert.ok(text.includes(name), `${name} missing`);
+  assert.ok(text.includes("declare class Threshold"));
+  assert.ok(text.includes("append(file: string, a: number"));
   assert.match(text, /<authoring_guide>\n# Writing an NHOS app[\s\S]*<\/authoring_guide>/);
-  assert.match(text, /### steps\n```nhs\n[\s\S]*app steps \{/);
-  assert.match(text, /### tilt\n```nhs\n/);
-  assert.match(text, /### mat_view\n```nhs\n/);
+  assert.match(text, /### steps\n```ts\n[\s\S]*export const manifest = \{\n  id: "steps"/);
+  assert.match(text, /### tilt\n```ts\n/);
+  assert.match(text, /### mat_view\n```ts\n/);
+  // Nothing of the old declarative language is left to mislead a model.
+  assert.ok(!text.includes("```nhs"));
+  assert.ok(!/\bsignal <name>/.test(text));
 });
 
 test("the output contract asks for exactly one fenced block", async () => {
   const text = await flowPrompt();
-  assert.ok(text.includes("exactly ONE fenced code block tagged `nhs`"));
-  assert.ok(text.trimEnd().endsWith("Remember: one ```nhs block, nothing before it, at most three short lines after it."));
+  assert.ok(text.includes("exactly ONE fenced code block tagged `ts`"));
+  assert.ok(text.trimEnd().endsWith("Remember: one ```ts block, nothing before it, at most three short lines after it."));
 });
 
 test("the request is quoted, and the current program and its errors only when asked", async () => {
   const withCurrent = await flowPrompt();
   assert.ok(withCurrent.includes("Count taps on the front half and flash the LED green on each tap."));
   assert.ok(withCurrent.includes("## Current program"));
-  assert.ok(withCurrent.includes("signal load = wobble(front)"));
-  assert.ok(withCurrent.includes("line 7:15 — error: unknown function wobble"));
+  assert.ok(withCurrent.includes("let load = wobble(front);"));
+  assert.ok(withCurrent.includes("line 8:12 — error: unknown function wobble"));
 
   const without = await flowPrompt({ includeCurrent: false });
   assert.ok(without.includes("Count taps on the front half"));
@@ -102,6 +102,8 @@ test("a board without an OLED, button or strip says so", async () => {
   assert.match(text, /OLED: none/);
   assert.match(text, /Action button: none/);
   assert.match(text, /External LED strip: none/);
+  // The device refuses an I/O app here outright.
+  assert.match(text, /External I2C and UART: none/);
 });
 
 test("an unknown board falls back to its label and the matrix", async () => {
@@ -112,8 +114,8 @@ test("an unknown board falls back to its label and the matrix", async () => {
 });
 
 test("a source holding backticks cannot close its fence early", async () => {
-  const text = await flowPrompt({ source: "# ```oops```\napp a {}\n" });
-  assert.ok(text.includes("````nhs\n# ```oops```\napp a {}\n````"));
+  const text = await flowPrompt({ source: "// ```oops```\nlet a = 1;\n" });
+  assert.ok(text.includes("````ts\n// ```oops```\nlet a = 1;\n````"));
 });
 
 test("a readout prompt uses the readout reference and examples, not the flow guide", async () => {

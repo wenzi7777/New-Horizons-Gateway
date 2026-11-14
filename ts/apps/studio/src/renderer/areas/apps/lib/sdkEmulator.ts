@@ -166,19 +166,67 @@ export function isSidecar(name: string): boolean {
 
 /**
  * Which source lines to mark in the editor for this frame's output: the
- * statements whose nodes emitted.
+ * `emit(...)` and `event(...)` calls that name an event it produced.
  */
-export function linesForEvents(pkg: Record<string, any>, nodeLines: readonly number[], events: readonly SimEvent[]): Set<number> {
+export function linesForEvents(source: string, events: readonly SimEvent[]): Set<number> {
   const lines = new Set<number>();
   if (!events.length) return lines;
   const names = new Set(events.map((event) => event.event));
-  (pkg.nodes as { op: string; event?: string }[]).forEach((node, index) => {
-    if ((node.op === "emit" || node.op === "emit_value") && node.event && names.has(node.event)) {
-      const line = nodeLines[index];
-      if (line) lines.add(line);
+  source.split("\n").forEach((text, index) => {
+    const code = text.replace(/\/\/.*$/, "");
+    for (const match of code.matchAll(/\b(?:emit|event)\(\s*["']([^"']+)["']/g)) {
+      if (names.has(match[1] ?? "")) lines.add(index + 1);
     }
   });
   return lines;
+}
+
+/** A region as the heatmap outlines it: inclusive cell bounds on this frame. */
+export type HeatmapRegion = { r0: number; c0: number; r1: number; c1: number };
+
+/** flowmath.mjs resolveSpan: percent bounds on a matrix `count` long. */
+function resolveSpan(a: number, b: number, percent: boolean, count: number): { lo: number; hi: number } {
+  if (!percent) return { lo: a, hi: b };
+  if (count <= 0) return { lo: 1, hi: 0 };
+  const pa = Math.min(a, 100);
+  const pb = Math.min(b, 100);
+  let lo = Math.floor((pa * count) / 100);
+  let hi = Math.floor((pb * count + 99) / 100) - 1;
+  if (lo > count - 1) lo = count - 1;
+  if (hi > count - 1) hi = count - 1;
+  if (hi < lo) hi = lo;
+  return { lo, hi };
+}
+
+/**
+ * The regions an app declares (`const x = new Region({ rows: [a, b], cols:
+ * [c, d], percent })`), resolved on a rows x cols matrix, for the heatmap to
+ * outline. Read from the source: the image holds them as code. A region
+ * whose bounds are not plain numbers is left out rather than guessed.
+ */
+export function regionsOf(source: string, rows: number, cols: number): Record<string, HeatmapRegion> {
+  const out: Record<string, HeatmapRegion> = {};
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const pattern = /\b(?:const|let)\s+([A-Za-z_]\w*)\s*=\s*new\s+Region\s*\(\s*\{([^}]*)\}\s*\)/g;
+  for (const match of code.matchAll(pattern)) {
+    const body = match[2] ?? "";
+    const span = (key: string): [number, number] | null | undefined => {
+      const found = new RegExp(`\\b${key}\\s*:\\s*\\[([^\\]]*)\\]`).exec(body);
+      if (!found) return undefined;
+      const [first, last, ...rest] = (found[1] ?? "").split(",").map((part) => Number(part.trim()));
+      const ok = first !== undefined && last !== undefined && rest.length === 0 && [first, last].every((part) => Number.isFinite(part) && part >= 0);
+      return ok ? [first, last] : null;
+    };
+    const percent = /\bpercent\s*:\s*true\b/.test(body);
+    const rowSpan = span("rows");
+    const colSpan = span("cols");
+    if (rowSpan === null || colSpan === null) continue;
+    // A missing axis spans the whole matrix.
+    const r = rowSpan ? resolveSpan(rowSpan[0], rowSpan[1], percent, rows) : { lo: 0, hi: rows - 1 };
+    const c = colSpan ? resolveSpan(colSpan[0], colSpan[1], percent, cols) : { lo: 0, hi: cols - 1 };
+    out[match[1] ?? ""] = { r0: r.lo, r1: r.hi, c0: c.lo, c1: c.hi };
+  }
+  return out;
 }
 
 // --- generated frames ----------------------------------------------------------

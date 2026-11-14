@@ -13,33 +13,12 @@
 import {
   APP_ID_RE,
   CAPABILITIES,
+  CAPABILITY_SINCE,
   DEFAULT_BUDGET_US,
   DEFAULT_CELL_COUNT,
-  FEATURE_FIELDS,
-  IMU_FIELDS,
-  LED_COLOURS,
-  MAG_FIELDS,
-  MAX_REL_PERCENT,
-  MAX_DEBOUNCE_MS,
-  MAX_EVENT_NAME,
-  MAX_EXT_LEDS,
-  MAX_NODES,
-  MAX_OLED_DIGITS,
-  MAX_OLED_LABEL,
   MAX_PACKAGE_BYTES,
-  MAX_REGION_INDEX,
-  MAX_WINDOW,
-  OLED_LABEL_RE,
-  OLED_ROWS,
-  OPS,
-  REL_COLS,
-  REL_ROWS,
   RESERVED_APP_IDS,
-  WINDOW_POOL,
   compareVersions,
-  graphCostUs,
-  graphMemoryBytes,
-  minOsFor,
   windowFloats,
 } from "./opset.mjs";
 import {
@@ -78,8 +57,8 @@ import {
   isForbiddenCommand,
 } from "./panelset.mjs";
 import { canonicalBytes } from "./canonical.mjs";
-import { VmImageError, fromBase64, lowerGraph, verifyImage } from "./vm.mjs";
-import { VM_MIN_OS } from "./vmset.mjs";
+import { VmImageError, fromBase64, verifyImage } from "./vm.mjs";
+import { VM_TS_MIN_OS } from "./vmset.mjs";
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const MIN_OS_RE = /^v?\d+\.\d+\.\d+$/;
@@ -87,7 +66,7 @@ const SOURCE_ID_RE = /^[a-z][a-z0-9_]*$/;
 const MANIFEST_REQUIRED = ["id", "name", "version", "author", "summary"];
 // A package's flow graph is read with the same flat key scan the firmware
 // uses, so a manifest field named like a top-level key would shadow it.
-const MANIFEST_FORBIDDEN_KEYS = ["nodes", "kind", "nhapp"];
+const MANIFEST_FORBIDDEN_KEYS = ["nodes", "kind", "nhapp", "vm", "symbols"];
 
 /** A package the device would refuse. `code` is `reason:detail`. */
 export class PackageError extends Error {
@@ -172,178 +151,6 @@ export function validateManifest(manifest) {
  * @property {number} [cellCount] cells on the target board (default 225, the largest)
  */
 
-/**
- * @param {unknown} nodes
- * @param {Record<string, unknown>} manifest
- * @param {ValidateOptions} [options]
- */
-export function validateGraph(nodes, manifest, options = {}) {
-  const cellCount = options.cellCount ?? DEFAULT_CELL_COUNT;
-  require(Array.isArray(nodes), "missing_nodes");
-  require(nodes.length > 0, "empty_graph");
-  require(nodes.length <= MAX_NODES, `too_many_nodes:${nodes.length}>${MAX_NODES}`);
-
-  const caps = new Set(/** @type {unknown[]} */ (manifest.capabilities ?? []).map(String));
-  // The device evaluates a graph once per frame and wakes it for frames only
-  // when it may read the matrix. An empty list means the device's default,
-  // which includes it; a list without it means a graph that never runs.
-  require(caps.size === 0 || caps.has("read_matrix"), "never_evaluated:read_matrix_not_declared");
-  let poolUsed = 0;
-  nodes.forEach((node, index) => {
-    require(isObject(node), `node_not_an_object:${index}`, index);
-    const name = text(node.op);
-    require(Object.hasOwn(OPS, name), `unknown_op:${name}`, index);
-    const op = OPS[name];
-
-    // Inputs may only reference EARLIER nodes -- that is what makes a cycle
-    // unrepresentable and the array order a valid evaluation order.
-    if (op.inputs === 0) {
-      require(!("in" in node), `unexpected_input:${name}`, index);
-    } else {
-      /** @type {unknown[]} */
-      let refs;
-      if (op.inputs === 1) {
-        refs = [node.in];
-      } else {
-        require(Array.isArray(node.in) && node.in.length === op.inputs, `expected_${op.inputs}_inputs:${name}`, index);
-        refs = /** @type {unknown[]} */ (node.in);
-      }
-      for (const ref of refs) {
-        require(isInt(ref), `missing_input:${name}`, index);
-        require(/** @type {number} */ (ref) >= 0 && /** @type {number} */ (ref) < index, `input_out_of_order:${name}@${index}`, index);
-      }
-    }
-
-    for (const key of op.required) require(key in node, `missing_field:${name}.${key}`, index);
-    // What the op reads or drives (opset.mjs), declared or refused -- checked
-    // at the point each op always had it, so a node with several problems
-    // still reports the same one first.
-    const checkCapability = (/** @type {string} */ at) => {
-      if (op.capability && capabilityCheckPoint(name, op) === at) {
-        require(caps.has(op.capability), `capability_not_declared:${op.capability}`, index);
-      }
-    };
-    checkCapability("early");
-
-    if (name === "emit" || name === "emit_value") {
-      const event = text(node.event);
-      require(event, "missing_event_name", index);
-      require(event.length <= MAX_EVENT_NAME, `event_name_too_long:${event}`, index);
-      checkCapability("after_event");
-    }
-    if (name === "led") {
-      require(Object.hasOwn(LED_COLOURS, text(node.rgb)), `unknown_colour:${text(node.rgb)}`, index);
-    }
-    if (name === "oled_text" || name === "oled_bar") {
-      require(isInt(node.row) && /** @type {number} */ (node.row) >= 0 && /** @type {number} */ (node.row) < OLED_ROWS,
-        `invalid_oled_row:${text(node.row)}`, index);
-      const label = node.label;
-      require(typeof label === "string" && label.length <= MAX_OLED_LABEL && OLED_LABEL_RE.test(label),
-        `invalid_oled_label:${text(label)}`, index);
-    }
-    if (name === "oled_text" && "digits" in node) {
-      require(isInt(node.digits) && /** @type {number} */ (node.digits) >= 0 && /** @type {number} */ (node.digits) <= MAX_OLED_DIGITS,
-        `invalid_oled_digits:${text(node.digits)}`, index);
-    }
-    if (name === "oled_bar") {
-      require(typeof node.lo === "number" && typeof node.hi === "number" && node.hi > node.lo,
-        `invalid_bar_range:${text(node.lo)}..${text(node.hi)}`, index);
-    }
-    if (name === "ext_pixel") {
-      require(isInt(node.index) && /** @type {number} */ (node.index) >= 0 && /** @type {number} */ (node.index) < MAX_EXT_LEDS,
-        `invalid_ext_led_index:${text(node.index)}`, index);
-      require(Object.hasOwn(LED_COLOURS, text(node.rgb)), `unknown_colour:${text(node.rgb)}`, index);
-    }
-    if (name === "ext_meter") {
-      require(typeof node.lo === "number" && typeof node.hi === "number" && node.hi > node.lo,
-        `invalid_meter_range:${text(node.lo)}..${text(node.hi)}`, index);
-    }
-    if (name === "feature_get") {
-      const field = text(node.field);
-      require(FEATURE_FIELDS.includes(field), `unknown_feature_field:${field}`, index);
-      const source = /** @type {Record<string, unknown>} */ (nodes[/** @type {number} */ (node.in)]);
-      require(text(source.op) === "features", "feature_get_input_must_be_features", index);
-    }
-    if (name === "debounce") {
-      require(isInt(node.ms) && /** @type {number} */ (node.ms) >= 0 && /** @type {number} */ (node.ms) <= MAX_DEBOUNCE_MS,
-        `invalid_debounce_ms:${text(node.ms)}`, index);
-    }
-    if (op.required.includes("r0")) {
-      for (const key of ["r0", "c0", "r1", "c1"]) {
-        const value = node[key];
-        require(isInt(value) && /** @type {number} */ (value) >= 0 && /** @type {number} */ (value) <= MAX_REGION_INDEX,
-          `invalid_region:${key}=${text(value)}`, index);
-      }
-      if ("rel" in node) {
-        const rel = node.rel;
-        require(isInt(rel) && /** @type {number} */ (rel) >= 1 && /** @type {number} */ (rel) <= (REL_ROWS | REL_COLS),
-          `invalid_region_rel:${text(rel)}`, index);
-        // A percentage over 100 is not an error the device can report: it
-        // would clamp it and sweep a region the author did not mean.
-        for (const [bit, a, b] of /** @type {const} */ ([[REL_ROWS, "r0", "r1"], [REL_COLS, "c0", "c1"]])) {
-          if ((/** @type {number} */ (rel) & bit) !== 0) {
-            require(/** @type {number} */ (node[b]) <= MAX_REL_PERCENT, `invalid_region_percent:${b}=${text(node[b])}`, index);
-            require(/** @type {number} */ (node[a]) <= /** @type {number} */ (node[b]), `invalid_region:${a}>${b}`, index);
-          }
-        }
-      }
-    } else {
-      require(!("rel" in node), `unexpected_field:${name}.rel`, index);
-    }
-    if (name === "imu" || name === "mag") {
-      const fields = name === "imu" ? IMU_FIELDS : MAG_FIELDS;
-      require(fields.includes(text(node.field)), `unknown_${name}_field:${text(node.field)}`, index);
-      checkCapability("after_field");
-    }
-    checkCapability("after_sensors");
-    if ("persist" in node) {
-      require(name === "counter" || name === "counter_reset", `unexpected_field:${name}.persist`, index);
-      require(node.persist === 1, `invalid_persist:${text(node.persist)}`, index);
-      require(caps.has("persist"), "capability_not_declared:persist", index);
-    }
-    if ("fall" in node) {
-      require(name === "emit_value", `unexpected_field:${name}.fall`, index);
-      require(node.fall === 1, `invalid_fall:${text(node.fall)}`, index);
-    }
-    for (const key of ["value", "hysteresis", "lo", "hi"]) {
-      if (key in node) require(typeof node[key] === "number" && Number.isFinite(node[key]), `invalid_number:${name}.${key}`, index);
-    }
-    checkCapability("late");
-    if (op.windowKey) {
-      const window = node[op.windowKey];
-      require(isInt(window) && /** @type {number} */ (window) >= 1 && /** @type {number} */ (window) <= MAX_WINDOW,
-        `invalid_window:${text(window)}`, index);
-      // Every windowed node draws from one pool per slot; the device refuses
-      // the graph at load when the pool runs out.
-      poolUsed += /** @type {number} */ (window);
-      require(poolUsed <= WINDOW_POOL, `window_pool_exhausted:${poolUsed}>${WINDOW_POOL}`, index);
-    }
-  });
-
-  const flowNodes = /** @type {Record<string, unknown>[]} */ (nodes);
-  const declaredMinOs = text(manifest.min_os) || "v1.0.0";
-  const neededMinOs = minOsFor(flowNodes, [...caps]);
-  require(compareVersions(declaredMinOs, neededMinOs) >= 0,
-    `min_os_too_low:declares_v${declaredMinOs.replace(/^v/, "")}_needs_v${neededMinOs.replace(/^v/, "")}`);
-
-  // The device dry-runs the graph at install against the package's declared
-  // budget (or the default), and again against the slot's allocation when it
-  // is bound. Either one refusing it is `over_budget`.
-  const estimatedUs = graphCostUs(flowNodes, cellCount);
-  const declared = isInt(manifest.budget_us) ? /** @type {number} */ (manifest.budget_us) : DEFAULT_BUDGET_US;
-  const budgetUs = Math.min(declared, DEFAULT_BUDGET_US);
-  require(estimatedUs <= budgetUs, `over_budget:${estimatedUs}us>${budgetUs}us`);
-
-  return {
-    nodes: flowNodes.length,
-    estimatedUs,
-    budgetUs,
-    cellCount,
-    memoryBytes: graphMemoryBytes(flowNodes),
-    windowFloats: windowFloats(flowNodes),
-    minOs: neededMinOs,
-  };
-}
 
 /**
  * The sources a readout or panel polls. Read-only by construction.
@@ -703,15 +510,17 @@ export function validatePanel(panel, manifest) {
  * @returns {PackageReport}
  */
 /**
- * The package's NHVM/1 image: present, well formed, passes the device's
- * verifier, and exactly what its nodes lower to -- so what the simulators run
- * is what the device runs.
+ * A flow package's NHVM/1 image: present, well formed, passes the device's
+ * verifier with the declared capabilities, and fits the budget when its cost
+ * has a bound (an image with loops is time-sliced instead).
  * @param {Record<string, any>} doc
  * @param {Record<string, any>} manifest
- * @param {number} cellCount
+ * @param {ValidateOptions} options
  */
-function validateImage(doc, manifest, cellCount) {
-  require(typeof doc.vm === "string" && doc.vm.length > 0, "missing_vm:rebuild_with_sdk_2");
+function validateImage(doc, manifest, options) {
+  const cellCount = options.cellCount ?? DEFAULT_CELL_COUNT;
+  require(!("nodes" in doc), "nodes_not_supported:rebuild_with_sdk_3");
+  require(typeof doc.vm === "string" && doc.vm.length > 0, "missing_vm:rebuild_with_sdk_3");
   /** @type {Uint8Array} */
   let image;
   try {
@@ -719,22 +528,55 @@ function validateImage(doc, manifest, cellCount) {
   } catch {
     throw new PackageError("invalid_vm_base64");
   }
+  const capabilities = Array.isArray(manifest.capabilities) ? manifest.capabilities : [];
   /** @type {import("./vm.mjs").VmVerified} */
   let verified;
   try {
-    verified = verifyImage(image, { capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [], cellCount });
+    verified = verifyImage(image, { capabilities, cellCount });
   } catch (error) {
-    if (error instanceof VmImageError) throw new PackageError(`invalid_vm:${error.code}`);
+    if (error instanceof VmImageError) throw new PackageError(`invalid_vm:${error.message}`);
     throw error;
   }
-  const lowered = lowerGraph(doc);
-  require(lowered.length === image.length && lowered.every((byte, i) => byte === image[i]), "vm_does_not_match_nodes");
+  if ("symbols" in doc) {
+    require(Array.isArray(doc.symbols) && doc.symbols.length <= verified.image.nodes.length
+      && doc.symbols.every((/** @type {any} */ s) => isObject(s) && typeof s.name === "string"), "invalid_symbols");
+  }
+  // The device only saves counters for an app that declares persist; one
+  // that does not would silently start from zero on every boot.
+  require(!verified.image.nodes.some((node) => (node.flags & 1) !== 0) || capabilities.includes("persist"),
+    "capability_not_declared:persist");
+  let needed = VM_TS_MIN_OS;
+  for (const cap of capabilities) {
+    const since = CAPABILITY_SINCE[String(cap)];
+    if (since && compareVersions(since, needed) > 0) needed = since;
+  }
   const declaredMinOs = text(manifest.min_os) || "v1.0.0";
-  require(compareVersions(declaredMinOs, VM_MIN_OS) >= 0,
-    `min_os_too_low:declares_v${declaredMinOs.replace(/^v/, "")}_needs_v${VM_MIN_OS.replace(/^v/, "")}`);
-  return { vmBytes: image.length, poolBytes: verified.poolBytes, minOs: compareVersions(VM_MIN_OS, declaredMinOs) > 0 ? VM_MIN_OS : declaredMinOs };
+  require(compareVersions(declaredMinOs, needed) >= 0,
+    `min_os_too_low:declares_v${declaredMinOs.replace(/^v/, "")}_needs_v${needed.replace(/^v/, "")}`);
+  const estimatedUs = verified.loopFree ? Math.ceil(verified.estimatedNs / 1000) : 0;
+  const declaredBudget = isInt(manifest.budget_us) ? /** @type {number} */ (manifest.budget_us) : DEFAULT_BUDGET_US;
+  const budgetUs = Math.min(declaredBudget, DEFAULT_BUDGET_US);
+  require(estimatedUs <= budgetUs, `over_budget:${estimatedUs}us>${budgetUs}us`);
+  return {
+    nodes: verified.image.nodes.length,
+    estimatedUs,
+    budgetUs,
+    cellCount,
+    memoryBytes: verified.poolBytes,
+    loopFree: verified.loopFree,
+    vmBytes: image.length,
+    poolBytes: verified.poolBytes,
+    minOs: compareVersions(needed, declaredMinOs) > 0 ? needed : declaredMinOs,
+  };
 }
 
+/**
+ * Validate a whole package. Throws PackageError on the first problem.
+ * @param {unknown} doc
+ * @param {Uint8Array|null} [raw] the bytes that will be uploaded (default: canonical)
+ * @param {ValidateOptions} [options]
+ * @returns {PackageReport}
+ */
 export function validatePackage(doc, raw = null, options = {}) {
   require(isObject(doc), "not_a_package");
   require(doc.nhapp === 1, `unsupported_package_version:${text(doc.nhapp)}`);
@@ -766,8 +608,7 @@ export function validatePackage(doc, raw = null, options = {}) {
   } else {
     require(!("readout" in doc), "flow_must_not_declare_a_readout");
     require(!("panel" in doc), "flow_must_not_declare_a_panel");
-    report = { ...validateGraph(doc.nodes, manifest, options), kind: "flow" };
-    report = { ...report, ...validateImage(doc, manifest, report.cellCount ?? 225) };
+    report = { ...validateImage(doc, manifest, options), kind: "flow" };
   }
 
   const bytes = raw ?? canonicalBytes(doc);

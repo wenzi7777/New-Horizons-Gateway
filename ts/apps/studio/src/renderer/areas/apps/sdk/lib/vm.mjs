@@ -14,9 +14,7 @@
 import {
   CAPABILITIES,
   DEVICE_CAPABILITIES,
-  FEATURE_FIELDS,
   IMU_FIELDS,
-  LED_COLOURS,
   MAG_FIELDS,
   MAX_EXT_LEDS,
   MAX_OLED_DIGITS,
@@ -58,6 +56,10 @@ import {
   flowOpName,
   flowOpNumber,
   nativeFuel,
+  I2C_DENIED,
+  I2C_MAX_TRANSFER,
+  UART_MAX_BAUD,
+  UART_MIN_BAUD,
 } from "./vmset.mjs";
 import { atan2Deg, imuField, magField, resolveSpan, sqrtSafe } from "./flowmath.mjs";
 
@@ -594,18 +596,10 @@ function checkNative(image, op, state, param, declared) {
   need(state + slots <= image.arena, "arena_out_of_range");
 }
 
-// --- lowering: flow graph -> image -------------------------------------------------
+// --- assembler ---------------------------------------------------------------------
 
-/** @param {unknown} raw */
-function inputsOf(raw) {
-  if (raw === undefined || raw === null) return [];
-  return Array.isArray(raw) ? raw.map(Number) : [Number(raw)];
-}
-
-const PURE_BINARY = { add: "add", sub: "sub", mul: "mul", div: "div", min: "min", max: "max", mod: "mod", atan2: "atan2" };
-const PURE_UNARY = { abs: "abs", sqrt: "sqrt", not: "not" };
-
-class Assembler {
+/** Builds one function's code: instructions, labels and forward/backward jumps. */
+export class Assembler {
   constructor() {
     /** @type {number[]} */
     this.bytes = [];
@@ -659,206 +653,6 @@ class Assembler {
   }
 }
 
-/**
- * Compiles a flow graph into an NHVM/1 image that evaluates it exactly as
- * FlowApp::evaluate did: node by node in array order, every node's value in
- * an arena slot (held when a gate skips it), state-keeping and I/O ops as
- * native instructions, gates as forward jumps.
- * @param {Record<string, any>} pkg a flow package (nodes + manifest)
- * @returns {Uint8Array}
- */
-export function lowerGraph(pkg) {
-  /** @type {Record<string, any>[]} */
-  const nodes = Array.isArray(pkg.nodes) ? pkg.nodes : [];
-  const caps = new Set(Array.isArray(pkg.manifest?.capabilities) ? pkg.manifest.capabilities : []);
-  if (nodes.length === 0) throw new Error("empty_graph");
-  if (nodes.length > VM_MAX_NODES) throw new Error("too_many_nodes");
-  /** @type {number[]} */
-  const consts = [];
-  /** @type {Map<string, number>} */
-  const constIndex = new Map();
-  /** @param {number} value */
-  const constant = (value) => {
-    const v = f32(value);
-    const key = Object.is(v, -0) ? "-0" : String(v);
-    let index = constIndex.get(key);
-    if (index === undefined) {
-      index = consts.length;
-      consts.push(v);
-      constIndex.set(key, index);
-    }
-    return index;
-  };
-  /** @param {number[]} values a parameter record, kept contiguous */
-  const record = (values) => {
-    // Reuse an identical run already in the pool, else append.
-    for (let i = 0; values.length > 0 && i + values.length <= consts.length; i += 1) {
-      if (values.every((v, k) => Object.is(consts[i + k], f32(v)))) return i;
-    }
-    const at = consts.length;
-    for (const v of values) consts.push(f32(v));
-    return at;
-  };
-  /** @type {string[]} */
-  const strings = [];
-  /** @param {string} text */
-  const string = (text) => {
-    let index = strings.indexOf(text);
-    if (index < 0) {
-      index = strings.length;
-      strings.push(text);
-    }
-    return index;
-  };
-
-  // Arena: one value slot per node; a native op's value is its state slot 0.
-  let arena = 0;
-  /** @type {number[]} */
-  const slot = [];
-  for (const node of nodes) {
-    const layout = NATIVE_LAYOUT[node.op];
-    slot.push(arena);
-    arena += layout ? layout.state + (OPS[node.op].windowKey ? Math.trunc(Number(node.window ?? 0)) : 0) : 1;
-  }
-
-  const asm = new Assembler();
-  const nodeLabel = nodes.map(() => asm.newLabel());
-  const endLabel = asm.newLabel();
-  /** @type {[number, number][]} */
-  const init = [];
-  nodes.forEach((node, i) => {
-    asm.bind(nodeLabel[i]);
-    const refs = inputsOf(node.in);
-    const load = (/** @type {number} */ k) => asm.op("loadg", slot[refs[k]]);
-    const op = String(node.op);
-    if (op === "const") {
-      asm.op("pushk", constant(Number(node.value ?? 0)));
-      asm.op("storeg", slot[i]);
-    } else if (op in PURE_BINARY) {
-      load(0);
-      load(1);
-      asm.op(PURE_BINARY[/** @type {keyof typeof PURE_BINARY} */ (op)]);
-      asm.op("storeg", slot[i]);
-    } else if (op in PURE_UNARY) {
-      load(0);
-      asm.op(PURE_UNARY[/** @type {keyof typeof PURE_UNARY} */ (op)]);
-      asm.op("storeg", slot[i]);
-    } else if (op === "clamp") {
-      load(0);
-      asm.op("pushk", constant(Number(node.lo ?? 0)));
-      asm.op("pushk", constant(Number(node.hi ?? 0)));
-      asm.op("clamp");
-      asm.op("storeg", slot[i]);
-    } else if (op === "feature_get") {
-      const field = FEATURE_FIELDS.indexOf(String(node.field));
-      if (field < 0 || nodes[refs[0]]?.op !== "features") throw new Error("feature_get_input_must_be_features");
-      asm.op("loadg", slot[refs[0]] + 1 + field);
-      asm.op("storeg", slot[i]);
-    } else if (op === "select") {
-      const otherwise = asm.newLabel();
-      const done = asm.newLabel();
-      load(0);
-      asm.jump("jz", otherwise);
-      load(1);
-      asm.jump("jmp", done);
-      asm.bind(otherwise);
-      load(2);
-      asm.bind(done);
-      asm.op("storeg", slot[i]);
-    } else if (op === "gate") {
-      load(0);
-      asm.op("storeg", slot[i]);
-      const span = Number(node.span ?? 0) & 0xff;
-      const until = Math.min(i + 1 + span, nodes.length);
-      if (span > 0 && until > i + 1) {
-        const open = asm.newLabel();
-        asm.op("loadg", slot[i]);
-        asm.jump("jnz", open);
-        asm.op("degraded");
-        asm.jump("jmp", until < nodes.length ? nodeLabel[until] : endLabel);
-        asm.bind(open);
-      }
-    } else if (NATIVE_LAYOUT[op]) {
-      const layout = NATIVE_LAYOUT[op];
-      for (let k = 0; k < OPS[op].inputs; k += 1) load(k);
-      const values = layout.params.map((key) => nativeParam(node, key, string));
-      const param = values.length > 0 ? record(values) : 0;
-      asm.op("nat", flowOpNumber(op), slot[i], param);
-      asm.op("pop");
-      if (op === "delta" && Number(node.value ?? 0) !== 0) init.push([slot[i] + 1, constant(Number(node.value))]);
-    } else {
-      throw new Error(`cannot lower op ${op}`);
-    }
-  });
-  asm.bind(endLabel);
-  asm.op("end");
-  const code = asm.finish();
-
-  /** @type {Record<string, number>} */
-  const entries = { frame: 0 };
-  if (caps.has("tick")) entries.idle_tick = 0;
-  /** @type {VmImageParts} */
-  const parts = {
-    code,
-    consts,
-    strings,
-    functions: [{ pc: 0, base: 0, args: 0, locals: 0, rets: 0 }],
-    entries,
-    init,
-    nodes: nodes.map((node, i) => ({
-      op: flowOpNumber(String(node.op)),
-      flags: (node.persist ? 1 : 0) | (isBooleanNode(node) ? 2 : 0),
-      slot: slot[i],
-    })),
-    arena,
-    stack: VM_MAX_STACK,
-  };
-  // Size the stack to what the verifier proves is needed.
-  const draft = encodeImage(parts);
-  const verified = verifyImage(draft, { capabilities: [...caps] });
-  parts.stack = Math.max(1, verified.maxStack);
-  return encodeImage(parts);
-}
-
-/** @param {Record<string, any>} node */
-function isBooleanNode(node) {
-  if (node.op === "feature_get") return true;
-  return OPS[node.op]?.boolean === true || node.op === "gate" || node.op === "ext_pixel";
-}
-
-/**
- * @param {Record<string, any>} node
- * @param {string} key
- * @param {(text: string) => number} string
- */
-function nativeParam(node, key, string) {
-  switch (key) {
-    case "event": return string(String(node.event ?? ""));
-    case "label": return string(String(node.label ?? ""));
-    case "persist": return node.persist ? 1 : 0;
-    case "fall": return node.fall ? 1 : 0;
-    case "r": case "g": case "b": {
-      const rgb = LED_COLOURS[String(node.rgb)];
-      if (!rgb) throw new Error(`unknown_colour:${String(node.rgb)}`);
-      return rgb["rgb".indexOf(key)];
-    }
-    case "field": {
-      const names = node.op === "imu" ? IMU_FIELDS : MAG_FIELDS;
-      const index = names.indexOf(String(node.field));
-      if (index < 0) throw new Error(`unknown_field:${String(node.field)}`);
-      return index;
-    }
-    case "rel": return Number(node.rel ?? 0);
-    case "ms": return Number(node.ms ?? 0) > 0 ? Number(node.ms) & 0xffff : 0;
-    case "r0": case "c0": case "r1": case "c1": return Number(node[key] ?? 0) & 0xff;
-    case "index": return Number(node.index ?? 0);
-    case "row": return Number(node.row ?? 0);
-    case "digits": return Number(node.digits ?? 0);
-    case "window": return Math.trunc(Number(node.window ?? 0));
-    default: return Number(node[key] ?? 0);
-  }
-}
-
 // --- base64 ------------------------------------------------------------------------
 
 /** @param {Uint8Array} bytes */
@@ -887,6 +681,7 @@ export function fromBase64(text) {
  * @property {ArrayLike<number>|null} mag
  * @property {number} battery
  * @property {boolean} linked
+ * @property {{topic: string, value: number}|null} [message] in a message handler
  */
 
 /**
@@ -896,11 +691,50 @@ export function fromBase64(text) {
  * @property {(event: string, value: number) => void} emitValue
  * @property {(text: string, value: number) => void} log
  * @property {(on: boolean, rgb: readonly [number, number, number], state: number) => void} led
+ * @property {VmHostExt} [ext] the v2.1.0 system calls; absent hooks refuse
+ */
+
+/**
+ * @typedef {object} VmHostExt
+ * @property {(key: string) => number} [storeGet]
+ * @property {(key: string, value: number) => void} [storeSet]
+ * @property {(file: string, nowMs: number, values: number[]) => boolean} [storeAppend]
+ * @property {(file: string) => void} [storeClear]
+ * @property {(topic: string, value: number) => void} [publish]
+ * @property {(key: string) => number} [configGet]
+ * @property {(key: string, value: number, nowMs: number) => boolean} [configSet]
+ * @property {(on: boolean) => void} [stream]
+ * @property {(addr: number, reg: number, n: number) => number[]|null} [i2cRead]
+ * @property {(addr: number, bytes: number[]) => boolean} [i2cWrite]
+ * @property {(baud: number) => boolean} [uartOpen]
+ * @property {() => void} [uartClose]
+ * @property {(bytes: number[]) => number} [uartWrite]
+ * @property {() => number} [uartAvailable]
+ * @property {() => number} [uartRead]
  */
 
 const RUN_DONE = "done";
 const RUN_SUSPENDED = "suspended";
 const RUN_FAULT = "fault";
+
+/** The 32-bit FNV-1a hash a device matches topics and keys by. @param {string} text */
+export function fnv1a(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i) & 0xff;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+// The I2C and UART limits live in vmset.mjs (generated into AppContract.h).
+export { I2C_DENIED, I2C_MAX_TRANSFER, UART_MAX_BAUD, UART_MIN_BAUD };
+/** @param {number} addr */
+export function i2cAddressOk(addr) {
+  return Number.isInteger(addr) && addr >= 0x08 && addr <= 0x77 && !I2C_DENIED.includes(addr);
+}
+/** @param {number} b */
+const byteOk = (b) => Number.isInteger(b) && b >= 0 && b <= 255;
 
 /** Truncation to uint32 the way the bit ops define it. @param {number} x */
 function toU32(x) {
@@ -1167,6 +1001,150 @@ export class VmMachine {
         host.log(this.image.strings[s], st[sp + 1]);
         return 0;
       }
+      default: return this.extendedSyscall(name, st, sp, ctx, host);
+    }
+  }
+
+  /**
+   * The v2.1.0 system calls: storage, messages, device control and I/O. A
+   * host without the matching hook behaves like a device that refuses it.
+   * @param {string} name
+   * @param {Float32Array} st
+   * @param {number} sp
+   * @param {VmContext} ctx
+   * @param {VmHost} host
+   * @returns {number|null}
+   */
+  extendedSyscall(name, st, sp, ctx, host) {
+    const strings = this.image.strings;
+    /** @param {number} at */
+    const str = (at) => {
+      const s = st[at];
+      return Number.isInteger(s) && s >= 0 && s < strings.length ? strings[s] : null;
+    };
+    /** Arena span [base, base + n) for a buffer argument, or null. @param {number} at */
+    const span = (at) => {
+      const base = st[at];
+      const n = st[at + 1];
+      if (!(Number.isInteger(base) && Number.isInteger(n) && base >= 0 && n >= 0 && n <= 32 && base + n <= this.f.length)) return null;
+      return { base, n };
+    };
+    const ext = host.ext ?? {};
+    switch (name) {
+      case "store_get": {
+        const key = str(sp);
+        if (key === null) return null;
+        return f32(ext.storeGet?.(key) ?? 0);
+      }
+      case "store_set": {
+        const key = str(sp);
+        if (key === null) return null;
+        ext.storeSet?.(key, st[sp + 1]);
+        return 0;
+      }
+      case "store_append": {
+        const file = str(sp);
+        if (file === null) return null;
+        const values = [st[sp + 1], st[sp + 2], st[sp + 3], st[sp + 4]];
+        return ext.storeAppend?.(file, ctx.nowMs >>> 0, values) ? 1 : 0;
+      }
+      case "store_clear": {
+        const file = str(sp);
+        if (file === null) return null;
+        ext.storeClear?.(file);
+        return 0;
+      }
+      case "app_publish": {
+        const topic = str(sp);
+        if (topic === null) return null;
+        ext.publish?.(topic, st[sp + 1]);
+        return 0;
+      }
+      case "msg_value": return ctx.message ? f32(ctx.message.value) : 0;
+      case "msg_is": {
+        const topic = str(sp);
+        if (topic === null) return null;
+        return ctx.message && fnv1a(ctx.message.topic) === fnv1a(topic) ? 1 : 0;
+      }
+      case "device_config_get": {
+        const key = str(sp);
+        if (key === null) return null;
+        return f32(ext.configGet?.(key) ?? 0);
+      }
+      case "device_config_set": {
+        const key = str(sp);
+        if (key === null) return null;
+        return ext.configSet?.(key, st[sp + 1], ctx.nowMs >>> 0) ? 1 : 0;
+      }
+      case "device_stream":
+        ext.stream?.(st[sp] !== 0);
+        return 0;
+      case "i2c_read8":
+      case "i2c_read16": {
+        const addr = st[sp];
+        const reg = st[sp + 1];
+        if (!i2cAddressOk(addr) || !byteOk(reg)) return -1;
+        const bytes = ext.i2cRead?.(addr, reg, name === "i2c_read16" ? 2 : 1);
+        if (!bytes) return -1;
+        return name === "i2c_read16" ? (bytes[0] << 8) | bytes[1] : bytes[0];
+      }
+      case "i2c_write8": {
+        const addr = st[sp];
+        const reg = st[sp + 1];
+        const v = st[sp + 2];
+        if (!i2cAddressOk(addr) || !byteOk(reg) || !byteOk(v)) return -1;
+        return ext.i2cWrite?.(addr, [reg, v]) ? 0 : -1;
+      }
+      case "i2c_read": {
+        const addr = st[sp];
+        const reg = st[sp + 1];
+        const buf = span(sp + 2);
+        if (buf === null) return null;
+        if (!i2cAddressOk(addr) || !byteOk(reg)) return -1;
+        const bytes = ext.i2cRead?.(addr, reg, buf.n);
+        if (!bytes) return -1;
+        for (let i = 0; i < buf.n; i += 1) this.f[buf.base + i] = bytes[i] ?? 0;
+        return buf.n;
+      }
+      case "i2c_write": {
+        const addr = st[sp];
+        const buf = span(sp + 1);
+        if (buf === null) return null;
+        if (!i2cAddressOk(addr)) return -1;
+        const bytes = [];
+        for (let i = 0; i < buf.n; i += 1) {
+          const b = this.f[buf.base + i];
+          if (!byteOk(b)) return -1;
+          bytes.push(b);
+        }
+        return ext.i2cWrite?.(addr, bytes) ? buf.n : -1;
+      }
+      case "uart_open": {
+        const baud = st[sp];
+        if (!(Number.isInteger(baud) && baud >= UART_MIN_BAUD && baud <= UART_MAX_BAUD)) return 0;
+        return ext.uartOpen?.(baud) ? 1 : 0;
+      }
+      case "uart_close":
+        ext.uartClose?.();
+        return 0;
+      case "uart_write": {
+        const b = st[sp];
+        if (!byteOk(b)) return 0;
+        return ext.uartWrite?.([b]) ?? 0;
+      }
+      case "uart_write_buf": {
+        const buf = span(sp);
+        if (buf === null) return null;
+        const bytes = [];
+        for (let i = 0; i < buf.n; i += 1) {
+          const b = this.f[buf.base + i];
+          if (!byteOk(b)) return 0;
+          bytes.push(b);
+        }
+        return ext.uartWrite?.(bytes) ?? 0;
+      }
+      case "uart_available": return ext.uartAvailable?.() ?? 0;
+      case "uart_read": return ext.uartRead?.() ?? -1;
       default: return null;
     }
   }

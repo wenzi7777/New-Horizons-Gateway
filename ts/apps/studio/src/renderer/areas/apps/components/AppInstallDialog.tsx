@@ -13,10 +13,12 @@ import { Notice, Checkbox } from '../../../components/ui';
 import { useStudio } from '../../../state/studio';
 import { appsApi, errorCode } from '../api';
 import { installBlocker, installMinFirmware, localised, type AppCatalogEntry, type AppPackage } from '../lib/appLibrary';
+import { dangerousCapabilities, unsupportedCapabilities } from '../lib/appGrant';
 import { appErrorKey } from '../lib/deviceApps';
 import { commandRunner, isMaintenance, runAppInstall, type InstallStep } from '../lib/deviceCommand';
 import type { TransferProgress } from '../lib/deviceFileTransfer';
 import { useAppsT } from '../strings';
+import { CapabilityConsent } from './CapabilityConsent';
 import { PermissionList } from './LibraryPage';
 
 type Stage = 'pick' | 'confirm' | 'installing' | 'done' | 'error';
@@ -41,11 +43,13 @@ export function AppInstallDialog({ entry, pkg, onClose, go, initialUid = '' }: P
   const [skipMaintenance, setSkipMaintenance] = useState(false);
   const [progress, setProgress] = useState<TransferProgress | null>(null);
   const [error, setError] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const abortRef = useRef({ current: false });
 
-  const app = entry ?? { id: pkg!.id, min_os: pkg!.min_os, version: pkg!.version, permissions: pkg!.permissions };
+  const app = entry ?? { id: pkg!.id, min_os: pkg!.min_os, version: pkg!.version, permissions: pkg!.permissions, capabilities: pkg!.capabilities };
   const name = entry ? localised(entry.name, locale) : pkg!.id;
   const minFirmware = installMinFirmware(app);
+  const dangerous = dangerousCapabilities(app.capabilities);
 
   const candidates = useMemo(() => {
     const list = devices.map((device) => ({ device, blocker: installBlocker(app, device) }));
@@ -55,6 +59,8 @@ export function AppInstallDialog({ entry, pkg, onClose, go, initialUid = '' }: P
   const usable = candidates.filter((item) => !item.blocker);
   const shown = showAll ? candidates : usable;
   const selected = candidates.find((item) => item.device.uid === selectedUid) ?? null;
+  // I2C / UART exist only on some boards: the device would refuse the package (capability_unsupported).
+  const unsupported = selected ? unsupportedCapabilities(app.capabilities, selected.device.hardwareModel) : [];
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -85,6 +91,7 @@ export function AppInstallDialog({ entry, pkg, onClose, go, initialUid = '' }: P
         devicePath: validated.device_path,
         dataHex: validated.data_hex,
         sha256: validated.sha256,
+        grant: dangerous,
         alreadyInMaintenance: already,
         onStep: setStep,
         onProgress: setProgress,
@@ -185,18 +192,32 @@ export function AppInstallDialog({ entry, pkg, onClose, go, initialUid = '' }: P
           </>
         ) : null}
 
-        {stage === 'confirm' && selected && !selected.blocker ? (
+        {stage === 'confirm' && selected && !selected.blocker && unsupported.length ? (
+          <>
+            <Notice kind="error">
+              {selected.device.displayName}: {t('appInstallBlockedBoard')} ({unsupported.join(', ')})
+            </Notice>
+            <div className="actions">
+              <button className="button" type="button" onClick={() => setStage('pick')}>
+                {t('appInstallBack')}
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {stage === 'confirm' && selected && !selected.blocker && !unsupported.length ? (
           <>
             <p>
               <strong>{name}</strong> v{app.version} → <strong>{selected.device.displayName}</strong>
             </p>
             <p className="muted">{isMaintenance(selected.device.mode) ? t('appInstallMaintenanceKept') : t('appInstallMaintenanceNote')}</p>
             <PermissionList permissions={app.permissions ?? []} />
+            <CapabilityConsent capabilities={dangerous} agreed={agreed} onAgree={setAgreed} />
             <div className="actions">
               <button className="button" type="button" onClick={() => setStage('pick')}>
                 {t('appInstallBack')}
               </button>
-              <button className="button primary" type="button" onClick={() => void install(selected.device)}>
+              <button className="button primary" type="button" disabled={dangerous.length > 0 && !agreed} onClick={() => void install(selected.device)}>
                 {t('appInstallStart')}
               </button>
             </div>

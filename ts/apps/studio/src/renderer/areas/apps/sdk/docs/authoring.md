@@ -2,485 +2,387 @@
 
 ## What an app is
 
-A **flow graph**: an ordered list of nodes, each one an operation on the
-pressure matrix or on the result of an earlier node. The device evaluates the
-whole list once per frame.
+An app is a TypeScript file, `app.ts`, that the App SDK compiles to bytecode
+for the device's app VM ([vm.md](vm.md)). It reacts to events -- a frame from
+the pressure matrix, a tick, a press of the action button, a message from
+another app -- and reads sensors, keeps state, and shows or logs what it finds.
 
-Two properties define the model, and everything else follows from them:
+```ts
+/// <reference path="../../sdk/types/nhos.d.ts" />
 
-- **A node may only reference an earlier node.** So a cycle cannot be
-  expressed, and the array order is already a valid evaluation order.
-- **There are no loops.** Execution time therefore has an upper bound equal to
-  the sum of every node's cost, which means the cost can be estimated *before*
-  the graph ever runs.
+export const manifest = {
+  id: "taps",
+  name: "Tap Counter",
+  version: "3.0.0",
+  author: "wenzi7777",
+  summary: "Counts presses and times each hold; button resets.",
+  category: "rehab",
+  icon: "touch",
+} as const;
 
-There *are* conditionals (`select`, `gate`). Branches do not break the bound —
-worst case is simply that every branch runs. Only loops would, and there are
-none. The graph is not Turing complete, and that is the point: "tell me at
-install time roughly what this costs" and Turing completeness are mutually
-exclusive.
+const press = new Debounce(20);           // state: created once, at the top level
+const taps = new Counter({ persist: true });
+const hold = new Duration();
 
-Despite that, a graph has state: `threshold` latches, `debounce` times,
-`counter` accumulates, and `mean` / `max_hold` / `integrate` each own a
-fixed-length ring buffer. It is a finite state machine with real-valued
-registers, which covers essentially all of the sensor-event domain.
+on("frame", () => {
+  const down = press.update(matrix.activeCells(50) > 0.5);
+  taps.update(press.rose, button.pressed());
+  const held = hold.update(down);
+  if (press.fell) emit("hold_ms", held);
+  strip.pixel(0, Color.Blue, down);
+  oled.text(0, "Taps", taps.value);
+  oled.text(1, "Hold ms", held);
+});
+```
+
+Every `app.ts` is a valid TypeScript file. [`sdk/types/nhos.d.ts`](../sdk/types/nhos.d.ts)
+declares the whole API, so an editor (VS Code, or the Desktop's App Studio)
+completes it and type-checks it; the reference comment at the top points the
+editor at it. The compiler accepts a subset of TypeScript and tells you, with a
+line and column, when you step outside it.
+
+The device runs every handler to completion when it can, and suspends it when
+its share of the CPU is spent (see [Budgets](#budgets)), so a loop cannot stall
+the scan. Scanning always comes first.
 
 ## The language
 
-You write `.nhs`. The compiler does the three jobs that make hand-writing the
-node array miserable: **topological ordering** (inserting an intermediate value
-would otherwise renumber every `in`), **common-subexpression elimination** (12
-nodes is a brutal budget, and a value used twice would otherwise cost two of
-them), and **cost estimation** (otherwise you find out by uploading).
+### Values
 
-```
-app <id> {
-  name    "Human readable name"
-  version 1.0.0
-  author  wenzi7777
-  summary "One line, 63 characters."
-  category biomechanics        # optional
-  icon     foot                # optional, a symbolic name
-  background yes               # optional: keep running without frames (v1.6.0)
-}
+Numbers are 32-bit floats on the device -- whole numbers are exact up to
+16,777,216 -- and booleans are true/false. Dividing by zero, and `%` by zero,
+give 0 rather than Infinity or NaN. `&`, `|`, `^`, `<<` and `>>` work on
+unsigned 32-bit integers.
 
-region <name> = rows <a>..<b>, cols <c>..<d>
-region <name> = rows <a>%..<b>%, cols <c>%..<d>%     # percent of the matrix (v1.6.0)
+Strings exist only as constant names and labels: an event name, an OLED label,
+a store key or file, a message topic.
 
-signal <name> = <expression> [persist]
+### At the top level
 
-event  <name> when <expression> <cmp> <number> [hyst <number>] [for <n>ms]
-event  <name> when <boolean> [for <n>ms]
-emit   <name> value <expression> on rise(<trigger>)
-emit   <name> value <expression> on fall(<trigger>)
-led    <colour> when <trigger>
-show   <row> "<label>" <expression> [digits <n>]
-bar    <row> "<label>" <expression> range <lo>..<hi>
-pixel  <index> <colour> when <trigger>
-meter  <expression> range <lo>..<hi>
-
-gate (<condition>) {
-  signal / event / emit / led / show / bar / pixel / meter statements
-}
-```
-
-A `<trigger>` is an event, or a signal that is a boolean (`signal press =
-button()`). A `<boolean>` is an event, `not(...)`, `button()` or `linked()`.
-A `<condition>` is either form of `event`'s `when`.
-
-`show` and `bar` draw on the OLED; see [The OLED and the button](#the-oled-and-the-button).
-`pixel` and `meter` drive the external LED strip; see [The external LED strip](#the-external-led-strip).
-`led` drives the board's status LED; see [The status LED](#the-status-led).
-
-A `gate` block is skipped on frames where its condition is false; the nodes
-inside hold their last values. See [Self-degradation](#self-degradation).
-
-Names may contain `-` and `.` (so an author name like `jane-doe` reads as one
-word), which means `l-r` is one unknown name, not a subtraction. Write
-`l - r`.
-
-Expressions support `+ - * / %`, parentheses, unary minus, numbers,
-previously declared signals, and:
-
-| Function | Meaning |
+| Form | What it is |
 |---|---|
-| `sum(region)` | total load over a rectangle |
-| `total()` / `peak()` | whole-matrix sum / largest cell |
-| `active(threshold)` | count of cells at or above a level |
-| `feature(field)` | one field of a single `features` sweep |
-| `arg_max()`, `row_centroid()`, `col_centroid()` | peak index, centre of pressure |
-| `mean(x, n)`, `max_hold(x, n)`, `integrate(x, n)` | over the last `n` frames |
-| `delta(x)`, `abs(x)`, `counter(x)` | |
-| `min(a, b)`, `max(a, b)`, `clamp(x, lo, hi)` | |
-| `budget_load()`, `grace_left()` | this app's current pressure |
-| `button()` | true for one frame per short press of the action button |
-| `not(b)` | a boolean's negation (v1.6.0) |
-| `select(b, x, y)` | `x` while `b` holds, else `y` |
-| `counter(b, reset)` | rises of `b`, zeroed by each rise of `reset` (v1.6.0) |
-| `duration(b)`, `interval(b)` | ms `b` has held; ms between its last two rises (v1.6.0) |
-| `peak_since(x, b)` | largest `x` since `b` last rose (v1.6.0) |
-| `sqrt(x)`, `atan2(y, x)` | square root; angle in degrees (v1.6.0) |
-| `peak(region)`, `active(region, level)` | the sweeps over one region (v1.6.0) |
-| `row_centroid(region)`, `col_centroid(region)` | centre of pressure within a region, in whole-matrix coordinates (v1.6.0) |
-| `imu(field)`, `mag(field)` | the IMU and the magnetometer (v1.6.0; see [The other sensors](#the-other-sensors)) |
-| `battery()`, `linked()`, `uptime()` | charge in percent (-1 without a gauge), whether streaming has a destination, seconds since boot (v1.6.0) |
+| `export const manifest = { ... }` | The app's id, name, version, author, summary and optional category, icon and `budget_us`. Capabilities and `min_os` are computed; do not write them. |
+| `let x = 0;` / `const k = 2.5;` | A global number or boolean, initialised to a constant. Globals keep their value between runs. To compute a starting value, assign it in `on("start", ...)`. |
+| `const buf = new Float32Array(16);` | A fixed array of numbers, zeroed at start. |
+| `const t = new Threshold(400, 50);` | A stateful object ([below](#stateful-objects)). |
+| `const heel = new Region({ rows: [8, 14], cols: [0, 14] });` | A rectangle of the matrix. |
+| `function f(a: number): number { ... }` | A function. Not recursive, directly or through others. |
+| `on("frame", () => { ... })` | A handler. One per event. |
 
-**An event's name is also a value**: its boolean, 1 while it holds and 0 when
-it does not. `counter(strike)`, `duration(strike)` and `select(strike, 1, 0)`
-all read it. The functions that take a boolean -- `counter`, `not`,
-`duration`, `interval`, `select`'s condition, `peak_since`'s reset -- refuse
-a number: `counter(heel_load)` would count nothing, forever, because
-arithmetic has no boolean.
+### Inside functions and handlers
 
-An event's comparison may use a negative number (`when bias < -0.3`), and a
-negative literal anywhere is a single constant. Note that `>` is really `>=`
-(the threshold latches at its value), so compare against a small margin
-rather than exactly 0 when a value can rest on the limit.
+`let`/`const`, `if`/`else`, `while`, `for (let i = 0; i < n; i++)`, `break`,
+`continue`, `return`, `? :`, `&&`/`||` (which short-circuit), `!`, `=`, `+=`
+and the other compound assignments, `++`/`--`, and calls. Locals start at
+zero on every run; a block's `let` is scoped to the block.
 
-`%` is C's `fmodf` (the result takes the sign of the left side) and, like
-`/`, gives 0 rather than NaN for a zero divisor. It exists for paging:
-`counter(button()) % 3` counts 0, 1, 2, 0, ...
+Not supported: closures over locals, objects other than the manifest and the
+classes below, dynamic arrays, strings as values, `any`, classes of your own.
 
-`feature(...)` is the efficient way to read several quantities: every call
-shares one `features` sweep, so eight reads cost one sweep plus eight cheap
-scalar nodes, not eight sweeps.
+### Events
 
-`<` and `<=` are supported but compile to a subtraction against a constant,
-which costs two extra nodes and pulls the graph up to v1.1.0. The compiler says
-so when it happens.
+```ts
+on("start",  () => { ... });   // once, when the app starts
+on("frame",  () => { ... });   // every frame the scanner produces
+on("tick",   () => { ... });   // 10 times a second, always
+on("idle",   () => { ... });   // 10 times a second, only while no frames arrive
+on("button", () => { ... });   // each short press of the action button
+on("stop",   () => { ... });   // once, when the app is stopped or removed
+on("message", "heel", (value) => { ... });   // app.publish("heel", v) from another app
+```
 
-`capabilities` and `min_os` are **derived** from the ops used (and, for
-`min_os`, from the graph's size: more than 12 nodes needs v1.3.0; `show`, `bar`,
-`button()` and `%` need v1.4.0; anything marked v1.6.0 above, a percent region,
-`persist`, `on fall` or `background yes` needs v1.6.0 -- an older device would
-accept some of these and silently ignore them, which is worse than refusing). `read_matrix` is always among them, even for a
-graph that never reads the matrix: the frame is what drives evaluation, and a
-graph that may not read it is never woken. Do not declare
-them — a hand-written `min_os` that is too low passes here and then fails on the
-device as `unknown_op`.
+A handler may also be a named function: `on("frame", step)`.
+
+`tick` and `idle` need the `tick` capability (it is derived for you). While an
+`idle` or `tick` handler runs without a frame, every matrix reading holds the
+value the last frame left: `matrix.total()` in an idle handler is the last
+frame's total.
+
+`button.pressed()` is true for one run per press, from the `frame` (or
+`tick`/`idle`) handler that sees it. An app with `on("button")` gets each press
+there instead.
+
+### Reading the sensors
+
+| Call | Reads | Unit | Capability |
+|---|---|---|---|
+| `matrix.total()`, `matrix.peak()` | sum / largest cell | raw | `read_matrix` |
+| `matrix.activeCells(level)` | cells at or above a constant level | count | `read_matrix` |
+| `matrix.argMax()` | index of the largest cell, `row * cols + col` | | `read_matrix` |
+| `matrix.rowCentroid()`, `matrix.colCentroid()` | centre of force (cells >= 50) | fractional index | `read_matrix` |
+| `matrix.cell(r, c)` | one cell; out of range stops the app | raw | `read_matrix` |
+| `matrix.rows`, `matrix.cols` | the frame's shape | | `read_matrix` |
+| `region.sum()`, `.peak()`, `.active(level)`, `.rowCentroid()`, `.colCentroid()` | the same, over a `Region` | | `read_matrix` |
+| `imu.ax`, `.ay`, `.az` | acceleration | g | `read_imu` |
+| `imu.gx`, `.gy`, `.gz` | rotation | deg/s | `read_imu` |
+| `imu.accMag`, `imu.gyroMag` | their magnitudes | g, deg/s | `read_imu` |
+| `imu.pitch`, `imu.roll` | tilt from gravity, in the board's axes | degrees | `read_imu` |
+| `mag.x`, `.y`, `.z`, `.strength` | magnetic field | microtesla | `read_mag` |
+| `mag.heading` | its angle in the board's x-y plane, 0-360 | degrees | `read_mag` |
+| `battery()` | fuel gauge charge, -1 without a reading | percent | `power` |
+| `linked()` | a relay or Hub to stream to | boolean | `link` |
+| `uptime()`, `now()`, `frameSeq()` | seconds since boot; ms and frame sequence, modulo 2^24 | | |
+| `budget.load`, `budget.graceLeft` | the app's load and grace frames left | | |
+
+Each sensor reads the sample streamed with the frame and holds its last value
+when a frame carries none; a board without the sensor reads 0. `pitch`/`roll`
+are tilt only while the board is not accelerating, and `heading` is not
+tilt-compensated.
+
+`Features` computes every per-frame feature in one pass over the matrix:
+`const f = new Features(); ... f.update(); f.peak01; f.inContact; ...`.
+
+### Regions
+
+```ts
+const heel = new Region({ rows: [8, 14], cols: [0, 14] });               // cells, inclusive
+const left = new Region({ rows: [0, 100], cols: [0, 50], percent: true }); // percent of each frame's matrix
+```
+
+A percent region is resolved against each frame's own matrix, so one package
+covers a 15x15 mat and a 5x7 sensor alike. The first row is `floor(a% of
+rows)` and the last `ceil(b% of rows) - 1`, never empty: on an odd count, a
+row a boundary splits belongs to both sides, which keeps a left/right split
+symmetric.
+
+### Stateful objects
+
+Created at the top level, each owns a fixed piece of the app's memory.
+`update(...)` feeds it and returns its value; `.value` reads it without
+feeding.
+
+| Class | Does |
+|---|---|
+| `Threshold(on, hysteresis = 0)` | true at `on`, false below `on - hysteresis`; `.rose`/`.fell` on the update that changed it |
+| `Debounce(ms)` | follows its boolean input once it has held for `ms` (up to 65535) |
+| `Edge()` | `.rose`/`.fell` of any boolean |
+| `Mean(n)`, `MaxHold(n)`, `Integrate(n)` | mean / largest / sum of the last `n` updates (n <= 128) |
+| `Delta(initial = 0)` | value minus the previous update's |
+| `Counter({ persist })` | counts rising edges; `update(input, reset)` zeroes it on `reset`'s rise |
+| `Duration()` | milliseconds its input has been true |
+| `Interval()` | milliseconds between its input's last two rises (0 until the second) |
+| `PeakSince()` | `update(value, reset)`: the largest value since `reset` last rose |
+
+`Mean`, `MaxHold` and `Integrate` count updates, not time, so `new Mean(30)`
+spans half a second while streaming at 60 Hz. `Duration` and `Interval` keep
+a timestamp instead and have no such limit:
+
+```ts
+const loaded = new Threshold(300);
+const time = new Duration();
+on("frame", () => {
+  const minutes = time.update(loaded.update(matrix.total())) / 60000;
+  event("overdue", minutes > 20);
+});
+```
+
+### Output
+
+| Call | Shows | Capability |
+|---|---|---|
+| `emit(name, value)` | logs a value event | `emit_event` |
+| `event(name, on)` | logs `name` rise / fall whenever `on` changes | `emit_event` |
+| `log(label, value)` | a debug line in the device log | |
+| `led.set(color, on)` | the status LED shows `color` while `on` | `drive_led` |
+| `strip.pixel(i, color, on)` | external strip pixel `i` (0-8, constant) | `drive_ext_led` |
+| `strip.meter(value, lo, hi)` | the strip as a bar, green to red | `drive_ext_led` |
+| `oled.text(row, label, value, digits = 0)` | an OLED row: label, then the value right-aligned | `display` |
+| `oled.bar(row, label, value, lo, hi)` | an OLED row: label, then a bar | `display` |
+
+Colours are `Color.Red`, `Green`, `Blue`, `White` and `Off`. Event names are
+up to 23 characters; OLED labels up to 10 printable ASCII characters, rows 0
+to 3, digits 0 to 3.
+
+What an app draws is rebuilt on every frame run: a row, pixel or LED the run
+did not reach goes dark rather than freezing, so a page switched by `if` is
+blank where it drew nothing.
+
+**The OLED** (SSD1306 128x32 on the exposed I2C bus, v1.0.F and later) shows
+an app's rows only while the device's OLED page is set to `app`. With several
+apps running, each row comes from the lowest-numbered slot that drew it.
+
+**The status LED** is the system's first: an app's colour replaces only the
+healthy, online pattern, and anything the system is telling the operator
+(booting, errors, OTA, a lost link, ...) shows instead.
+
+**The strip** (v1.0.F 3 pixels, v1.5.F and later 9) is taken over from the
+device's preset while the app runs and handed back when it stops. Pixels draw
+over the meter. A pixel past the board's own count is accepted and never shown,
+so one package runs on every board.
+
+## Storage, messages, device control and I/O (v2.1.0)
+
+These need firmware v2.1.0. Those marked **[ask]** are *dangerous
+capabilities*: the Desktop and NH Studio list them when the app is installed
+and install it only once the operator agrees, and the device itself refuses an
+install that did not grant them.
+
+### `store` [ask: `storage`]
+
+```ts
+store.set("best", 42);              // a named number kept across reboots
+const best = store.get("best");     // 0 if never set; up to 16 names per app
+store.append("log", a, b, c, d);    // appends "ms,a,b,c,d" to /appdata/<app>/log.csv
+store.clear("log");                 // deletes the file
+```
+
+Each app has 16 KB of files. `append` returns false once they are full (the
+device then logs `store_full`); a missing value is an empty column. Rows are
+collected in a 256-byte buffer per app and written every 10 seconds, when the
+buffer fills, and when the app stops -- a power cut can lose the last few
+seconds. File names are `a-z`, `0-9` and `_`, up to 8 characters. Values are
+written every 30 seconds and when the app stops. Uninstalling the app deletes
+both.
+
+### Messages (`app_ipc`)
+
+```ts
+app.publish("heel", force);                          // in one app
+on("message", "heel", (value) => { ... });           // in another
+```
+
+A message reaches every other running app with a handler for its topic, and
+runs that handler before the next event. Each app queues 4 messages; more are
+dropped and counted.
+
+### `device` [ask: `device_config`, `device_stream`]
+
+```ts
+device.configSet("scan.target_fps", 30);   // false if out of range, or again within a second
+device.configGet("filter.alpha");
+device.stream(false);                      // pause streaming; resumed when the app stops
+```
+
+The settings an app may change: `scan.target_fps`, `scan.send_every_n_frames`,
+`filter.enabled`, `filter.median`, `filter.alpha`, `imu.enabled`. A change is
+never saved, goes through the same checks as the `set_config` command, and is
+undone when the app stops, faults or is removed.
+
+### `i2c` and `uart` [ask: `io_i2c`, `io_uart`]
+
+Only on v1.5.F and v2.0.F; the device refuses to install an app with these
+on any other board.
+
+```ts
+const buf = new Float32Array(6);
+const id = i2c.read8(0x48, 0x0f);          // -1 when nothing answers
+i2c.write8(0x48, 0x20, 0x07);
+i2c.read(0x48, 0x28, buf, 6);              // bytes into buf[0..6)
+uart.open(115200);                         // UART0: TX FPC1.17, RX FPC1.16
+uart.write(0x41);
+while (uart.available() > 0) emit("rx", uart.read());
+```
+
+I2C is the exposed bus (SDA FPC2.16, SCL FPC2.17), 7-bit addresses 0x08 to
+0x77 except the board's own chips (0x14, 0x36, 0x3C, 0x3D, 0x41, 0x60, 0x68,
+0x6A), at most 32 bytes a transfer and a 5 ms timeout; the time a transfer
+takes counts toward the app's slice. UART0 runs at 1200 to 921600 baud with a
+256-byte receive buffer, and is closed and its pins released when the app
+stops.
 
 ## Hard limits
 
-| Limit | Value | Where it comes from |
-|---|---|---|
-| Nodes per graph | 24 (12 before OS v1.3.0) | `FlowApp::kMaxNodes`; a graph over 12 gets `min_os: v1.3.0` |
-| Package size | 8192 bytes (4096 before v1.19.0) | the firmware's parse buffer |
-| App id length | 15 chars | `/files/apps/<id>.nha` vs SPIFFS' 31-char path cap |
-| Event name | 23 chars | `FlowNode::event` is `char[24]` |
-| Window length | 128 frames | `FlowApp::kMaxWindow` |
-| All windows together | 128 floats | `FlowApp::kWindowPool`, one pool per slot |
-| Cost per frame | 1500 us | `FlowApp::kDefaultBudgetUs`, or the manifest's `budget_us` if lower |
-| Debounce time | 65535 ms | `FlowNode::ms` is a `uint16_t` |
-| Region index | 255 | `FlowNode::r0..c1` are `uint8_t` |
-| LED colour | red, green, blue, white, off | the firmware's palette |
-| OLED rows | 0 to 3 | a 128x32 panel at text size 1 (`kOledRows`) |
-| OLED label | 10 printable ASCII characters | `kMaxOledLabel`; the font draws nothing else |
-| Decimals | 0 to 3 | `kMaxOledDigits` |
-| Presses waiting | 3 | `FlowApp::kMaxPendingPresses` |
-| External pixel | 0 to 8 | `kMaxAppExtLeds`; v1.5.F has 9 pixels, v1.0.F 3 |
-| Region percent | 0 to 100 | `kMaxRegionPercent` |
-| Background rate | 10 Hz, after 250 ms without a frame | the apps tick, `FlowApp::kTickFallbackMs` |
-| Persisted write | at most every 30 s | `FlowApp::kPersistIntervalMs` |
+| Limit | Value |
+|---|---|
+| Package size | 8192 bytes |
+| App id | `a-z`, `0-9`, `_`, starting with a letter, up to 15 characters |
+| Code | 8192 bytes (in practice the package size limits it first) |
+| Memory (arena: objects, globals, arrays) | 1536 floats, from the pool the four slots share |
+| Stateful objects + globals | 32 |
+| Functions and handlers | 32, calls at most 8 deep |
+| Window length | 128 updates |
+| Event name / OLED label | 23 / 10 characters |
+| Time per frame, loop-free code | 1500 us, or the manifest's `budget_us` if lower |
+| Stored files / values / write buffer | 16 KB / 16 / 256 B per app |
+| Messages waiting | 4 per app |
 
-The window pool is the one that catches people out: two `mean(x, 100)` are
-each within the window limit, but together need 200 floats from a pool of 128,
-and the device refuses the graph as `window_pool_exhausted`.
-
-The id limit bites in a confusing place if you ignore it: the Desktop uploads
-`apps/<id>.nha` *before* calling `app_install`, so an over-long id fails during
-the upload with `path_too_long` and you never see an install error at all.
-The validator catches it first.
-
-## Cost model
-
-Sweep operators cost 300 ns per cell (`features` costs 500 ns per cell, since
-it does more work per cell); scalar operators cost a flat 600 ns. These were
-measured on a v1.5.F (about 86 ns and 235 ns per cell) and carry roughly 2x
-margin — the goal is a bound, not a prediction.
-
-`sdk/lib/opset.mjs` holds these constants and the firmware's
-`FlowApp::estimateUs()` must agree with them. **That agreement is a
-compatibility contract.** If they drift, an app passes locally and is refused
-by the device, which is the most confusing failure this system can produce.
-
-`gate` is costed at its worst case — as if it never skips. Costing the average
-would understate the bound and make the install-time estimate a lie on exactly
-the frames that matter.
+The compiler reports how much of each an app uses.
 
 ## Budgets
 
 An app's time budget is **not fixed**. The device divides a configurable share
 of CPU among the apps that are actually running, so enabling a fourth app
-shrinks the other three's allocation.
+shrinks the other three's allocation. Scanning always wins: if the scan loop
+starts missing deadlines the apps' share is reduced automatically, and in the
+limit every app is suspended.
 
-Scanning always wins. If the scan loop starts missing deadlines the apps' share
-is reduced automatically, and in the limit every app is suspended — the device
-exists to sample the matrix, and apps are additional value on top of that, never
-at its expense.
+For code without loops the compiler gives a worst case in microseconds, and an
+app over its budget is refused at install. Code with a loop cannot be
+estimated; it runs on *fuel* instead -- each instruction costs some, and when
+the slice is spent the handler is suspended exactly where it was and resumed
+on the next turn. A handler still running when the next frame arrives skips
+that frame, and the skipped count is logged as `frames_skipped`. An app that
+never finishes is stopped as `starved`.
 
 Two states are distinct and must not be confused:
 
-- **Killed** — the app repeatedly exceeded its own allocation. That is the
+- **Killed** -- the app repeatedly exceeded its own allocation. That is the
   app's fault, and an operator has to acknowledge it with `app-revive`.
-- **Suspended** — the system needed the capacity. Not the app's fault, and it
+- **Suspended** -- the system needed the capacity. Not the app's fault, and it
   resumes on its own once the pressure clears.
 
-## Self-degradation
+An app may read `budget.load` and `budget.graceLeft` and do less when it is
+close to its limit. This is a research data-collection device: a signal that
+quietly changes fidelity because someone enabled another app puts a step in
+the data that has nothing to do with the subject, so do it visibly -- emit an
+event when you degrade.
 
-An app is told when it is over budget (a `Budget` event carrying its current
-load and how many overruns remain before it is stopped). It may respond by
-doing less — `gate` an expensive subtree behind `budget_load()`, or `select` a
-shorter window — or it may ignore the warning and be stopped. That is the
-author's choice, not the system's.
+## Faults
 
-If you do degrade, it is recorded: a `degraded` event is emitted and lands in
-the recording's event sidecar. This matters more than it looks. This is a
-research data-collection device, and a signal that quietly changes fidelity
-because someone enabled another app would put a step change in the data that
-has nothing to do with the subject. Recorded, it is merely honest.
-
-## The OLED and the button
-
-An app can show up to four rows on an SSD1306 OLED (128x32, on I2C at 0x3C or
-0x3D) and hear short presses of the action button. The OLED is supported on
-v1.0.F and v1.5.F, where the panel is external -- anything wired to the board's
-exposed I2C bus is picked up once it is turned on.
-
-```
-app mat_view {
-  name    "Mat View"
-  version 1.0.0
-  author  wenzi7777
-  summary "Heel and toe load on the OLED; press the button for page 2."
-}
-
-region heel = rows 8..14, cols 0..14
-region toe  = rows 0..6, cols 0..14
-
-signal heel_load = sum(heel)
-signal toe_load  = sum(toe)
-
-# Each press advances the page; % 2 wraps it back to the first.
-signal page = counter(button()) % 2
-
-gate (page < 0.5) {
-  show 0 "Heel" heel_load
-  show 1 "Toe" toe_load
-  bar  2 "Heel %" heel_load / (heel_load + toe_load) range 0..1
-}
-
-gate (page > 0.5) {
-  show 0 "Peak" peak()
-  show 1 "Cells" active(50)
-  show 2 "CoP row" row_centroid() digits 1
-}
-```
-
-```
-|Heel             8676|        |Peak               85|
-|Toe              3378|  -->   |Cells             105|
-|Heel % [#########   ]|  press |CoP row          11.0|
-|                     |        |                     |
-```
-
-A row states *what* to show; the firmware does the drawing. So:
-
-- **Drawing costs the app nothing it can overrun.** `show` and `bar` are
-  scalar nodes that record a row. The panel is redrawn at the OLED's own
-  `update_hz` (at most 5 Hz), outside every app's budget.
-- **The screen is rebuilt every frame from the nodes that ran.** A row drawn
-  inside a closed `gate` is blank -- it does not freeze on its last value --
-  which is what makes gated pages work. Two nodes on one row are fine; the
-  later one wins.
-- **A text row** is the label at the left and the value right-aligned to column
-  21, rounded half away from zero from the float's true value. A value that
-  does not fit beside the label is shown as `#`.
-- **A bar** starts one character after its label and fills in proportion to
-  where the value sits in `range`, clamped at both ends.
-
-`button()` is true for exactly one frame per press and false for at least one
-frame between presses, so `counter(button())` counts every press even when two
-land in consecutive frames on a slow scan. Only short presses reach an app; a
-long press is the soft-off gesture and never does. Presses made while no frames
-are arriving are held, at most three, rather than replayed as a burst later.
-
-Nothing appears until the operator sets the device's **OLED page to `app`**
-(Settings, or `set-oled` in the Terminal). An installed app never takes the
-screen over by itself, the same way it never starts itself. With several apps
-running, each row comes from the lowest-numbered slot that drew it, so two apps
-can share the panel by using different rows.
-
-## The status LED
-
-`led <colour> when <trigger>` holds the board's status LED at `<colour>` from
-the trigger's rise until its fall, and the fall hands the LED back to the
-system. It needs the `drive_led` capability.
-
-The LED is the system's first. An app's colour replaces only the healthy,
-online pattern (green, or the charging colours that stand in for it on a
-one-pixel board while plugged in). Anything the system is telling the operator
-shows instead, and the app's colour comes back once it is over. That covers
-booting, errors, low memory, OTA, a lost Wi-Fi or Hub link, FindMe, maintenance
-and safe mode, scan warnings, soft-off, and the short flashes that acknowledge
-a command. With several apps running, the lowest-numbered slot holding a colour
-wins, the same rule as the OLED rows and the strip.
-
-Firmware before v1.7.0 wrote the colour once and then let the system pattern
-repaint it within about 10 ms, so it was rarely visible. The emulator always
-shows the app's colour, because it has no system state to defer to.
-
-The device's Apps panel in the Desktop shows what the OLED, the status LED and
-the strip display right now, as the device reports it (`app_view`, v1.7.0). It
-also says which slot owns each row and when two slots compete for the same
-output.
-
-## The external LED strip
-
-v1.0.F has three external LEDs and v1.5.F nine, on a WS2812 strip wired to the
-board's LED header. An app can light single pixels and show a value as a meter
-along the strip.
-
-```
-app load_strip {
-  name    "Load Strip"
-  version 1.0.0
-  author  wenzi7777
-  summary "Total load as a meter; the first pixel turns blue on contact."
-}
-
-event touch    when total() > 50
-event overload when peak() > 1800
-
-meter total() range 0..20000
-pixel 0 blue when touch
-pixel 8 red  when overload
-```
-
-- **`pixel <index> <colour> when <event>`** lights pixel `index` (counted from
-  0) on frames the event is true, and leaves it dark on the others. The colours
-  are the LED's: red, green, blue, white and off. `off` is a colour like the
-  others, so a pixel can cut a dark gap into a meter.
-- **`meter <expression> range <lo>..<hi>`** lights as much of the strip as the
-  value covers of the range, rounded up, from green at the first pixel to red
-  at the last: none at or below `lo`, all at or above `hi`.
-
-Pixels draw over the meter. As on the OLED, both only record what to show and
-cost a scalar node each; the strip is drawn by the LED service outside every
-app's budget, and it is rebuilt every frame from the nodes that ran, so a
-pixel inside a closed `gate` goes dark rather than freezing. Two nodes on one
-pixel are fine; the later one wins.
-
-A pixel past a board's own count is accepted and never shown, so one package
-runs on both boards: on v1.0.F only pixels 0 to 2 and a three-pixel meter
-appear. The GCU LTS boards have no strip, and the app runs there with nothing
-to show.
-
-**While the app runs it has the strip.** Unlike the OLED, which waits for the
-operator to choose its `app` page, the strip is taken over from whatever
-preset the device is set to, and handed back to that preset when the app is
-stopped. A frame on which the app lit nothing shows a dark strip, not the
-preset. The operator's settings still apply: with the external LED turned off
-the strip stays off, and the brightness setting scales every colour. With
-several apps running, the meter comes from the lowest-numbered slot that has
-one and each pixel from the lowest-numbered slot that lit it.
-
-## Time without windows
-
-`mean`, `max_hold` and `integrate` keep a ring buffer, so they are limited to
-128 frames -- about two seconds -- and to the pool. The v1.6.0 time functions
-keep a timestamp instead, so they cost nothing from the pool and have no such
-limit:
-
-```
-event loaded when total() > 300 for 30000ms
-signal minutes = duration(loaded) / 60000        # half an hour is fine
-event overdue when minutes > 20
-
-event strike when sum(heel) > 300 hyst 100 for 30ms
-signal cadence = 60000 / interval(strike)        # steps a minute
-signal step_peak = peak_since(sum(heel), strike) # restarts on every strike
-emit step_peak value step_peak on fall(strike)   # reported as the step ends
-```
-
-`on fall(...)` fires once, when the trigger stops holding -- not at start-up,
-the way the rise of `not(...)` would.
-
-## Regions in percent
-
-`rows 50%..100%` is resolved against each frame's own matrix, so one package
-covers a 15x15 mat and a 5x7 sensor alike. The first row is `floor(a% of
-rows)` and the last `ceil(b% of rows) - 1`, never empty: on an odd count, a
-row a boundary splits belongs to both sides, which keeps a left/right split
-symmetric. Rows and columns may use different units; the two ends of one
-range may not. An absolute region compiles exactly as it always has.
-
-## The other sensors
-
-| Call | Reads | Unit | Capability |
-|---|---|---|---|
-| `imu(ax)`, `imu(ay)`, `imu(az)` | acceleration | g | `read_imu` |
-| `imu(gx)`, `imu(gy)`, `imu(gz)` | rotation | deg/s | `read_imu` |
-| `imu(acc_mag)`, `imu(gyro_mag)` | their magnitudes | g, deg/s | `read_imu` |
-| `imu(pitch)`, `imu(roll)` | tilt from gravity, in the board's axes | degrees | `read_imu` |
-| `mag(mx)`, `mag(my)`, `mag(mz)`, `mag(strength)` | magnetic field | microtesla | `read_mag` |
-| `mag(heading)` | its angle in the board's x-y plane, 0-360 | degrees | `read_mag` |
-| `battery()` | fuel gauge charge, -1 without a reading | percent | `power` |
-| `linked()` | a Gateway or Hub to stream to | boolean | `link` |
-
-Each reads the sample streamed with the frame -- what a recording of it
-holds, and what the simulator replays from its `Acc_*`, `Gyro_*` and `Mag_*`
-columns -- and holds its last value when a frame carries none. A board without
-the sensor reads 0. `pitch`/`roll` are tilt only while the board is not
-accelerating, and `heading` is not tilt-compensated: a compass only while the
-board lies flat.
-
-## Running in the background
-
-A graph is evaluated when a frame arrives, so it stops when the scanner does
--- when nothing is streaming, for instance. `background yes` adds the device's
-10 Hz tick: while no frame has arrived for 250 ms the graph is evaluated on
-each tick instead, with every matrix read holding its last value and `imu`,
-`mag`, `battery` and `linked` reading the latest samples. It is never
-evaluated twice for one frame.
-
-`duration` and `interval` are timed in milliseconds either way, but a window
-counts evaluations, so `mean(x, 30)` spans half a second while streaming and
-three seconds in the background.
+An array index out of range, `matrix.cell` outside the matrix, or a bad
+argument to a system call stops the app with a reason (`array_bounds`,
+`bad_syscall_arg`) shown in the Desktop's Apps panel. A
+constant index out of range is a compile error instead.
 
 ## Persisted counters
 
-```
-signal steps = counter(strike, button()) persist
+```ts
+const steps = new Counter({ persist: true });
 ```
 
-A `persist` counter survives a reboot: the device writes it to NVS -- at most
-every 30 seconds, from outside the app's time allocation, and when the
-package is deactivated -- and restores it when the package is bound again. A
-new version of the package, or uninstalling it, starts from zero; so does
-`counter`'s reset input. Only a counter can persist.
+A persisted counter survives a reboot: the device writes it to NVS -- at most
+every 30 seconds, outside the app's time allocation, and when the app stops --
+and restores it when the app starts again. A new version of the package, or
+uninstalling it, starts from zero; so does the counter's reset input. For
+anything else that must survive, use `store`.
 
 ## Testing without a device
 
-The Desktop app's SDK page replays a recording, or a live device's stream,
-through the graph and shows every node's value as it goes. From the command
-line, `simulate` does the same against a recorded sample CSV:
+The Desktop's App Studio replays a recording, or a live device's stream,
+through the app, and shows the OLED, the LEDs, every object's value and the
+events as it goes. From the command line, `simulate` does the same against a
+recorded sample CSV:
 
 ```
-node sdk/bin/nhos.mjs simulate apps/heel_strike/app.nhs session.csv \
+node sdk/bin/nhos.mjs simulate apps/heel_strike/app.ts session.csv \
     --rows 15 --cols 15 --events simulated.events.csv --compare session.events.csv
 ```
 
-A recording's `Acc_*`, `Gyro_*` and `Mag_*` columns feed `imu()` and `mag()`.
-From code, `Simulator.setBattery()` / `setLinked()` set what `battery()` and
-`linked()` read, `tick(ms)` runs the background tick, and `persisted()` /
-the `restore` option carry persisted counters across a simulated reboot.
+A recording's `Acc_*`, `Gyro_*` and `Mag_*` columns feed `imu` and `mag`. A
+recording holds no button presses, so `--press 500,1800` presses the button at
+those times (ms). It does not store the matrix shape, so pass `--rows`/`--cols`
+for any board that is not square. `--events` writes the same `.events.csv`
+shape the Desktop writes beside a recording; `--compare` lines the simulated
+events up against the ones the device recorded, by `frame_seq`, and exits
+non-zero if they differ.
 
-It prints an event timeline, the OLED as the last frame left it, and, with
-`--events`, writes the **same
-`.events.csv` shape the Desktop writes beside a recording**. `--compare` lines
-the simulated events up against the ones the device actually recorded, by
-`frame_seq`, and exits non-zero if they differ. `--budget` prints the per-node
-cost breakdown. A recording holds no button presses, so `--press 500,1800`
-presses the button at those times (ms), each seen by the first frame at or
-after it. A recording does not store the matrix shape, so pass
-`--rows`/`--cols` for any board that is not square.
+From code, `VmSimulator` runs a package: `step(frame)`, `tick(ms)`,
+`pressButton()`, `setBattery()`, `setLinked()`, `stop()`, and `persisted()` /
+the `restore` option across a simulated reboot. A `SimDevice` holds the
+simulated store, settings, stream state, I2C registers and a UART loopback; a
+`SimBus` connects several simulators for messages.
 
-The simulator computes in 32-bit float, as the ESP32 does, so a threshold
-right on a boundary goes the way it will on the device. It does not model the
-device dropping frames: a recording can miss frames the device evaluated,
-which shows up as an event a frame or two off.
+The simulator computes in 32-bit float, as the ESP32 does, and runs the same
+bytecode the device does: `sdk/test/vm-native.test.mjs` builds the firmware's
+VM for the host and checks the two agree bit for bit on every library app and
+on hundreds of random programs.
 
-This is worth more than convenience. The graph's semantics -- how a threshold
-latches, when a debounce commits, which edge emits -- otherwise exist only in
-the firmware's C++, where nothing can assert on them. The simulator is the
-executable specification, and `sdk/test/firmware-contract.test.mjs` reads the
-firmware's own sources to check that the constants have not drifted.
+## Writing in VS Code
 
-## A note on scope
+```
+npx tsc -p sdk/types/tsconfig.json
+```
 
-The DSL is **syntactic sugar over the node graph, and nothing more**. If a
-construct cannot be lowered to a fixed node array — a loop, a recursive
-function, a dynamically sized buffer — it does not belong here, however
-convenient it would be. Adding one would force the VM to support it, and the
-cost model, the install-time estimate and the load-time rejection all rest on
-its absence.
+type-checks every library app and example against `nhos.d.ts`. For your own
+app, keep the reference comment at the top of `app.ts` pointing at a copy of
+`nhos.d.ts`.

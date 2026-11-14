@@ -28,17 +28,20 @@ function main() {
     console.error(`No SDK at ${source}; pass the App Library checkout as the first argument.`);
     process.exit(1);
   }
-  for (const dir of ['lib', 'docs', 'examples']) rmSync(join(HERE, dir), { recursive: true, force: true });
+  for (const dir of ['lib', 'docs', 'examples', 'types']) rmSync(join(HERE, dir), { recursive: true, force: true });
   mkdirSync(join(HERE, 'lib'), { recursive: true });
   mkdirSync(join(HERE, 'docs'), { recursive: true });
   mkdirSync(join(HERE, 'examples'), { recursive: true });
+  mkdirSync(join(HERE, 'types'), { recursive: true });
   for (const name of readdirSync(join(source, 'lib')).filter((n) => n.endsWith('.mjs'))) {
     copyFileSync(join(source, 'lib', name), join(HERE, 'lib', name));
   }
   // Beside index.mjs as index.d.mts, TypeScript resolves the SDK's types without allowJs.
   copyFileSync(join(source, 'index.d.ts'), join(HERE, 'lib', 'index.d.mts'));
+  // The app API an app.ts is checked against: completion and the Reference tab read it.
+  copyFileSync(join(source, 'types', 'nhos.d.ts'), join(HERE, 'types', 'nhos.d.ts'));
   copyFileSync(join(library, 'docs', 'authoring.md'), join(HERE, 'docs', 'authoring.md'));
-  for (const app of EXAMPLE_FLOWS) copyFileSync(join(library, 'apps', app, 'app.nhs'), join(HERE, 'examples', `${app}.nhs`));
+  for (const app of EXAMPLE_FLOWS) copyFileSync(join(library, 'apps', app, 'app.ts'), join(HERE, 'examples', `${app}.ts`));
   for (const app of EXAMPLE_READOUTS) copyFileSync(join(library, 'apps', app, 'readout.json'), join(HERE, 'examples', `${app}.readout.json`));
   for (const app of EXAMPLE_PANELS) copyFileSync(join(library, 'apps', app, 'panel.json'), join(HERE, 'examples', `${app}.panel.json`));
   let commit = 'unknown';
@@ -51,7 +54,7 @@ function main() {
   }
   writeFileSync(
     join(HERE, 'SOURCE'),
-    `Vendored from NHOS-App-Library at ${commit}${dirty}: lib/ from sdk/,\ndocs/ from docs/, examples/ from apps/.\nDo not edit these files here: change the library, then run sync.mjs in this folder.\n`,
+    `Vendored from NHOS-App-Library at ${commit}${dirty}: lib/ and types/ from sdk/,\ndocs/ from docs/, examples/ from apps/.\nDo not edit these files here: change the library, then run sync.mjs in this folder.\n`,
   );
   console.log(`Synced SDK from ${source} (${commit}${dirty}) into ${HERE}`);
 }

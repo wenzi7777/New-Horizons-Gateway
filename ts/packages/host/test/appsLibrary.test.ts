@@ -222,11 +222,11 @@ describe('sources', () => {
   it('finds the source beside dist/ and falls back to its cached copy offline', async () => {
     const { entry } = entryFor(flowPackage());
     const { http, library } = setup([entry]);
-    http.serve(`${BASE}/apps/demo/app.nhs`, 'app demo {}\n');
+    http.serve(`${BASE}/apps/demo/app.ts`, 'export const manifest = { id: "demo" };\n');
     const source = await library.fetchSource('demo');
-    expect(source).toMatchObject({ id: 'demo', kind: 'flow', filename: 'app.nhs', source: 'app demo {}\n', package_sha256: entry.package.sha256 });
+    expect(source).toMatchObject({ id: 'demo', kind: 'flow', filename: 'app.ts', source: 'export const manifest = { id: "demo" };\n', package_sha256: entry.package.sha256 });
     http.offline = true;
-    expect((await library.fetchSource('demo')).source).toBe('app demo {}\n');
+    expect((await library.fetchSource('demo')).source).toBe('export const manifest = { id: "demo" };\n');
   });
 
   it('names readout and panel sources by kind and caps their size', async () => {
@@ -274,10 +274,25 @@ describe('validatePackage', () => {
     rejects(m({ permissions: ['task_control'] }), 'permissions_need_a_panel');
   });
 
+  it('takes a flow as its bytecode image, with or without the older node graph', () => {
+    const { nodes: _nodes, ...bare } = flowPackage() as Record<string, unknown>;
+    // "NV\x01\x00..." -- an NHVM/1 image, as the App Library 3.0.0 packages are.
+    const vm = 'TlYBAAAAAAAAAAAA';
+    expect(validatePackage({ ...bare, vm }).nodes).toBe(0);
+    rejects(bare, 'missing_vm');
+    rejects({ ...bare, nodes: [] }, 'missing_vm');
+    rejects({ ...bare, vm: '' }, 'invalid_vm');
+    rejects({ ...bare, vm: 'bm9wZQ==' }, 'invalid_vm'); // "nope"
+    rejects({ ...bare, vm: 'TlYB!!!!' }, 'invalid_vm');
+    rejects({ ...bare, vm: 42 }, 'invalid_vm');
+    // A grant is the device's to check; the package only names what it uses.
+    expect(validatePackage({ ...bare, vm, manifest: { ...flowPackage().manifest, capabilities: ['storage', 'io_uart'] } }).capabilities).toEqual(['storage', 'io_uart']);
+  });
+
   it('checks a flow graph', () => {
     const g = (nodes: unknown) => ({ ...flowPackage(), nodes });
-    rejects(g('x'), 'missing_nodes');
-    rejects(g([]), 'empty_graph');
+    rejects(g('x'), 'invalid_node');
+    rejects(g([]), 'missing_vm');
     rejects(g(Array.from({ length: apps.MAX_NODES + 1 }, () => ({ op: 'total' }))), 'too_many_nodes');
     rejects(g([1]), 'invalid_node');
     rejects(g([{ op: 'eval' }]), 'unknown_op');

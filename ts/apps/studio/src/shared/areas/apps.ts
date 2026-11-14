@@ -104,7 +104,7 @@ export interface AppsAreaApi {
   listProjects(): Promise<StudioProject[]>;
   saveProject(project: StudioProject): Promise<void>;
   deleteProject(projectId: string): Promise<void>;
-  /** Open dialog for a .nhs / .json source; null when cancelled. */
+  /** Open dialog for an app.ts / .json source; null when cancelled. */
   openSourceFile(): Promise<{ name: string; text: string } | null>;
   /** Folder picker, then writes the files into <folder>/<appId>/. Resolves with that folder or null. */
   exportFiles(appId: string, files: ExportFile[]): Promise<string | null>;

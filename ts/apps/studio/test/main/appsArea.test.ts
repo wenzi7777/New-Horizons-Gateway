@@ -58,7 +58,7 @@ beforeEach(() => {
   routes = new Map([
     [`${BASE}/index.json`, { status: 200, body: encode(JSON.stringify({ apps: [{ id: 'demo', version: '1.0.0', icon_url: `${BASE}/apps/demo/icon.svg`, package: { url: `${BASE}/dist/demo/demo-1.0.0.nha`, sha256: PKG_SHA, size: PKG_BYTES.length } }] })) }],
     [`${BASE}/dist/demo/demo-1.0.0.nha`, { status: 200, body: PKG_BYTES }],
-    [`${BASE}/apps/demo/app.nhs`, { status: 200, body: encode('app demo {}\n') }],
+    [`${BASE}/apps/demo/app.ts`, { status: 200, body: encode('app demo {}\n') }],
     [`${BASE}/apps/demo/README.md`, { status: 200, body: encode('# Demo') }],
     [`${BASE}/apps/demo/icon.svg`, { status: 200, body: encode('<svg/>'), headers: { 'content-type': 'text/plain' } }],
   ]);
@@ -76,7 +76,7 @@ describe('projects', () => {
     expect(await h.listProjects!()).toEqual([]);
     await h.saveProject!(project({ origin: { appId: 'demo', version: '1.0.0', packageSha256: 'ab' } }));
     const folderPath = join(dataFolder, 'apps', 'p1');
-    expect(readFileSync(join(folderPath, 'app.nhs'), 'utf8')).toBe('app demo {}\n');
+    expect(readFileSync(join(folderPath, 'app.ts'), 'utf8')).toBe('app demo {}\n');
     expect(JSON.parse(readFileSync(join(folderPath, 'project.json'), 'utf8'))).toEqual({ kind: 'flow', origin: { appId: 'demo', version: '1.0.0', packageSha256: 'ab' }, updatedAt: 5 });
     expect(await h.listProjects!()).toEqual([project({ origin: { appId: 'demo', version: '1.0.0', packageSha256: 'ab' } })]);
     await h.deleteProject!('p1');
@@ -127,21 +127,21 @@ describe('dialogs', () => {
   it('opens a source file, or nothing when cancelled', async () => {
     const h = handlers();
     expect(await h.openSourceFile!()).toBeNull();
-    opened = join(dir, 'tilt.nhs');
-    writeFileSync(opened, 'app tilt {}');
-    expect(await h.openSourceFile!()).toEqual({ name: 'tilt.nhs', text: 'app tilt {}' });
+    opened = join(dir, 'tilt.ts');
+    writeFileSync(opened, 'export const manifest = { id: "tilt" };');
+    expect(await h.openSourceFile!()).toEqual({ name: 'tilt.ts', text: 'export const manifest = { id: "tilt" };' });
   });
 
   it('exports only the App Library file names into <folder>/<appId>/', async () => {
     const h = handlers();
     const files = [
-      { filename: 'app.nhs', content: 'src' },
+      { filename: 'app.ts', content: 'src' },
       { filename: 'app.nha', content: new Uint8Array([1, 2, 3]) },
     ];
     expect(await h.exportFiles!('demo', files)).toBeNull();
     folder = join(dir, 'out');
     expect(await h.exportFiles!('demo', files)).toBe(join(folder, 'demo'));
-    expect(readFileSync(join(folder, 'demo', 'app.nhs'), 'utf8')).toBe('src');
+    expect(readFileSync(join(folder, 'demo', 'app.ts'), 'utf8')).toBe('src');
     expect([...readFileSync(join(folder, 'demo', 'app.nha'))]).toEqual([1, 2, 3]);
     await expect(h.exportFiles!('demo', [{ filename: '../evil.sh', content: 'x' }])).rejects.toThrow('invalid_filename');
     await expect(h.exportFiles!('../demo', files)).rejects.toThrow('invalid_id');
@@ -166,7 +166,7 @@ describe('library', () => {
     expect(catalog.source).toBe('remote');
     expect(await h.libraryApp!('demo')).toMatchObject({ id: 'demo' });
     expect(await h.libraryPackage!('demo')).toMatchObject({ id: 'demo', data_hex: Buffer.from(PKG_BYTES).toString('hex') });
-    expect(await h.librarySource!('demo')).toMatchObject({ filename: 'app.nhs', source: 'app demo {}\n' });
+    expect(await h.librarySource!('demo')).toMatchObject({ filename: 'app.ts', source: 'app demo {}\n' });
     expect(await h.libraryReadme!(`${BASE}/apps/demo/README.md`)).toBe('# Demo');
     expect(await h.libraryReadme!(`${BASE}/apps/demo/missing.md`)).toBeNull();
     expect(await h.libraryIcon!(`${BASE}/apps/demo/icon.svg`)).toBe(`data:image/svg+xml;base64,${Buffer.from('<svg/>').toString('base64')}`);

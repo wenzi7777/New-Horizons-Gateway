@@ -51,7 +51,7 @@ function diagnostic(fields) {
 const WARN_FPS = 120;
 
 /**
- * Analyse a .nhs flow source.
+ * Analyse an app.ts source.
  * @param {string} source
  * @param {{cellCount?: number}} [options]
  * @returns {Analysis}
@@ -79,8 +79,7 @@ export function analyzeFlow(source, options = {}) {
     result.ok = true;
   } catch (error) {
     if (!(error instanceof PackageError)) throw error;
-    const line = error.node !== null && result.report ? result.report.nodeLines[error.node] ?? null : null;
-    result.diagnostics.push(diagnostic({ message: describeCode(error.code), code: error.code, line }));
+    result.diagnostics.push(diagnostic({ message: describeCode(error.code), code: error.code }));
     return result;
   }
 

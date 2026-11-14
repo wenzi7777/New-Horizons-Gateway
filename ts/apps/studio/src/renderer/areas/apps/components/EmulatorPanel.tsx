@@ -18,6 +18,8 @@ import { NumberInput, Select, Slider } from '../../../components/ui';
 
 type Props = {
   analysis: Analysis;
+  /** The app's source: the emit()/event() lines to mark come from it. */
+  source: string;
   target: MatrixTarget;
   targets: MatrixTarget[];
   virtual: VirtualDevice;
@@ -31,11 +33,10 @@ type Shown = { values: number[]; rows: number; cols: number; led: readonly numbe
 const MAX_EVENTS = 60;
 const RENDER_MS = 66;
 
-export function EmulatorPanel({ analysis, target, targets, virtual, onVirtualChange, onSelectTarget, onMarkLines }: Props) {
+export function EmulatorPanel({ analysis, source, target, targets, virtual, onVirtualChange, onSelectTarget, onMarkLines }: Props) {
   const t = useAppsT();
   const { api } = useStudio();
   const pkg = analysis.kind === 'flow' && analysis.ok ? (analysis.package as Record<string, unknown>) : null;
-  const nodeLines = analysis.report?.nodeLines ?? [];
   const [running, setRunning] = useState(true);
   const [events, setEvents] = useState<SimEvent[]>([]);
   const [shown, setShown] = useState<Shown | null>(null);
@@ -87,7 +88,7 @@ export function EmulatorPanel({ analysis, target, targets, virtual, onVirtualCha
     state.at = now;
     const fresh = state.events.splice(0);
     if (fresh.length) setEvents((current) => [...fresh.reverse(), ...current].slice(0, MAX_EVENTS));
-    if (pkg) onMarkLines(linesForEvents(pkg, nodeLines, fresh));
+    if (pkg) onMarkLines(linesForEvents(source, fresh));
     setShown({ values: Array.from(state.last.values as ArrayLike<number>), rows: state.last.rows, cols: state.last.cols, led: sim.led, oled: sim.oledRows(), strip: stripCount ? sim.extLeds(stripCount) : null, frames: sim.frames });
   };
 

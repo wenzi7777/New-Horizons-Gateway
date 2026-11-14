@@ -12,5 +12,8 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "vite.config.ts", "scripts"]
+  "include": ["src", "test", "vite.config.ts", "scripts"],
+  // app.ts examples and their API declare device globals (on, event, led...)
+  // that would leak into the app; they are checked in the App Library.
+  "exclude": ["src/renderer/areas/apps/sdk/examples", "src/renderer/areas/apps/sdk/types"]
 }

@@ -31,11 +31,12 @@ describe.skipIf(!hasLibrary)('the vendored SDK matches NHOS-App-Library (run sdk
       expect(readFileSync(join(VENDORED, 'lib', name), 'utf8'), name).toBe(readFileSync(join(LIBRARY, 'sdk', 'lib', name), 'utf8'));
     }
     expect(readFileSync(join(VENDORED, 'lib', 'index.d.mts'), 'utf8')).toBe(readFileSync(join(LIBRARY, 'sdk', 'index.d.ts'), 'utf8'));
+    expect(readFileSync(join(VENDORED, 'types', 'nhos.d.ts'), 'utf8')).toBe(readFileSync(join(LIBRARY, 'sdk', 'types', 'nhos.d.ts'), 'utf8'));
   });
 
   it('the authoring guide and the example apps are identical', () => {
     const copies: [string, string][] = [['docs/authoring.md', join(LIBRARY, 'docs', 'authoring.md')]];
-    for (const app of EXAMPLE_FLOWS as string[]) copies.push([`examples/${app}.nhs`, join(LIBRARY, 'apps', app, 'app.nhs')]);
+    for (const app of EXAMPLE_FLOWS as string[]) copies.push([`examples/${app}.ts`, join(LIBRARY, 'apps', app, 'app.ts')]);
     for (const app of EXAMPLE_READOUTS as string[]) copies.push([`examples/${app}.readout.json`, join(LIBRARY, 'apps', app, 'readout.json')]);
     for (const app of EXAMPLE_PANELS as string[]) copies.push([`examples/${app}.panel.json`, join(LIBRARY, 'apps', app, 'panel.json')]);
     expect(readdirSync(join(VENDORED, 'examples')).sort()).toEqual(copies.slice(1).map(([name]) => name.slice('examples/'.length)).sort());
@@ -45,7 +46,7 @@ describe.skipIf(!hasLibrary)('the vendored SDK matches NHOS-App-Library (run sdk
   it('compiles every library app to its published bytes', () => {
     const appsDir = join(LIBRARY, 'apps');
     for (const id of readdirSync(appsDir)) {
-      const source = join(appsDir, id, 'app.nhs');
+      const source = join(appsDir, id, 'app.ts');
       if (!existsSync(source)) continue;
       const analysis = sdk.analyzeFlow(readFileSync(source, 'utf8'));
       expect(analysis.ok, `${id}: ${JSON.stringify(analysis.diagnostics)}`).toBe(true);

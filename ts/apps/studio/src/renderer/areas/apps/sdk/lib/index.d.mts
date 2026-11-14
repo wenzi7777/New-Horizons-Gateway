@@ -40,6 +40,10 @@ export const OLED_LABEL_RE: RegExp;
 export const MAX_EXT_LEDS: number;
 /** v1.6.0: the oldest firmware that honours each capability (it would otherwise be silently ignored) */
 export const CAPABILITY_SINCE: Readonly<Record<string, string>>;
+/** v2.1.0: capabilities an install must ask the operator for (`app_install` `grant`) */
+export const DANGEROUS_CAPABILITIES: readonly string[];
+/** v2.1.0: capabilities only some boards have, by capability -> board names */
+export const BOARD_CAPABILITIES: Readonly<Record<string, readonly string[]>>;
 /** v1.6.0: the oldest firmware that honours each optional node field */
 export const FIELD_SINCE: Readonly<Record<string, string>>;
 /** `rel` bit: a region's rows are percentages */
@@ -141,12 +145,6 @@ export namespace panelset {
 
 // --- packages ------------------------------------------------------------------
 
-export interface FlowNode {
-  op: string;
-  in?: number | number[];
-  [field: string]: unknown;
-}
-
 export interface Manifest {
   id: string;
   name: string;
@@ -163,12 +161,22 @@ export interface Manifest {
   [field: string]: unknown;
 }
 
+/** A stateful object or top-level `let` of an app.ts, in node-table order. */
+export interface AppSymbol {
+  name: string;
+  /** the class (Threshold, Counter, ...) or "let" */
+  kind: string;
+  type: "number" | "boolean";
+}
+
 export interface FlowPackage {
   nhapp: 1;
   kind: "flow";
   name: string;
   manifest: Manifest;
-  nodes: FlowNode[];
+  /** base64 NHVM/1 image (docs/vm.md) */
+  vm: string;
+  symbols: AppSymbol[];
 }
 
 export interface ReadoutPackage {
@@ -202,62 +210,58 @@ export class CompileError extends Error {
 }
 
 export interface Token {
-  kind: "string" | "semver" | "number" | "range" | "name" | "op" | "eof";
+  kind: "name" | "number" | "string" | "punct" | "eof";
   text: string;
+  value?: number | string;
   line: number;
   col: number;
   endCol: number;
 }
 
+/** The app.ts lexer; comments and whitespace are dropped. */
 export function tokenize(source: string): Token[];
 
+/** What an editor needs to highlight and complete app.ts. */
 export const LANGUAGE: {
-  readonly statements: readonly string[];
+  readonly name: string;
+  readonly extension: string;
   readonly keywords: readonly string[];
-  readonly headerFields: readonly string[];
-  readonly functions: readonly string[];
+  /** on("...") event names */
+  readonly events: readonly string[];
+  /** top-level names: functions and namespaces */
+  readonly globals: readonly string[];
+  /** classes an app may construct */
+  readonly classes: readonly string[];
+  /** members by namespace or class */
+  readonly members: Readonly<Record<string, readonly string[]>>;
   readonly featureFields: readonly string[];
-  readonly imuFields: readonly string[];
-  readonly magFields: readonly string[];
-  readonly colours: readonly string[];
+  readonly deviceConfigKeys: readonly string[];
 };
-
-export interface Region {
-  r0: number;
-  c0: number;
-  r1: number;
-  c1: number;
-  /** REL_ROWS / REL_COLS bits: which bounds are percentages (0 for an absolute region) */
-  rel: number;
-  line: number;
-}
 
 export interface Note {
   message: string;
-  line: number;
-  col: number;
+  line: number | null;
+  col: number | null;
 }
 
 export interface CompileReport {
-  nodes: number;
-  /** nodes saved by sharing identical subexpressions */
-  reused: number;
-  /** worst-case cost per frame at `cellCount` */
-  estimatedUs: number;
+  codeBytes: number;
+  /** arena slots (4 bytes each): objects, globals, arrays, native state */
+  arenaSlots: number;
+  /** bytes the image takes from the device's app pool */
+  poolBytes: number;
+  maxStack: number;
+  /** true when no handler has a loop, so a worst case is known */
+  loopFree: boolean;
+  /** worst-case microseconds per run at `cellCount`, null with a loop */
+  estimatedUs: number | null;
   cellCount: number;
-  memoryBytes: number;
-  windowFloats: number;
   minOs: string;
+  capabilities: string[];
+  /** the capabilities an install must ask for */
+  dangerous: string[];
   notes: Note[];
-  /** most expensive first */
-  breakdown: { index: number; op: string; us: number }[];
-  /** source line that produced each node */
-  nodeLines: number[];
-  regions: Record<string, Region>;
-  /** signal name -> node index */
-  signals: Record<string, number>;
-  /** event name -> boolean node index */
-  events: Record<string, number>;
+  symbols: AppSymbol[];
 }
 
 export function compileSource(source: string, options?: { cellCount?: number }): { package: FlowPackage; report: CompileReport };
@@ -282,10 +286,15 @@ export interface PackageReport {
   version: string;
   /** canonical bytes */
   size: number;
+  /** entries in the image's node table */
   nodes: number;
+  /** worst case; 0 when the code has a loop */
   estimatedUs: number;
   memoryBytes: number;
   minOs: string;
+  loopFree?: boolean;
+  vmBytes?: number;
+  poolBytes?: number;
   budgetUs?: number;
   cellCount?: number;
   windowFloats?: number;
@@ -297,15 +306,6 @@ export interface PackageReport {
 }
 
 export function validateManifest(manifest: Record<string, unknown>): void;
-export function validateGraph(nodes: unknown, manifest: Record<string, unknown>, options?: ValidateOptions): {
-  nodes: number;
-  estimatedUs: number;
-  budgetUs: number;
-  cellCount: number;
-  memoryBytes: number;
-  windowFloats: number;
-  minOs: string;
-};
 export function validateReadout(readout: unknown): { sources: number; sections: number; refreshMs: number };
 export function validatePanel(panel: unknown, manifest: Record<string, unknown>): {
   sources: number; sections: number; refreshMs: number; actions: number; permissions: string[];
@@ -365,7 +365,7 @@ export interface OledRow {
   kind: "text" | "bar";
   label: string;
   value: number;
-  /** the node that drew it */
+  /** the node-table entry whose state drew it, -1 for a call site */
   node: number;
   /** the whole row, for a text row (OLED_COLS characters) */
   text?: string;
@@ -373,16 +373,54 @@ export interface OledRow {
 }
 
 export interface NodeValue {
+  /** the source name, from the package's symbols */
+  name: string;
   op: string;
   result: number;
   bool: boolean;
-  skipped: boolean;
 }
 
-export class Simulator {
-  constructor(pkg: Record<string, any>, options?: { appName?: string; restore?: Record<number, number> });
-  readonly nodes: FlowNode[];
+/** The device's side of storage, settings, streaming, I2C and UART, simulated. */
+export class SimDevice {
+  constructor(options?: { uartLoopback?: boolean; i2c?: Record<number, number[]> });
+  /** current device settings an app may change */
+  readonly config: Record<string, number>;
+  readonly streaming: boolean;
+  readonly uartBaud: number;
+  /** bytes apps wrote to the UART */
+  readonly uartTx: number[];
+  /** store.get/set values of one app */
+  valuesOf(app: string): Map<string, number>;
+  /** store.append files of one app, by name */
+  filesOf(app: string): Map<string, { bytes: number; rows: string[] }>;
+  /** a file's CSV text, as /appdata/<app>/<file>.csv holds it */
+  fileText(app: string, file: string): string;
+  usedBytes(app: string): number;
+  /** undo what `app` changed (settings, stream, UART), as the device does when it stops */
+  release(app: string): void;
+}
+
+/** Delivers app.publish() between simulators. */
+export class SimBus {
+  constructor();
+}
+
+export interface SimulatorOptions {
+  appName?: string;
+  /** persisted counters to start from, by node index */
+  restore?: Record<number, number>;
+  /** fuel one call may spend before the handler is suspended (default: unlimited) */
+  fuelLimit?: number;
+  device?: SimDevice;
+  bus?: SimBus;
+}
+
+/** Runs a package's NHVM/1 image, as the device does. */
+export class VmSimulator {
+  constructor(pkg: Record<string, any>, options?: SimulatorOptions);
   readonly appName: string;
+  readonly symbols: AppSymbol[];
+  readonly device: SimDevice;
   readonly canEmit: boolean;
   readonly canDriveLed: boolean;
   readonly canDisplay: boolean;
@@ -392,32 +430,43 @@ export class Simulator {
   readonly canDriveExtLed: boolean;
   readonly events: SimEvent[];
   readonly ledChanges: LedChange[];
-  /** the LED colour the graph is driving now */
+  /** the LED colour the app is driving now */
   readonly led: readonly [number, number, number];
+  /** a Features object's fields, zero without one */
   readonly features: Record<string, number>;
+  /** true when the app reads the matrix per cell */
+  readonly sweeps: boolean;
   readonly frames: number;
-  /** evaluations the background tick drove */
+  /** idle runs the tick drove */
   readonly ticks: number;
+  /** the fault that stopped the app (array_bounds, ...), null while it runs */
+  readonly fault: string | null;
+  /** frames that arrived while a handler was suspended */
+  readonly framesSkipped: number;
+  readonly messagesDropped: number;
   readonly degraded: boolean;
   readonly degradations: number;
-  budgetLoad: number;
-  graceLeft: number;
   /** forget all state, as a fresh load on the device would */
   reset(): void;
   /** latch budget pressure, as a Budget event does on the device */
   setBudget(load: number, graceLeft: number): void;
-  /** evaluate one frame; returns the events it produced */
+  /** run the frame handler; returns the events it produced */
   step(frame: Frame): SimEvent[];
   run(frames: Iterable<Frame>): this;
+  /** every stateful object and global, by node-table order */
   nodeValues(): NodeValue[];
-  /** a short press of the action button, true for one frame, then false for one */
-  pressButton(): void;
+  /** a short press of the action button */
+  pressButton(nowMs?: number): void;
   /** what battery() reads from now on: percent, or -1 for no gauge reading */
   setBattery(percent: number): void;
   /** what linked() reads from now on */
   setLinked(linked: boolean): void;
-  /** the device's 10 Hz tick: evaluates a `tick` graph only while frames are absent */
+  /** the device's 10 Hz tick: runs on("tick"), and on("idle") while frames are absent */
   tick(nowMs: number, sensors?: { imu?: ArrayLike<number>; mag?: ArrayLike<number>; battery?: number; linked?: boolean }): SimEvent[];
+  /** queue a message, as another app's app.publish() would */
+  enqueueMessage(topic: string, value: number): void;
+  /** run on("stop") and undo what the app changed on the device */
+  stop(nowMs: number): SimEvent[];
   /** persisted counters by node index, as the device writes them to NVS */
   persisted(): Record<number, number>;
   /** the OLED rows the last frame drew, null where it drew nothing */
@@ -427,6 +476,10 @@ export class Simulator {
   /** the strip as a board of `count` external pixels shows it (before brightness), null without `drive_ext_led` */
   extLeds(count: number): [number, number, number][] | null;
 }
+
+/** The name the emulators and older callers use. */
+export const Simulator: typeof VmSimulator;
+export type Simulator = VmSimulator;
 
 export interface ExtLedFrame {
   meter: { value: number; lo: number; hi: number } | null;
@@ -442,7 +495,30 @@ export function computeFeatures(frame: Frame): Record<string, number>;
 export function formatOledValue(value: number, digits: number): string;
 export function formatOledTextLine(label: string, value: number, digits: number): string;
 export function oledBarGeometry(labelLen: number, value: number, lo: number, hi: number): OledBarGeometry;
-export function simulate(pkg: Record<string, any>, frames: Iterable<Frame>, options?: { appName?: string }): Simulator;
+export function simulate(pkg: Record<string, any>, frames: Iterable<Frame>, options?: SimulatorOptions): VmSimulator;
+
+// --- the VM --------------------------------------------------------------------
+
+export const VM_TS_MIN_OS: string;
+/** settings device.configSet may change */
+export const VM_DEVICE_CONFIG_KEYS: readonly string[];
+/** bytes of files each app may keep */
+export const VM_STORE_QUOTA_BYTES: number;
+export class VmImageError extends Error {
+  readonly code: string;
+}
+export interface VmVerified {
+  loopFree: boolean;
+  estimatedNs: number;
+  maxStack: number;
+  poolBytes: number;
+  capabilities: number;
+}
+export function verifyImage(bytes: Uint8Array, options?: { capabilities?: readonly string[] | number; cellCount?: number }): VmVerified;
+export function disassemble(bytes: Uint8Array): string;
+export function fromBase64(text: string): Uint8Array;
+/** the 32-bit FNV-1a hash the device matches keys and topics with */
+export function fnv1a(text: string): number;
 
 // --- recordings ----------------------------------------------------------------
 

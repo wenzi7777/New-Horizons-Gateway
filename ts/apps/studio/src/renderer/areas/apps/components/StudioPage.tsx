@@ -1,5 +1,5 @@
-// App Studio (the Desktop's SdkPage): projects on the left, the editor (.nhs
-// with the nhs language, or JSON) in the middle, Build / Emulator / Reference
+// App Studio (the Desktop's SdkPage): projects on the left, the editor (app.ts
+// with the NHOS TypeScript subset, or JSON) in the middle, Build / Emulator / Reference
 // on the right. Projects are files under <dataFolder>/apps/<project>/, saved
 // by the main process shortly after each edit; sources open through a file
 // dialog and the App Library, and leave through Export or Install.
@@ -67,7 +67,7 @@ function templateFor(kind: SdkKind): (appId: string, author: string) => string {
   return kind === 'flow' ? flowTemplate : kind === 'panel' ? panelTemplate : readoutTemplate;
 }
 
-const KIND_LABEL: Record<SdkKind, string> = { flow: '.nhs', readout: 'readout', panel: 'panel' };
+const KIND_LABEL: Record<SdkKind, string> = { flow: 'app.ts', readout: 'readout', panel: 'panel' };
 
 export default function StudioPage({ projectId, go }: { projectId: string | null; go: (path: string[]) => void }) {
   const t = useAppsT();
@@ -321,7 +321,7 @@ export default function StudioPage({ projectId, go }: { projectId: string | null
             ref={editorRef}
             docKey={active.id}
             value={active.source}
-            language={active.kind === 'flow' ? 'nhs' : 'json'}
+            language={active.kind === 'flow' ? 'ts' : 'json'}
             diagnostics={current ? analysis.diagnostics : []}
             symbols={lastGoodReport.current}
             markedLines={tab === 'emulator' ? markedLines : undefined}
@@ -339,7 +339,7 @@ export default function StudioPage({ projectId, go }: { projectId: string | null
             ))}
           </div>
           {tab === 'build' ? <BuildPanel project={active} analysis={analysis} target={target} onRevealLine={(line) => editorRef.current?.revealLine(line)} onSourceChange={updateSource} go={go} /> : null}
-          {tab === 'emulator' ? <EmulatorPanel key={active.id} analysis={analysis} target={target} targets={targets} virtual={virtual} onVirtualChange={setVirtual} onSelectTarget={selectTarget} onMarkLines={markLines} /> : null}
+          {tab === 'emulator' ? <EmulatorPanel key={active.id} analysis={analysis} source={active.source} target={target} targets={targets} virtual={virtual} onVirtualChange={setVirtual} onSelectTarget={selectTarget} onMarkLines={markLines} /> : null}
           {tab === 'reference' ? <ReferencePanel kind={active.kind} /> : null}
         </section>
       </div>

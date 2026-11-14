@@ -200,6 +200,10 @@ export const APP_ERROR_KEYS: Record<string, string> = {
   needs_update: "appError_needs_update",
   app_pool_exhausted: "appError_app_pool_exhausted",
   path_too_long: "appError_path_too_long",
+  capability_not_granted: "appError_capability_not_granted",
+  capability_unsupported: "appError_capability_unsupported",
+  missing_vm: "appError_graph_invalid",
+  invalid_vm: "appError_graph_invalid",
 };
 
 /** Device errors are `code` or `code:detail`; match on the code alone. */

@@ -4,12 +4,12 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import * as project from '../../src/renderer/areas/apps/lib/sdkProject';
-import * as language from '../../src/renderer/areas/apps/lib/nhsLanguage';
+import * as language from '../../src/renderer/areas/apps/lib/appLanguage';
+import * as emulator from '../../src/renderer/areas/apps/lib/sdkEmulator';
 import * as sdk from '../../src/renderer/areas/apps/sdk/lib/index.mjs';
 import * as state from '@codemirror/state';
 
-const modules = Promise.resolve({ project, language, sdk, state });
-
+const modules = Promise.resolve({ project, language, emulator, sdk, state });
 
 test("both new-app templates are accepted by the device as written", async () => {
   // An author's first sight of the SDK must not be an error.
@@ -21,7 +21,7 @@ test("both new-app templates are accepted by the device as written", async () =>
   assert.equal(readout.ok, true, JSON.stringify(readout.diagnostics));
 });
 
-test("an author name the lexer would split is made into one word", async () => {
+test("an author name with spaces is made into one word", async () => {
   const { project, sdk } = await modules;
   const analysis = sdk.analyzeFlow(project.flowTemplate("my_app", "Jane Doe"));
   assert.equal(analysis.ok, true, JSON.stringify(analysis.diagnostics));
@@ -30,7 +30,9 @@ test("an author name the lexer would split is made into one word", async () => {
 
 test("the app id is read without compiling, from either kind", async () => {
   const { project } = await modules;
-  assert.equal(project.appIdOf({ kind: "flow", source: "# hi\napp heel_strike {\n}" }), "heel_strike");
+  assert.equal(project.appIdOf({ kind: "flow", source: '// hi\nexport const manifest = {\n  id: "heel_strike",\n} as const;' }), "heel_strike");
+  // Single quotes are TypeScript too.
+  assert.equal(project.appIdOf({ kind: "flow", source: "export const manifest = { name: 'x', id: 'grip' }" }), "grip");
   assert.equal(project.appIdOf({ kind: "readout", source: '{"manifest": {"id": "sysmon"}}' }), "sysmon");
   // A readout mid-edit is not valid JSON; the id is still found.
   assert.equal(project.appIdOf({ kind: "readout", source: '{"manifest": {"id": "sysmon", ' }), "sysmon");
@@ -39,8 +41,8 @@ test("the app id is read without compiling, from either kind", async () => {
 test("new drafts get an id no other draft uses", async () => {
   const { project } = await modules;
   const drafts = [
-    { kind: "flow", source: "app my_app {}" },
-    { kind: "flow", source: "app my_app2 {}" },
+    { kind: "flow", source: 'export const manifest = { id: "my_app" };' },
+    { kind: "flow", source: 'export const manifest = { id: "my_app2" };' },
   ];
   assert.equal(project.freshAppId(drafts), "my_app3");
   assert.equal(project.freshAppId([]), "my_app");
@@ -48,7 +50,9 @@ test("new drafts get an id no other draft uses", async () => {
 
 test("opened files are recognised by name and content", async () => {
   const { project } = await modules;
-  assert.equal(project.kindOfFile("app.nhs", "anything"), "flow");
+  assert.equal(project.kindOfFile("app.ts", "anything"), "flow");
+  // The old declarative language is gone: its files are not opened.
+  assert.equal(project.kindOfFile("app.nhs", "app x {}"), null);
   assert.equal(project.kindOfFile("readout.json", '{"kind": "readout"}'), "readout");
   // A .nha is a compiled package, not a source: there is nothing to edit.
   assert.equal(project.kindOfFile("app.nha", '{"kind": "flow"}'), null);
@@ -60,16 +64,31 @@ test("export carries the exact bytes the library build would publish", async () 
   const draft = project.newProject("flow", project.flowTemplate("my_app", "jane"));
   const analysis = sdk.analyzeFlow(draft.source);
   const files = project.exportFiles(draft, analysis);
-  assert.deepEqual(files.map((file) => file.filename), ["app.nhs", "app.nha", "meta.json", "README.md"]);
+  assert.deepEqual(files.map((file) => file.filename), ["app.ts", "app.nha", "meta.json", "README.md"]);
   assert.deepEqual(files[1].content, analysis.bytes);
   assert.equal(new TextDecoder().decode(files[1].content), sdk.canonicalText(analysis.package));
   const meta = JSON.parse(files[2].content);
   assert.deepEqual(Object.keys(meta.name), ["en", "ja", "zh-CN"]);
+  // The package carries code, not a node list: events come from the source.
+  assert.match(files[3].content, /## Events\n\n- `pressed`/);
+  assert.ok(!files[3].content.includes("## Asks at install"));
+});
+
+test("the README lists what an app asks the operator for", async () => {
+  const { project, sdk } = await modules;
+  const source = project.flowTemplate("logger", "jane").replace(
+    'event("pressed", down);',
+    'event("pressed", down);\n  if (pressed.rose) store.append("taps", front.sum());',
+  );
+  const analysis = sdk.analyzeFlow(source);
+  assert.equal(analysis.ok, true, JSON.stringify(analysis.diagnostics));
+  const readme = project.exportFiles(project.newProject("flow", source), analysis).find((file) => file.filename === "README.md").content;
+  assert.match(readme, /## Asks at install\n\n- `storage`/);
 });
 
 test("nothing is exported while the device would refuse the app", async () => {
   const { project, sdk } = await modules;
-  const draft = project.newProject("flow", project.flowTemplate("my_app", "jane").replace("led green", "led purple"));
+  const draft = project.newProject("flow", project.flowTemplate("my_app", "jane").replace("Color.Green", "Color.Purple"));
   const analysis = sdk.analyzeFlow(draft.source);
   assert.equal(analysis.ok, false);
   assert.deepEqual(project.exportFiles(draft, analysis), []);
@@ -142,9 +161,9 @@ test("the runtime share shrinks as more apps run", async () => {
 
 test("diagnostics land on the characters the compiler pointed at", async () => {
   const { language, state } = await modules;
-  const doc = state.Text.of(["app x {", "}", "signal a = nope"]);
+  const doc = state.Text.of(["export const manifest = {", "} as const;", "let a = nope;"]);
   const [diagnostic] = language.toCmDiagnostics(doc, [
-    { severity: "error", message: "unknown value 'nope'", line: 3, col: 12, endCol: 16, code: null },
+    { severity: "error", message: "unknown name 'nope'", line: 3, col: 9, endCol: 13, code: null },
   ]);
   assert.equal(doc.sliceString(diagnostic.from, diagnostic.to), "nope");
   // An error with no place in the source still shows, on the first line.
@@ -154,12 +173,57 @@ test("diagnostics land on the characters the compiler pointed at", async () => {
   assert.equal(whole.from, 0);
 });
 
-test("every function the language has is documented in the editor", async () => {
-  // Completion and the Reference tab both read these; a function added to the
-  // SDK without a line here would show up blank in both.
+test("every name the language has is documented in the editor", async () => {
+  // Completion and the Reference tab both read nhos.d.ts; a name the
+  // compiler knows but the declarations miss would show up blank in both.
+  // Math and Float32Array are standard JavaScript.
   const { language, sdk } = await modules;
-  const missing = sdk.LANGUAGE.functions.filter((name) => !language.functionDoc(name)?.info);
+  const L = sdk.LANGUAGE;
+  const standard = new Set(["Math", "Float32Array"]);
+  const missing = [
+    ...L.globals.filter((name) => !standard.has(name) && !language.apiEntry(name)
+      && !(L.members[name] ?? []).some((member) => language.apiEntry(`${name}.${member}`))),
+    ...L.classes.filter((name) => !standard.has(name) && !language.apiEntry(name)),
+    ...Object.entries(L.members).filter(([owner]) => !standard.has(owner))
+      .flatMap(([owner, members]) => members.filter((member) => !language.apiEntry(`${owner}.${member}`)).map((member) => `${owner}.${member}`)),
+  ];
   assert.deepEqual(missing, []);
+});
+
+test("the reference marks what needs the operator's consent, and only that", async () => {
+  const { language, sdk } = await modules;
+  const asks = language.API_REFERENCE.flatMap((section) => section.entries).filter((entry) => entry.ask).map((entry) => entry.name.split(".")[0]);
+  assert.deepEqual([...new Set(asks)].sort(), ["device", "i2c", "store", "uart"]);
+  assert.equal(language.apiEntry("app.publish").ask, false);
+  // The library's own first section is for the type checker, not authors.
+  assert.equal(language.API_REFERENCE.some((section) => /typescript/i.test(section.title)), false);
+  assert.equal(language.apiEntry("Threshold").signature, "new Threshold(on: number, hysteresis?: number)");
+  assert.ok(sdk.DANGEROUS_CAPABILITIES.includes("io_uart"));
+});
+
+test("regions are outlined where the device resolves them", async () => {
+  const { emulator } = await modules;
+  const source = [
+    "const front = new Region({ rows: [0, 6], cols: [0, 14] });",
+    "// const ghost = new Region({ rows: [1, 1] });",
+    "const heel = new Region({ rows: [50, 100], cols: [0, 100], percent: true });",
+    "const band = new Region({ cols: [2, 3] });",
+  ].join("\n");
+  assert.deepEqual(emulator.regionsOf(source, 15, 15), {
+    front: { r0: 0, r1: 6, c0: 0, c1: 14 },
+    // floor(50% of 15) .. ceil(100% of 15) - 1, as flowmath.resolveSpan.
+    heel: { r0: 7, r1: 14, c0: 0, c1: 14 },
+    band: { r0: 0, r1: 14, c0: 2, c1: 3 },
+  });
+});
+
+test("the editor marks the emit or event call that fired", async () => {
+  const { emulator, project } = await modules;
+  const source = project.flowTemplate("my_app", "jane");
+  const line = source.split("\n").findIndex((text) => text.includes('event("pressed"')) + 1;
+  assert.deepEqual([...emulator.linesForEvents(source, [{ event: "pressed" }])], [line]);
+  assert.deepEqual([...emulator.linesForEvents(source, [{ event: "other" }])], []);
+  assert.deepEqual(project.emittedEvents('emit("a", 1); // emit("b", 2)\nevent("a", x); event(\'c\', y);'), ["a", "c"]);
 });
 
 test("manifest fields read and write back in a flow app", async () => {
@@ -179,7 +243,7 @@ test("manifest fields read and write back in a flow app", async () => {
   const analysis = sdk.analyzeFlow(source);
   assert.equal(analysis.ok, true, JSON.stringify(analysis.diagnostics));
   assert.equal(analysis.package.manifest.author, "Nick_Xu");
-  assert.ok(source.includes("led green when pressed"));
+  assert.ok(source.includes("led.set(Color.Green, down);"));
 });
 
 test("manifest fields read and write back in a readout", async () => {
@@ -213,7 +277,7 @@ test("panel drafts survive a reload and open, export and switch kind as panels",
   assert.equal(project.viewKindOfSource('{"kind": "pan'), null);
   assert.equal(project.sourceFilename("panel"), "panel.json");
   assert.equal(project.sourceFilename("readout"), "readout.json");
-  assert.equal(project.sourceFilename("flow"), "app.nhs");
+  assert.equal(project.sourceFilename("flow"), "app.ts");
   assert.equal(project.isViewKind("panel"), true);
   assert.equal(project.isViewKind("flow"), false);
   assert.equal(project.appIdOf({ kind: "panel", source: '{"manifest": {"id": "sysmon"}}' }), "sysmon");

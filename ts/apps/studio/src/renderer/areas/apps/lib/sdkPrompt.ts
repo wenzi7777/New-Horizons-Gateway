@@ -9,48 +9,40 @@
 // English instructions best, and are told to answer in the user's language.
 
 import authoringGuide from "../sdk/docs/authoring.md?raw";
-import matViewExample from "../sdk/examples/mat_view.nhs?raw";
+import matViewExample from "../sdk/examples/mat_view.ts?raw";
 import sensorsExample from "../sdk/examples/sensors.readout.json?raw";
-import stepsExample from "../sdk/examples/steps.nhs?raw";
+import stepsExample from "../sdk/examples/steps.ts?raw";
 import sysmonPanelExample from "../sdk/examples/sysmon.panel.json?raw";
-import tiltExample from "../sdk/examples/tilt.nhs?raw";
+import tiltExample from "../sdk/examples/tilt.ts?raw";
+import nhosTypes from "../sdk/types/nhos.d.ts?raw";
 import {
-  CAPABILITIES,
+  BOARD_CAPABILITIES,
   CELL_OP_NS_PER_CELL,
+  DANGEROUS_CAPABILITIES,
   DEFAULT_BUDGET_US,
   FEATURES_NS_PER_CELL,
-  FEATURE_FIELDS,
-  IMU_FIELDS,
   LANGUAGE,
-  LED_COLOURS,
-  MAG_FIELDS,
   MAX_APP_ID,
   MAX_DEBOUNCE_MS,
   MAX_EVENT_NAME,
   MAX_EXT_LEDS,
-  MAX_NODES,
   MAX_OLED_DIGITS,
   MAX_OLED_LABEL,
   MAX_PACKAGE_BYTES,
   MAX_PENDING_PRESSES,
   MAX_REGION_INDEX,
   MAX_REL_PERCENT,
-  MAX_WINDOW,
   OLED_COLS,
   OLED_ROWS,
-  OPS,
   PERSIST_INTERVAL_MS,
   PRESSURE_ACTIVE_THRESHOLD,
   PRESSURE_FULL_SCALE,
-  SCALAR_OP_NS,
-  TICK_FALLBACK_MS,
   TICK_PERIOD_MS,
-  WINDOW_POOL,
+  VM_STORE_QUOTA_BYTES,
   panelset,
   readoutset,
   type Diagnostic,
 } from "../sdk/lib/index.mjs";
-import { STATEMENT_FORMS, functionDoc } from "./nhsLanguage";
 import { MAX_PANEL_ACTIONS, MAX_PANEL_TABS, PANEL_PERMISSIONS } from "./panelRules";
 import type { BoardSpec, SdkKind } from "./sdkProject";
 
@@ -61,7 +53,7 @@ export const READOUT_SECTION_FORMS: readonly (readonly [kind: string, form: stri
   ["chart", '{ "kind": "chart", "title": "…", "source": "…", "points": 60, "min", "max", "series": [{ "label", "field" }] }'],
 ];
 
-/** The flow examples quoted in a prompt, as vendored from the App Library's apps/. */
+/** The app.ts examples quoted in a prompt, as vendored from the App Library's apps/. */
 export const FLOW_EXAMPLES: readonly { id: string; source: string }[] = [
   { id: "steps", source: stepsExample },
   { id: "tilt", source: tiltExample },
@@ -161,83 +153,70 @@ function targetSection(kind: SdkKind, target: PromptTarget): string {
   }
   lines.push(
     `Pressure matrix: ${target.rows} rows x ${target.cols} columns (${cells} cells), rows 0..${target.rows - 1}, columns 0..${target.cols - 1}. `
-      + "Prefer percent regions (`rows 0%..50%`) so the app also fits other matrices.",
+      + "Prefer percent regions (`new Region({ rows: [0, 50], percent: true })`) so the app also fits other matrices.",
   );
   lines.push(
     `Cell values run 0..${PRESSURE_FULL_SCALE}; a cell at or above ${PRESSURE_ACTIVE_THRESHOLD} counts as in contact. `
       + "Thresholds on sums grow with the region's size: say in a comment that they need tuning.",
   );
   lines.push(
-    `Cost on this matrix: each sweep (sum, total, peak, active, centroids, ...) is about ${((CELL_OP_NS_PER_CELL * cells) / 1000).toFixed(1)} µs, `
-      + `one features sweep ${((FEATURES_NS_PER_CELL * cells) / 1000).toFixed(1)} µs, any scalar node ${(SCALAR_OP_NS / 1000).toFixed(1)} µs; `
-      + `the whole graph must stay within ${DEFAULT_BUDGET_US} µs per frame.`,
+    `Cost on this matrix: each matrix sweep (\`matrix.total()\`, \`Region.sum()\`, peaks, centroids, ...) is about ${((CELL_OP_NS_PER_CELL * cells) / 1000).toFixed(1)} µs, `
+      + `one \`Features.update()\` ${((FEATURES_NS_PER_CELL * cells) / 1000).toFixed(1)} µs; `
+      + `a loop-free frame handler must stay within ${DEFAULT_BUDGET_US} µs per frame.`,
   );
   if (board) {
     lines.push(board.oled
-      ? `OLED: yes, ${OLED_ROWS} rows (0..${OLED_ROWS - 1}) of ${OLED_COLS} characters; \`show\` and \`bar\` draw on it.`
-      : "OLED: none. `show` and `bar` compile but nothing displays them on this board; do not rely on them.");
+      ? `OLED: yes, ${OLED_ROWS} rows (0..${OLED_ROWS - 1}) of ${OLED_COLS} characters; \`oled.text\` and \`oled.bar\` draw on it.`
+      : "OLED: none. `oled.text` and `oled.bar` compile but nothing displays them on this board; do not rely on them.");
     lines.push(board.button
-      ? `Action button: yes. \`button()\` is true for one frame per short press (up to ${MAX_PENDING_PRESSES} presses queue).`
-      : "Action button: none. `button()` never fires on this board.");
+      ? `Action button: yes. \`button.pressed()\` is true for one run per short press (up to ${MAX_PENDING_PRESSES} presses queue), or use \`on("button", ...)\`.`
+      : "Action button: none. `button.pressed()` never fires on this board.");
     lines.push(board.externalLeds > 0
-      ? `External LED strip: ${board.externalLeds} pixels (\`pixel 0\`..\`pixel ${board.externalLeds - 1}\`, \`meter\` spans them all).`
-      : "External LED strip: none. `pixel` and `meter` show nothing on this board.");
-    lines.push("Status LED (`led <colour> when <event>`): yes.");
-    lines.push(`Magnetometer (\`mag()\`): ${board.magnetometer ? "yes" : "none, mag() reads 0"}. Fuel gauge (\`battery()\`): ${board.fuelGauge ? "yes" : "none, battery() reads -1"}.`);
+      ? `External LED strip: ${board.externalLeds} pixels (\`strip.pixel(0, ...)\`..\`strip.pixel(${board.externalLeds - 1}, ...)\`; \`strip.meter\` spans them all).`
+      : "External LED strip: none. `strip.pixel` and `strip.meter` show nothing on this board.");
+    lines.push("Status LED (`led.set(Color.Green, on)`): yes.");
+    lines.push(`Magnetometer (\`mag.*\`): ${board.magnetometer ? "yes" : "none, mag reads 0"}. Fuel gauge (\`battery()\`): ${board.fuelGauge ? "yes" : "none, battery() reads -1"}.`);
+    const io = (BOARD_CAPABILITIES as Readonly<Record<string, readonly string[]>>).io_i2c ?? [];
+    const hasIo = io.some((name) => board.hardwareModel.toLowerCase().includes(name.toLowerCase()));
+    lines.push(hasIo
+      ? "External I2C (`i2c.*`) and UART (`uart.*`) on the FPC: yes."
+      : "External I2C and UART: none. The device refuses to install an app that uses `i2c` or `uart` on this board.");
   }
   return bullets(lines);
 }
 
 function flowLimits(): string {
   return bullets([
-    `At most ${MAX_NODES} nodes after compilation. Every function call, constant, arithmetic operator, comparison and output statement is (at least) one node; identical sub-expressions are shared. Keep the program small.`,
     `Package size at most ${MAX_PACKAGE_BYTES} bytes.`,
     `App id: lowercase letters, digits and \`_\`, starting with a letter, at most ${MAX_APP_ID} characters, not \`index\`.`,
-    `Event and emit names at most ${MAX_EVENT_NAME} characters.`,
-    `Window length (mean/max_hold/integrate frames) at most ${MAX_WINDOW}; all windows in one app together at most ${WINDOW_POOL} frames.`,
-    `\`for <n>ms\` at most ${MAX_DEBOUNCE_MS} ms.`,
+    `Event, emit and message names at most ${MAX_EVENT_NAME} characters.`,
+    `\`new Debounce(ms)\` at most ${MAX_DEBOUNCE_MS} ms. \`Mean\`, \`MaxHold\` and \`Integrate\` windows at most 128 frames.`,
     `Absolute region indices at most ${MAX_REGION_INDEX}; percent regions 0..${MAX_REL_PERCENT}.`,
     `OLED rows 0..${OLED_ROWS - 1}; labels at most ${MAX_OLED_LABEL} printable ASCII characters (the font draws nothing else); \`digits\` 0..${MAX_OLED_DIGITS}.`,
-    `External pixels 0..${MAX_EXT_LEDS - 1}. LED colours: ${code(Object.keys(LED_COLOURS))} only.`,
-    `\`background yes\` keeps the app running at ${1000 / TICK_PERIOD_MS} Hz after ${TICK_FALLBACK_MS} ms without frames. A \`persist\` signal is written to flash at most every ${PERSIST_INTERVAL_MS / 1000} s.`,
-    "No loops, no recursion, no user-defined functions: a name may only be used after it is declared.",
+    `External pixels 0..${MAX_EXT_LEDS - 1}. Colours: ${code((LANGUAGE.members.Color ?? []).map((name) => `Color.${name}`))} only.`,
+    `\`on("tick")\` and \`on("idle")\` run at ${1000 / TICK_PERIOD_MS} Hz. A \`Counter({ persist: true })\` is written to flash at most every ${PERSIST_INTERVAL_MS / 1000} s.`,
+    `\`store.append\` files: names of 1-8 characters (a-z, 0-9, _); ${VM_STORE_QUOTA_BYTES / 1024} KB of files per app.`,
+    `These need the operator's consent when the app is installed, so use them only when the request needs them: ${code(DANGEROUS_CAPABILITIES)}.`,
   ]);
 }
 
 function flowReference(): string {
-  const statements = STATEMENT_FORMS.map(([, form]) => form).join("\n");
-  const functions = LANGUAGE.functions.map((name) => {
-    const doc = functionDoc(name);
-    // "() or (region)" reads as `peak()` or `peak(region)`.
-    const forms = (doc?.args ?? "()").split(" or ").map((args) => `\`${name}${args}\``).join(" or ");
-    return `- ${forms} — ${doc?.info ?? ""}`.trimEnd();
-  }).join("\n");
-  const ops = Object.values(OPS).map((op) => {
-    const cost = op.sweep ? `${op.nsPerCell} ns/cell` : `${op.nsFlat} ns`;
-    return `- \`${op.name}\` (${cost}, OS ${op.since}) — ${op.summary}`;
-  }).join("\n");
   return [
-    "### Statements",
-    fenced("", statements),
-    "Expressions use numbers, declared names, the functions below, `+ - * / %` and parentheses. "
-      + "`>` and `>=` both mean \"at or above\"; `<` and `<=` cost two extra nodes. An event's name is also a value: 1 while it holds, 0 when not.",
-    "",
-    "### Functions",
-    functions,
-    "",
-    "### Names",
+    "Apps are a subset of TypeScript. The compiler accepts:",
     bullets([
-      `\`feature(<field>)\`: ${code(FEATURE_FIELDS)}`,
-      `\`imu(<field>)\`: ${code(IMU_FIELDS)}`,
-      `\`mag(<field>)\`: ${code(MAG_FIELDS)}`,
-      `Colours: ${code(Object.keys(LED_COLOURS))}`,
-      `Keywords: ${code(LANGUAGE.keywords)}`,
-      `Capabilities (the compiler derives them, and \`min_os\`, from what the program uses; never declare them): ${code(Object.keys(CAPABILITIES))}`,
+      "`export const manifest = { id, name, version, author, summary, category?, icon? } as const;` first. Never declare capabilities or min_os: the compiler derives them.",
+      "`const` / `let` of `number` or `boolean`; `new Float32Array(n)` at the top level for fixed arrays.",
+      "Stateful objects (`Region`, `Threshold`, `Debounce`, `Counter`, ...) created with `new` at the top level only, never inside a handler or function.",
+      "Top-level `function`s (not recursive, calls nested at most 8 deep); arrow functions only as `on(...)` handlers.",
+      "`if` / `else`, `while`, `for (let i = 0; i < n; i++)`, `break`, `continue`, `return`, `? :`, `+= -= ++ --`, `=== !==`, `&& ||`.",
+      "Strings only as constants: event names, labels, topics, file names, setting keys.",
+      "No objects other than the manifest and constructor options, no closures over locals, no dynamic arrays, no `any`, no imports.",
+      "Handlers: `on(\"start\" | \"frame\" | \"tick\" | \"idle\" | \"button\" | \"stop\", () => { ... })` and `on(\"message\", topic, (value) => { ... })`.",
     ]),
     "",
-    "### Device ops",
-    "What the compiler emits, for counting nodes and cost. These are not .nhs syntax: write the functions above.",
-    ops,
+    "### API",
+    "These declarations are the whole API, exactly as the compiler knows it. `[ask]` marks what needs the operator's consent.",
+    fenced("ts", nhosTypes.trim()),
   ].join("\n");
 }
 
@@ -310,14 +289,14 @@ export function buildAiPrompt(options: AiPromptOptions): string {
   const flow = kind === "flow";
   const panel = kind === "panel";
   const noun = panel ? "panel" : "readout";
-  const language = flow ? "nhs" : "json";
+  const language = flow ? "ts" : "json";
   const parts: string[] = [];
 
   parts.push(flow
-    ? "# Write an NHOS flow app (.nhs)"
+    ? "# Write an NHOS app (app.ts)"
     : `# Write an NHOS ${noun} (${noun}.json)`);
   parts.push(flow
-    ? "You are writing an app for New Horizons OS (NHOS), the firmware of the TIA-CTL pressure-sensing boards (ESP32-S3 with a pressure matrix, IMU and, on some boards, an OLED, an action button and LEDs). Apps are written in `.nhs`, a small declarative language that compiles to a flow graph the device evaluates once per scanned frame. It is NOT a general-purpose language: only the statements and functions documented below exist."
+    ? "You are writing an app for New Horizons OS (NHOS), the firmware of the TIA-CTL pressure-sensing boards (ESP32-S3 with a pressure matrix, IMU and, on some boards, an OLED, an action button and LEDs). Apps are written in a subset of TypeScript that compiles to bytecode the device runs: once per scanned frame, on a timer, on a button press or on a message. Only the language features and the API documented below exist."
     : panel
       ? "You are writing a panel for New Horizons OS (NHOS), the firmware of the TIA-CTL pressure-sensing boards. A panel is a declarative JSON package: it names read-only device commands to poll, widgets the Desktop app draws from their answers, and actions (row menus, a Run box) that send a small, permission-gated set of commands. It carries no code."
       : "You are writing a readout for New Horizons OS (NHOS), the firmware of the TIA-CTL pressure-sensing boards. A readout is a declarative JSON package: it names read-only device commands to poll and widgets (stats, tables, charts) the Desktop app draws from their answers. It carries no code.");
@@ -337,16 +316,16 @@ export function buildAiPrompt(options: AiPromptOptions): string {
   parts.push("## Output contract");
   parts.push(bullets([
     flow
-      ? "Reply with exactly ONE fenced code block tagged `nhs` holding the complete program, starting with the `app <id> { … }` header."
+      ? "Reply with exactly ONE fenced code block tagged `ts` holding the complete program, starting with `export const manifest = { … } as const;`."
       : panel
         ? "Reply with exactly ONE fenced code block tagged `json` holding the complete package (`nhapp`, `\"kind\": \"panel\"`, `manifest` with `permissions`, `panel`)."
         : "Reply with exactly ONE fenced code block tagged `json` holding the complete package (`nhapp`, `kind`, `manifest`, `readout`).",
     "No text before the block. After it, at most three short lines of notes: assumptions, values to tune, anything the request asked for that this format cannot do.",
     flow
-      ? "Use only the statements, functions, field names and colours listed in the reference below. Do not invent syntax, functions or library calls."
+      ? "Use only the language features and the API listed in the reference below. Do not invent syntax, functions or library calls."
       : "Use only the commands, section kinds and formats listed below. JSON only: no comments, no trailing commas.",
     flow
-      ? "Comment the program with `#` lines explaining each step. Write comments in the language of the user's request; keep identifiers in English, and OLED labels in printable ASCII."
+      ? "Comment the program with `//` lines explaining each step. Write comments in the language of the user's request; keep identifiers in English, and OLED labels in printable ASCII."
       : "Write titles, labels and hints in the language of the user's request; keep ids, commands and field names as they are.",
     `Stay within the hard limits. If the request does not fit, implement the most useful part and say what was left out.`,
     ...(options.author?.trim() ? [`Use \`${options.author.trim()}\` as the author.`] : []),
@@ -366,7 +345,7 @@ export function buildAiPrompt(options: AiPromptOptions): string {
     parts.push("## Example apps");
     parts.push("Published apps from the App Library, all of which compile. Follow their style.");
     for (const example of FLOW_EXAMPLES) {
-      parts.push(`### ${example.id}\n${fenced("nhs", example.source)}`);
+      parts.push(`### ${example.id}\n${fenced("ts", example.source)}`);
     }
   } else {
     parts.push("## Readout reference");
@@ -400,7 +379,7 @@ export function buildAiPrompt(options: AiPromptOptions): string {
 
   parts.push("## Now");
   parts.push(flow
-    ? "Write the program. Remember: one ```nhs block, nothing before it, at most three short lines after it."
+    ? "Write the program. Remember: one ```ts block, nothing before it, at most three short lines after it."
     : `Write the ${noun}. Remember: one \`\`\`json block, nothing before it, at most three short lines after it.`);
 
   return `${parts.join("\n\n")}\n`;

@@ -16,7 +16,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-import { nhsCompletions, nhsLanguage, toCmDiagnostics } from "../lib/nhsLanguage";
+import { appCompletions, appLanguage, toCmDiagnostics } from "../lib/appLanguage";
 import type { CompileReport, Diagnostic } from "../sdk/lib/index.mjs";
 
 export type CodeEditorHandle = {
@@ -29,7 +29,7 @@ type Props = {
   /** Identifies the document; a new key starts a fresh editor state (and undo history). */
   docKey: string;
   value: string;
-  language: "nhs" | "json";
+  language: "ts" | "json";
   diagnostics: Diagnostic[];
   /** The last successful compile, for completing declared names. */
   symbols: CompileReport | null;
@@ -50,6 +50,8 @@ const highlight = HighlightStyle.define([
   { tag: tags.atom, color: "var(--apps-syntax-number)" },
   { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "var(--apps-syntax-function)" },
   { tag: tags.definition(tags.variableName), color: "var(--apps-syntax-definition)", fontWeight: "600" },
+  { tag: tags.typeName, color: "var(--apps-syntax-function)", fontWeight: "600" },
+  { tag: tags.standard(tags.variableName), color: "var(--apps-syntax-function)" },
   { tag: tags.variableName, color: "var(--text)" },
   { tag: tags.operator, color: "var(--text-dim)" },
   { tag: tags.propertyName, color: "var(--apps-syntax-definition)" },
@@ -108,9 +110,9 @@ export const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEdito
   onChangeRef.current = onChange;
   symbolsRef.current = symbols;
 
-  const languageExtension = (kind: "nhs" | "json"): Extension =>
-    kind === "nhs"
-      ? [nhsLanguage, autocompletion({ override: [nhsCompletions(() => symbolsRef.current)] })]
+  const languageExtension = (kind: "ts" | "json"): Extension =>
+    kind === "ts"
+      ? [appLanguage, autocompletion({ override: [appCompletions(() => symbolsRef.current)] })]
       : [json(), autocompletion()];
 
   const createState = (doc: string) =>
