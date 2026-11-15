@@ -1,12 +1,12 @@
 {
-  "version": "v2.9.1",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.9.1/releases/notes/studio-v2.9.1.md",
-  "released_at": "2026-11-15T15:55:31.353Z",
+  "version": "v2.9.2",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.9.2/releases/notes/studio-v2.9.2.md",
+  "released_at": "2026-11-15T16:12:33.909Z",
   "assets": {
     "android": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.9.1/nh-pocket-v2.9.1.apk",
-      "sha256": "17b834ed0bcede003b025d3342921b1d829f12ece2e8f25a199a66d156a3fb6a",
-      "size": 100712432
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.9.2/nh-pocket-v2.9.2.apk",
+      "sha256": "743db92f43bafebc81ebdb8c30141c4894019bb9b3cb7cb8fe3f614173259e2c",
+      "size": 100713700
     }
   }
 }
