@@ -1,12 +1,18 @@
 {
   "version": "v2.9.2",
   "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.9.2/releases/notes/studio-v2.9.2.md",
-  "released_at": "2026-11-15T16:12:33.909Z",
+  "released_at": "2026-11-15T17:01:52.107Z",
   "assets": {
     "android": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.9.2/nh-pocket-v2.9.2.apk",
       "sha256": "743db92f43bafebc81ebdb8c30141c4894019bb9b3cb7cb8fe3f614173259e2c",
-      "size": 100713700
+      "size": 100713700,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/743db92f43bafebc81ebdb8c30141c4894019bb9b3cb7cb8fe3f614173259e2c",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-15T16:28:31.402Z"
+      }
     }
   }
 }
