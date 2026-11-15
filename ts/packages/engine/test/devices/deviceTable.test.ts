@@ -466,3 +466,32 @@ describe('parsed frames', () => {
     expect(h.service.getDevice(UID)!.latest_sample).toBeUndefined();
   });
 });
+
+describe('a setting reply updates the status (test_setting_reply_status)', () => {
+  function seeded() {
+    const h = makeService();
+    h.service.table.recordResult(UID, {
+      command: 'status', status: 'ok', ok: true,
+      data: { firmware_version: 'v2.1.0', mode: 'normal', range: { mode: 'auto', leak_compensation: true }, vref: { vref_mv: 108, supported: true } },
+    });
+    const status = () => h.service.getDevice(UID)!.last_status as Record<string, Record<string, unknown>>;
+    return { h, status };
+  }
+
+  it('survives the next command', () => {
+    const { h, status } = seeded();
+    h.service.table.recordResult(UID, {
+      command: 'set_range', status: 'ok', ok: true,
+      data: { range: { mode: 'raw', leak_compensation: false }, vref: { vref_mv: 330, supported: true } },
+    });
+    h.service.table.recordResult(UID, { command: 'battery_status', status: 'ok', ok: true, data: { percent: 100 } });
+    expect(status().range).toEqual({ mode: 'raw', leak_compensation: false });
+    expect(status().vref!.vref_mv).toBe(330);
+  });
+
+  it('a refused command changes nothing', () => {
+    const { h, status } = seeded();
+    h.service.table.recordResult(UID, { command: 'set_range', status: 'error', ok: false, message: 'range_rfb_required', data: { range: { mode: 'raw' } } });
+    expect(status().range!.mode).toBe('auto');
+  });
+});

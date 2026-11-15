@@ -880,3 +880,8 @@ input[type='range']:focus-visible { outline: none; }
 input[type='range']:focus-visible::-webkit-slider-thumb { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .taken-over-notice { align-items: center; justify-content: space-between; margin: 0 0 12px; }
 .taken-over-notice .button { flex: none; }
+
+/* On/off as a select plus its own Apply (apps on a device). */
+.onoff-apply { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.onoff-apply > :first-child { min-width: 92px; }
+.onoff-apply.pending { opacity: 0.6; }

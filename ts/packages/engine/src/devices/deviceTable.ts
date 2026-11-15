@@ -41,6 +41,11 @@ export const RELAY_FAILURE_CODES: ReadonlySet<string> = new Set([
 
 /** Blocks written by more than one source, merged key by key. */
 export const MERGED_DEVICE_BLOCKS: readonly string[] = ['findme', 'gateway_state'];
+/** Status blocks a setting command's reply carries whole and current (the backend's SETTING_REPLY_BLOCKS). */
+export const SETTING_REPLY_BLOCKS: readonly string[] = [
+  'vref', 'range', 'imu', 'filter', 'stream_buffer', 'matrix_layout',
+  'action_button', 'indicators', 'battery', 'power', 'logging', 'ota',
+];
 
 export const CALIBRATION_STATUS_KEYS: readonly string[] = [
   'enabled', 'mode_active', 'session_active', 'complete', 'tare_complete', 'tare_enabled', 'output_mode',
@@ -532,6 +537,21 @@ export class DeviceTable {
       this.latestStatus.set(deviceUid, statusPayload);
       merged.last_status = statusPayload;
     }
+    if (!isStatusSnapshot && !resultFailed(payload) && truthy(this.latestStatus.get(deviceUid))) {
+      // A setting reply (set_range, set_vref, set_imu ...) carries its block's
+      // new state; fold it in, or the next command's reply makes the view fall
+      // back to the last poll's (old) value until status is polled again.
+      const blocks: Dict = {};
+      for (const key of SETTING_REPLY_BLOCKS) {
+        const value = has(inner, key) ? inner[key] : payload[key];
+        if (isDict(value)) blocks[key] = value;
+      }
+      if (Object.keys(blocks).length > 0) {
+        const statusPayload: Dict = { ...this.latestStatus.get(deviceUid)!, ...blocks };
+        this.latestStatus.set(deviceUid, statusPayload);
+        merged.last_status = statusPayload;
+      }
+    }
     this.clearIncompatibleVisualization(deviceUid, merged);
     if (truthy(merged.mode)) merged.last_direct_mode_at = payload.received_at;
     this.devices.set(deviceUid, merged);
@@ -786,4 +806,8 @@ export class DeviceTable {
     }
     return { status: 'saved', device_uid: uid, group: value };
   }
+}
+
+function resultFailed(payload: Dict): boolean {
+  return payload.ok === false || (strOr(payload.status) || 'ok').toLowerCase() === 'error';
 }

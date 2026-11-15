@@ -4,7 +4,7 @@
 // safe value, what needs a measured Rfb); this only asks and shows the answer.
 import { useEffect, useState } from 'react';
 
-import { Card, Disclosure, Field, Notice, NumberInput, Slider, SwitchRow } from '../../components/ui';
+import { Card, Disclosure, Field, Notice, NumberInput, OnOffRow, Slider } from '../../components/ui';
 import { record } from '../../lib/deviceDetails';
 import { rsSpreadFraction, summarizeSweep, sweepCsv, type SweepCalibration, type SweepStep, type SweepSummary } from '../../lib/vrefSweep';
 import { useStudio } from '../../state/studio';
@@ -103,6 +103,10 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   // A table that came back from this very measurement counts even if `range` did not.
   const rfbValid = knownRows > 0 || (rfbRows?.some((row) => row.rfb_ohm > 0) ?? false);
   const [refRfbDraft, setRefRfbDraft] = useState(String(refRfbNow));
+  const [leakDraft, setLeakDraft] = useState(leakNow);
+  // The reading mode as two on/off drafts, sent together with Apply.
+  const [convertDraft, setConvertDraft] = useState(modeNow !== 'raw');
+  const [smartDraft, setSmartDraft] = useState(modeNow === 'auto');
   const [sweepStart, setSweepStart] = useState('100');
   const [sweepStop, setSweepStop] = useState(String(DEFAULT_LIMIT_MV));
   const [sweepStep, setSweepStep] = useState('100');
@@ -113,6 +117,11 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   useEffect(() => {
     setRefRfbDraft(String(refRfbNow));
   }, [refRfbNow]);
+  useEffect(() => setLeakDraft(leakNow), [leakNow]);
+  useEffect(() => {
+    setConvertDraft(modeNow !== 'raw');
+    setSmartDraft(modeNow === 'auto');
+  }, [modeNow]);
   useEffect(() => {
     if (currentMv !== null) setVrefDraft(String(currentMv));
   }, [currentMv]);
@@ -160,22 +169,18 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
     if (result && Array.isArray(result.rows)) setRfbRows(result.rows as RfbRow[]);
   }
 
-  async function applyMode(mode: RangeMode) {
-    if (mode !== 'raw' && !rfbValid) return;
-    if (mode === modeNow) return;
-    await ask(ds('rangeApply'), { command: 'set_range', mode, ref_rfb_ohm: fieldNumber(refRfbDraft) ?? refRfbNow });
-  }
+  // Off/off is raw, the old boards' way of reading; smart needs conversion.
+  const modeDraft: RangeMode = !convertDraft ? 'raw' : smartDraft ? 'auto' : 'virtual';
 
-  // Leak compensation applies at once like the other switches and touches
-  // nothing else (the device keeps its mode and reference Rfb).
-  async function applyLeak(on: boolean) {
-    if (on === leakNow) return;
-    await ask(ds('rangeLeak'), { command: 'set_range', leak_comp: on });
+  async function applyMode() {
+    if (modeDraft !== 'raw' && !rfbValid) return;
+    if (modeDraft === modeNow) return;
+    await ask(ds('rangeApply'), { command: 'set_range', mode: modeDraft });
   }
 
   async function applyRangeSettings() {
     const values = typed({ ref_rfb_ohm: refRfbDraft });
-    if (values) await ask(ds('rangeApply'), { command: 'set_range', mode: modeNow, ...values });
+    if (values) await ask(ds('rangeApply'), { command: 'set_range', leak_comp: leakDraft, ...values });
   }
 
   async function clearRfb() {
@@ -214,9 +219,6 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const span = sliderMax - MIN_VREF_MV;
   const share = (from: number, to: number) => Math.max(0, Math.min(to, sliderMax) - Math.max(from, MIN_VREF_MV)) / span;
 
-  // Three firmware modes as two switches: conversion (virtual) and, on top of
-  // it, smart Vref (auto). Off/off is raw, the old boards' way of reading.
-  const converting = modeNow !== 'raw';
   const autoSteps = num(range.auto_steps);
   const legacyScale = modeNow === 'raw' && currentMv === SAFE_VREF_MV;
 
@@ -249,20 +251,29 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
 
       <div className="settings-subsection">
         <h4>{ds('vrefReadingTitle')}</h4>
-        <SwitchRow
-          checked={converting}
-          disabled={working || running('set_range') || (!converting && !rfbValid)}
-          title={ds('vrefConvertSwitch', { ref: kOhm(refRfbNow) })}
-          copy={converting ? ds('vrefConvertOnHint') : ds('vrefConvertOffHint')}
-          onChange={(on) => void applyMode(on ? 'virtual' : 'raw')}
-        />
-        <SwitchRow
-          checked={modeNow === 'auto'}
-          disabled={working || running('set_range') || !converting}
-          title={ds('vrefSmartSwitch')}
-          copy={ds('vrefSmartHint')}
-          onChange={(on) => void applyMode(on ? 'auto' : 'virtual')}
-        />
+        <div className="field-grid three">
+          <OnOffRow
+            checked={convertDraft}
+            disabled={working || (!convertDraft && !rfbValid)}
+            title={ds('vrefConvertSwitch', { ref: kOhm(refRfbNow) })}
+            copy={convertDraft ? ds('vrefConvertOnHint') : ds('vrefConvertOffHint')}
+            onChange={(on) => {
+              setConvertDraft(on);
+              if (!on) setSmartDraft(false);
+            }}
+          />
+          <OnOffRow checked={smartDraft} disabled={working || !convertDraft} title={ds('vrefSmartSwitch')} copy={ds('vrefSmartHint')} onChange={setSmartDraft} />
+          <div className="vref-check">
+            <button
+              className="button primary"
+              type="button"
+              disabled={working || modeDraft === modeNow || (modeDraft !== 'raw' && !rfbValid)}
+              onClick={() => void applyMode()}
+            >
+              {running('set_range') ? t('running') : ds('rangeApply')}
+            </button>
+          </div>
+        </div>
         {!rfbValid ? (
           <div className="vref-needs-rfb">
             <Notice>{ds('rangeNeedsRfb')}</Notice>
@@ -317,7 +328,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
           <div className="field-grid three">
             <Field label={ds('rangeRefRfb')}>{(id) => <NumberInput id={id} min={1000} max={1000000} step={1000} value={refRfbDraft} onChange={(e) => setRefRfbDraft(e.target.value)} />}</Field>
             <div className="vref-check">
-              <SwitchRow checked={leakNow} disabled={working} onChange={(on) => void applyLeak(on)} title={ds('rangeLeak')} />
+              <OnOffRow checked={leakDraft} disabled={working} onChange={setLeakDraft} title={ds('rangeLeak')} />
             </div>
             <div className="vref-check">
               <button className="button" type="button" disabled={working} onClick={() => void applyRangeSettings()}>

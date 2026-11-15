@@ -37,7 +37,6 @@ import {
   SectionHeader,
   SegmentedControl,
   StatusDot,
-  SwitchRow,
   TextField,
   type Tone,
 } from '../components/primitives';
@@ -105,6 +104,15 @@ export function DeviceScreen({ uid }: { uid: string }) {
   const [nickname, setNickname] = useState(device?.nickname ?? '');
   const [nicknameDirty, setNicknameDirty] = useState(false);
   const [scanRate, setScanRate] = useState<60 | 90>(device && device.fps > 75 ? 90 : 60);
+  // The reading mode as two on/off drafts, sent together with Apply.
+  const vrefMode = device?.vref?.mode ?? 'raw';
+  const [convertDraft, setConvertDraft] = useState(vrefMode !== 'raw');
+  const [smartDraft, setSmartDraft] = useState(vrefMode === 'auto');
+  useEffect(() => {
+    setConvertDraft(vrefMode !== 'raw');
+    setSmartDraft(vrefMode === 'auto');
+  }, [vrefMode]);
+  const modeDraft = !convertDraft ? 'raw' : smartDraft ? 'auto' : 'virtual';
 
   useEffect(() => {
     if (!nicknameDirty) setNickname(device?.nickname ?? '');
@@ -346,27 +354,47 @@ export function DeviceScreen({ uid }: { uid: string }) {
             <Divider />
             <FactRow label={t('rangeSaturated')} value={device.vref.saturatedRows ?? '-'} />
             <Divider inset={0} />
-            <SwitchRow
-              title={t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}
-              subtitle={device.vref.mode === 'raw' ? t('vrefConvertOffHint') : t('vrefConvertOnHint')}
-              value={device.vref.mode !== 'raw'}
-              disabled={offline || busy === 'range_mode'}
-              onValueChange={(on) => {
-                if (on && device.vref && device.vref.rfbMeasuredRows === 0) {
-                  toast.show(t('rangeNeedsRfb'), 'danger');
-                  return;
-                }
-                void run('range_mode', { kind: 'range_mode', mode: on ? 'virtual' : 'raw' });
-              }}
-            />
-            <Divider inset={16} />
-            <SwitchRow
-              title={t('vrefSmartSwitch')}
-              subtitle={t('vrefSmartHint')}
-              value={device.vref.mode === 'auto'}
-              disabled={offline || busy === 'range_mode' || device.vref.mode === 'raw'}
-              onValueChange={(on) => void run('range_mode', { kind: 'range_mode', mode: on ? 'auto' : 'virtual' })}
-            />
+            <View style={{ padding: 16, gap: 8 }}>
+              <Caption>{t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}</Caption>
+              <SegmentedControl
+                accessibilityLabel={t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}
+                options={[
+                  { value: 'on' as const, label: t('onOffOn') },
+                  { value: 'off' as const, label: t('onOffOff') },
+                ]}
+                value={convertDraft ? 'on' : 'off'}
+                disabled={offline || busy === 'range_mode'}
+                onChange={(value) => {
+                  const on = value === 'on';
+                  if (on && device.vref && device.vref.rfbMeasuredRows === 0) {
+                    toast.show(t('rangeNeedsRfb'), 'danger');
+                    return;
+                  }
+                  setConvertDraft(on);
+                  if (!on) setSmartDraft(false);
+                }}
+              />
+              <Caption>{convertDraft ? t('vrefConvertOnHint') : t('vrefConvertOffHint')}</Caption>
+              <Caption>{t('vrefSmartSwitch')}</Caption>
+              <SegmentedControl
+                accessibilityLabel={t('vrefSmartSwitch')}
+                options={[
+                  { value: 'on' as const, label: t('onOffOn') },
+                  { value: 'off' as const, label: t('onOffOff') },
+                ]}
+                value={smartDraft ? 'on' : 'off'}
+                disabled={offline || busy === 'range_mode' || !convertDraft}
+                onChange={(value) => setSmartDraft(value === 'on')}
+              />
+              <Caption>{t('vrefSmartHint')}</Caption>
+              <Button
+                label={t('onOffApply')}
+                variant="primary"
+                busy={busy === 'range_mode'}
+                disabled={offline || modeDraft === device.vref.mode}
+                onPress={() => void run('range_mode', { kind: 'range_mode', mode: modeDraft })}
+              />
+            </View>
             {device.vref.mode === 'raw' && device.vref.mv === 330 ? (
               <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
                 <Caption>{t('vrefLegacyMatch')}</Caption>

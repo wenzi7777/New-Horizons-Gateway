@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Facts, Field, Notice, Segmented, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, Segmented, OnOffRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
 import {
   BATTERY_PRESETS,
   batteryCapacityChoiceFor,
@@ -292,7 +292,7 @@ function SignalSection({ view, disabled, busy, send }: SectionProps) {
   return (
     <>
       <Card title={t('filterTitle')} copy={t('filterCopy')}>
-        <SwitchRow checked={filter.enabled} onChange={(enabled) => setFilter({ ...filter, enabled })} title={t('enabledLabel')} />
+        <OnOffRow checked={filter.enabled} onChange={(enabled) => setFilter({ ...filter, enabled })} title={t('enabledLabel')} />
         <div className="field-grid">
           <Field label={t('filterMedian')}>
             {(id) => (
@@ -329,17 +329,17 @@ function SignalSection({ view, disabled, busy, send }: SectionProps) {
       </Card>
       <div className="card-grid">
         <Card title={t('imuTitle')} copy={t('imuCopy')}>
-          <SwitchRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}`} />
+          <OnOffRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}`} />
           {view.imu.lastError ? <Notice kind="error">{view.imu.lastError}</Notice> : null}
           <SaveRow dirty={imuDirty} onRevert={resetImu} disabled={disabled || !imuDirty} running={busy === 'set_imu'} onSave={() => void send(t('imuTitle'), imuCommand(imu)).then((o) => o.ok && resetImu())} />
         </Card>
         <Card title={t('rawAdcTitle')} copy={t('rawAdcCopy')}>
-          <SwitchRow checked={rawAdc} onChange={setRawAdc} title={t('enabledLabel')} copy={t('onDevice', { value: onOff(t, view.rawAdc) })} />
+          <OnOffRow checked={rawAdc} onChange={setRawAdc} title={t('enabledLabel')} copy={t('onDevice', { value: onOff(t, view.rawAdc) })} />
           <SaveRow dirty={rawDirty} onRevert={resetRaw} disabled={disabled || !rawDirty} running={busy === 'set_raw_adc'} onSave={() => void send(t('rawAdcTitle'), rawAdcCommand(rawAdc)).then((o) => o.ok && resetRaw())} />
         </Card>
       </div>
       <Card title={t('streamBufferTitle')} copy={t('streamBufferCopy')}>
-        <SwitchRow
+        <OnOffRow
           checked={buffer.enabled}
           onChange={(enabled) => setBuffer({ ...buffer, enabled })}
           title={t('enabledLabel')}
@@ -753,7 +753,7 @@ function UpdateSection({ device, view, disabled, busy, send, ask }: SectionProps
         <Notice>{t('channelNeedsFirmware')}</Notice>
       )}
       <Disclosure summary={t('techDetails')}>
-        <SwitchRow checked={settings.auto} onChange={(auto) => setSettings({ ...settings, auto })} title={t('autoUpdateOnBoot')} />
+        <OnOffRow checked={settings.auto} onChange={(auto) => setSettings({ ...settings, auto })} title={t('autoUpdateOnBoot')} />
         <Field label={t('customManifest')} hint={t('customManifestHint')}>
           {(id) => <TextInput id={id} type="text" value={settings.url} placeholder={view.ota.resolvedManifestUrl} onChange={(e) => setSettings({ ...settings, url: e.target.value })} />}
         </Field>
@@ -778,7 +778,7 @@ function LogsSection({ device, view, disabled, busy, send, ask }: SectionProps &
   const [log, setLog, dirty, reset] = useDraft({ enabled: view.logging.enabled, level: view.logging.level, mode: view.logging.mode });
   return (
     <Card title={t('secLogs')} copy={t('logsCopy')}>
-      <SwitchRow
+      <OnOffRow
         checked={log.enabled}
         onChange={(enabled) => setLog({ ...log, enabled })}
         title={t('enabledLabel')}

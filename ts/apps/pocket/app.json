@@ -3,7 +3,7 @@
     "name": "NH Pocket",
     "slug": "nh-pocket",
     "scheme": "nhpocket",
-    "version": "2.9.1",
+    "version": "2.9.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -20,7 +20,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "jp.ac.uaizu.newhorizons.pocket",
-      "versionCode": 17
+      "versionCode": 18
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { CircleOff, Lightbulb, Power, RefreshCw } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Facts, Field, Notice, NumberInput, Radio, Select, SwitchRow, TextInput, useConfirm } from '../../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, NumberInput, Radio, Select, TextInput, useConfirm } from '../../components/ui';
 import { useAreaT } from '../../areas/i18n';
 import { actionButtonActionsForGesture, buildActionButtonCommand, normalizeActionButtonStatus, type ActionButtonAction, type ActionButtonGesture } from '../../lib/actionButton';
 import { batteryLedThresholdValidationError, buildBatteryLedThresholdCommand } from '../../lib/batteryProfile';
@@ -290,12 +290,14 @@ export function LightsCard({ device, status, disabled, busy, send }: CardProps) 
             <p className="field-note">{ds('externalLedIndicatorsCopy')}</p>
           </div>
           <div className="field-grid">
-            <SwitchRow
-              checked={ext.mode !== 'off'}
-              onChange={(on) => setExt({ ...ext, mode: on ? 'enabled' : 'off' })}
-              title={ds('externalLedMode')}
-              copy={ds(ext.mode !== 'off' ? 'indicatorMode_enabled' : 'indicatorMode_off')}
-            />
+            <Field label={ds('externalLedMode')}>
+              {(id) => (
+                <Select id={id} value={ext.mode} onChange={(e) => setExt({ ...ext, mode: e.target.value })}>
+                  <option value="off">{ds('indicatorMode_off')}</option>
+                  <option value="enabled">{ds('indicatorMode_enabled')}</option>
+                </Select>
+              )}
+            </Field>
             <Field label={ds('externalLedPreset')} hint={ds('externalLedAppPriority')}>
               {(id) => (
                 <Select id={id} value={ext.preset} onChange={(e) => setExt({ ...ext, preset: e.target.value })}>

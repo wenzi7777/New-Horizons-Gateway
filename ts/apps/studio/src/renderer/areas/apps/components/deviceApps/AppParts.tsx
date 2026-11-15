@@ -3,6 +3,7 @@
 // the load sparkline and the load badge.
 import { Gauge, SlidersHorizontal, Workflow } from 'lucide-react';
 
+import { OnOffApply } from '../../../../components/ui';
 import type { AppLoadLevel } from '../../lib/deviceApps';
 import { useAppsT } from '../../strings';
 
@@ -21,25 +22,9 @@ export function AppGlyph({ kind, colour, size = 18 }: { kind: string; colour?: n
   );
 }
 
-/** An iOS-style switch. `pending` dims it while the device catches up. */
-export function AppSwitch({ checked, disabled, pending, label, onChange }: { checked: boolean; disabled?: boolean; pending?: boolean; label: string; onChange: (checked: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      title={label}
-      className={`dapps-switch${checked ? ' on' : ''}${pending ? ' pending' : ''}`}
-      disabled={disabled}
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange(!checked);
-      }}
-    >
-      <i aria-hidden="true" />
-    </button>
-  );
+/** On/off with an Apply button; inside an app card a click must not open the card. */
+export function AppSwitch({ onChange, ...props }: { checked: boolean; disabled?: boolean; pending?: boolean; label: string; onChange: (checked: boolean) => void }) {
+  return <OnOffApply {...props} onApply={onChange} />;
 }
 
 /** The last minute of an app's load (0..100), one point per poll. */

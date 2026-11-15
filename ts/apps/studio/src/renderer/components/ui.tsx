@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, BatteryCharging, Check, ChevronDown, ChevronUp, CircleAlert, Info, X } from 'lucide-react';
 
+import { Select } from './Select';
 export { Select, type SelectChangeEvent } from './Select';
 
 import brandUrl from '../assets/nh-studio-rounded.svg';
@@ -106,6 +107,41 @@ export function SwitchRow({ checked, onChange, title, copy, disabled }: { checke
       <strong>{title}</strong>
       {copy ? <small>{copy}</small> : null}
     </label>
+  );
+}
+
+/** An on/off setting as a select ("On" / "Off"). It edits a draft only: the
+ * setting reaches the device with its card's Apply button. */
+export function OnOffRow({ checked, onChange, title, copy, disabled }: { checked: boolean; onChange: (next: boolean) => void; title: string; copy?: ReactNode; disabled?: boolean }) {
+  const { t } = useStudio();
+  return (
+    <Field label={title} hint={copy}>
+      {(id) => (
+        <Select id={id} value={checked ? 'on' : 'off'} disabled={disabled} onChange={(event) => onChange(event.target.value === 'on')}>
+          <option value="on">{t('valueOn')}</option>
+          <option value="off">{t('valueOff')}</option>
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+/** On/off with its own Apply button, for a setting with no card button (an
+ * app on a device): nothing is sent until Apply. */
+export function OnOffApply({ checked, disabled, pending, label, onApply }: { checked: boolean; disabled?: boolean; pending?: boolean; label: string; onApply: (next: boolean) => void }) {
+  const { t } = useStudio();
+  const [draft, setDraft] = useState(checked);
+  useEffect(() => setDraft(checked), [checked]);
+  return (
+    <span className={`onoff-apply${pending ? ' pending' : ''}`} onClick={(event) => event.stopPropagation()}>
+      <Select value={draft ? 'on' : 'off'} disabled={disabled || pending} aria-label={label} onChange={(event) => setDraft(event.target.value === 'on')}>
+        <option value="on">{t('valueOn')}</option>
+        <option value="off">{t('valueOff')}</option>
+      </Select>
+      <button type="button" className="button compact" title={label} disabled={disabled || pending || draft === checked} onClick={() => onApply(draft)}>
+        {t('apply')}
+      </button>
+    </span>
   );
 }
 
