@@ -379,7 +379,7 @@ describe('relay presence', () => {
       allowDisconnectGrace: true,
     })!;
     expect(item.gateway_connected).toBe(true);
-    expect(item.findme).toMatchObject({ state: 'attached', host: '10.0.0.5' });
+    expect(item.findme).toMatchObject({ state: 'attached', device_addr: '10.0.0.5' });
     h.clock.advance(5);
     const later = t.recordRelayPresence(UID, 'gw-a', { device_uid: UID, connected: false, findme_state: 'disconnected' }, false, t.nowIso(), {
       allowDisconnectGrace: true,

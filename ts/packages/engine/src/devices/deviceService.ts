@@ -663,7 +663,7 @@ export class DeviceService {
       transport_path: 'arduino_heartbeat',
       gateway_connected: true,
       last_heartbeat_at: now,
-      findme: { state: 'attached', host: from.ip, udp_port: this.udpPort(), last_success_ms: now, last_error: '' },
+      findme: { state: 'attached', device_addr: from.ip, udp_port: this.udpPort(), last_findme_at: now, last_error: '' },
       received_at: now,
     });
   }

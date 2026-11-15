@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { CircleOff, Lightbulb, Power, RefreshCw } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Facts, Field, Notice, NumberInput, Radio, Select, TextInput, useConfirm } from '../../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, NumberInput, Radio, Select, SwitchRow, TextInput, useConfirm } from '../../components/ui';
 import { useAreaT } from '../../areas/i18n';
 import { actionButtonActionsForGesture, buildActionButtonCommand, normalizeActionButtonStatus, type ActionButtonAction, type ActionButtonGesture } from '../../lib/actionButton';
 import { batteryLedThresholdValidationError, buildBatteryLedThresholdCommand } from '../../lib/batteryProfile';
@@ -17,6 +17,7 @@ import type { Payload } from '../../lib/commands';
 import { record } from '../../lib/deviceDetails';
 import { formatBytes } from '../../lib/format';
 import { useStudio } from '../../state/studio';
+import { BoardIoModal } from './BoardIoModal';
 import { DEVICE_SETTINGS_STRINGS } from './settingsStrings';
 import './device-settings.css';
 
@@ -99,6 +100,13 @@ export function PinsCard({ device, status, disabled, busy, send }: CardProps) {
   const profile = boardProfileOf(device);
   const [analog, setAnalog] = useSynced(csv(layout.analog_pins ?? layout.active_rows));
   const [select, setSelect] = useSynced(csv(layout.select_pins ?? layout.active_cols));
+  const [showIo, setShowIo] = useState(false);
+  async function applyIo(analogPins: number[], selectPins: number[]): Promise<boolean> {
+    setAnalog(analogPins.join(','));
+    setSelect(selectPins.join(','));
+    const result = await send(ds('applyPinLayout'), { command: 'set_matrix_layout', analog_pins: analogPins, select_pins: selectPins });
+    return result.ok;
+  }
   return (
     <Card title={ds('settingsSection_pins')} copy={profile.powerUx === 'remote_only' ? ds('pinLayoutCopyGcu') : ds('pinLayoutCopyV1')}>
       <div className="field-grid">
@@ -106,6 +114,9 @@ export function PinsCard({ device, status, disabled, busy, send }: CardProps) {
         <Field label={ds('selectPins')}>{(id) => <TextInput id={id} className="mono" value={select} onChange={(e) => setSelect(e.target.value)} />}</Field>
       </div>
       <div className="form-footer">
+        <button className="button" type="button" onClick={() => setShowIo(true)}>
+          {ds('ioConfigOpen')}
+        </button>
         <button
           className="button primary"
           type="button"
@@ -115,6 +126,16 @@ export function PinsCard({ device, status, disabled, busy, send }: CardProps) {
           {busy === 'set_matrix_layout' ? t('running') : ds('applyPinLayout')}
         </button>
       </div>
+      {showIo ? (
+        <BoardIoModal
+          profile={profile}
+          initialAnalogPins={numberCsv(analog)}
+          initialSelectPins={numberCsv(select)}
+          applyDisabled={disabled}
+          onApply={applyIo}
+          onClose={() => setShowIo(false)}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -269,14 +290,12 @@ export function LightsCard({ device, status, disabled, busy, send }: CardProps) 
             <p className="field-note">{ds('externalLedIndicatorsCopy')}</p>
           </div>
           <div className="field-grid">
-            <Field label={ds('externalLedMode')}>
-              {(id) => (
-                <Select id={id} value={ext.mode} onChange={(e) => setExt({ ...ext, mode: e.target.value })}>
-                  <option value="off">{ds('indicatorMode_off')}</option>
-                  <option value="enabled">{ds('indicatorMode_enabled')}</option>
-                </Select>
-              )}
-            </Field>
+            <SwitchRow
+              checked={ext.mode !== 'off'}
+              onChange={(on) => setExt({ ...ext, mode: on ? 'enabled' : 'off' })}
+              title={ds('externalLedMode')}
+              copy={ds(ext.mode !== 'off' ? 'indicatorMode_enabled' : 'indicatorMode_off')}
+            />
             <Field label={ds('externalLedPreset')} hint={ds('externalLedAppPriority')}>
               {(id) => (
                 <Select id={id} value={ext.preset} onChange={(e) => setExt({ ...ext, preset: e.target.value })}>
@@ -487,7 +506,7 @@ export function ConnectionCard({ device, status, record: rec, disabled, busy, se
             [ds('transport'), str(rec.transport_path ?? status.transport_path)],
             [ds('heartbeat'), str(findme.last_heartbeat_at ?? status.last_heartbeat_at)],
             [ds('heartbeatInterval'), str(findme.heartbeat_interval_ms)],
-            [ds('gatewayLastSuccess'), str(findme.last_success_ms)],
+            [ds('gatewayLastSuccess'), Number(findme.last_success_ms) > 0 ? ds('gatewayLastSuccessUptime', { seconds: (Number(findme.last_success_ms) / 1000).toFixed(1) }) : '-'],
           ]}
         />
       </Disclosure>

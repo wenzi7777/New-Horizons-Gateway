@@ -1,11 +1,15 @@
-// Ported from New-Horizons-Desktop frontend/src/lib/boardProfile.ts (board
-// photographs and manifest URL helpers left out: Studio does not ship them).
+// Ported from New-Horizons-Desktop frontend/src/lib/boardProfile.ts, with the
+// same board overview artwork (assets/boards, used by the IO Visualizer).
+import v10fOverview from "../assets/boards/VDCTLRv10F20264OVERVIEW.png";
+import v15fOverview from "../assets/boards/VDCTLRv15F20267OVERVIEW.png";
+import v20fOverview from "../assets/boards/TIACTLAv20F202610OVERVIEW.png";
+import v21GcuOverview from "../assets/boards/VDCTLV21GCULTSOVERVIEW.png";
+import v22cGcuOverview from "../assets/boards/VDCTLV22CGCULTSOVERVIEW.png";
+import v23dGcuOverview from "../assets/boards/VDCTLV23DGCULTSOVERVIEW.png";
 
-export type BoardPinSlot = {
-  label: string;
-  gpio?: number;
-  role?: "analog" | "select";
-};
+import { GCU_ANALOG_PIN_SLOTS, GCU_DIGITAL_PIN_SLOTS, V15F_ANALOG_PIN_SLOTS, V15F_DIGITAL_PIN_SLOTS, V1_ANALOG_PIN_SLOTS, V1_DIGITAL_PIN_SLOTS, V21_GCU_ANALOG_PIN_SLOTS, V21_GCU_DIGITAL_PIN_SLOTS, V22C_GCU_ANALOG_PIN_SLOTS, V22C_GCU_DIGITAL_PIN_SLOTS, type BoardPinSlot } from "@nhgw/host";
+
+export type { BoardPinSlot };
 
 export type BoardProfile = {
   hardwareModel: string;
@@ -45,238 +49,6 @@ const V21_GCU_HARDWARE_MODEL = "TIA-CTL v2.1 GCU LTS";
 const V22C_GCU_HARDWARE_MODEL = "TIA-CTL v2.2.C GCU LTS";
 const GCU_HARDWARE_MODEL = "TIA-CTL v2.3.D GCU LTS";
 
-const V1_ANALOG_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "A0", gpio: 1, role: "analog" },
-  { label: "A1", gpio: 2, role: "analog" },
-  { label: "A2", gpio: 3, role: "analog" },
-  { label: "A3", gpio: 4, role: "analog" },
-  { label: "A4", gpio: 5, role: "analog" },
-  { label: "A5", gpio: 6, role: "analog" },
-  { label: "A6", gpio: 7, role: "analog" },
-  { label: "A7", gpio: 8, role: "analog" },
-  { label: "A8", gpio: 9, role: "analog" },
-  { label: "A9", gpio: 10, role: "analog" },
-  { label: "D19", gpio: 40, role: "select" },
-  { label: "D20", gpio: 41, role: "select" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "LED" },
-  { label: "SDA" },
-  { label: "SCL" },
-  { label: "GND" },
-  { label: "3V3" },
-  { label: "5V" },
-];
-
-const V1_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "D0", gpio: 13, role: "select" },
-  { label: "D1", gpio: 14, role: "select" },
-  { label: "D2", gpio: 15, role: "select" },
-  { label: "D3", gpio: 16, role: "select" },
-  { label: "D4", gpio: 17, role: "select" },
-  { label: "D5", gpio: 18, role: "select" },
-  { label: "D6", gpio: 19, role: "select" },
-  { label: "D7", gpio: 20, role: "select" },
-  { label: "D8", gpio: 21, role: "select" },
-  { label: "D9", gpio: 26, role: "select" },
-  { label: "D10", gpio: 47, role: "select" },
-  { label: "D11", gpio: 33, role: "select" },
-  { label: "D12", gpio: 34, role: "select" },
-  { label: "D13", gpio: 48, role: "select" },
-  { label: "NC" },
-  { label: "D14", gpio: 35, role: "select" },
-  { label: "D15", gpio: 36, role: "select" },
-  { label: "D16", gpio: 37, role: "select" },
-  { label: "D17", gpio: 38, role: "select" },
-  { label: "D18", gpio: 39, role: "select" },
-];
-
-const V15F_ANALOG_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "A0", gpio: 1, role: "analog" },
-  { label: "A1", gpio: 2, role: "analog" },
-  { label: "A2", gpio: 3, role: "analog" },
-  { label: "A3", gpio: 4, role: "analog" },
-  { label: "A4", gpio: 5, role: "analog" },
-  { label: "A5", gpio: 6, role: "analog" },
-  { label: "A6", gpio: 7, role: "analog" },
-  { label: "A7", gpio: 8, role: "analog" },
-  { label: "A8", gpio: 9, role: "analog" },
-  { label: "A9", gpio: 10, role: "analog" },
-  { label: "A10", gpio: 11, role: "analog" },
-  { label: "A11", gpio: 12, role: "analog" },
-  { label: "A12", gpio: 13, role: "analog" },
-  { label: "A13", gpio: 14, role: "analog" },
-  { label: "LED", gpio: 16 },
-  { label: "RX" },
-  { label: "TX" },
-  { label: "GND" },
-  { label: "3V3" },
-  { label: "5V" },
-];
-
-const V15F_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "GND" },
-  { label: "GND" },
-  { label: "SCL", gpio: 42 },
-  { label: "SDA", gpio: 40 },
-  { label: "D13", gpio: 45, role: "select" },
-  { label: "D12", gpio: 39, role: "select" },
-  { label: "D11", gpio: 38, role: "select" },
-  { label: "D10", gpio: 37, role: "select" },
-  { label: "D9", gpio: 36, role: "select" },
-  { label: "D8", gpio: 35, role: "select" },
-  { label: "D7", gpio: 48, role: "select" },
-  { label: "D6", gpio: 34, role: "select" },
-  { label: "D5", gpio: 33, role: "select" },
-  { label: "D4", gpio: 47, role: "select" },
-  { label: "D3", gpio: 26, role: "select" },
-  { label: "D2", gpio: 21, role: "select" },
-  { label: "D1", gpio: 18, role: "select" },
-  { label: "D0", gpio: 17, role: "select" },
-];
-
-const GCU_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "D46", gpio: 46, role: "select" },
-  { label: "D45", gpio: 45, role: "select" },
-  { label: "D42", gpio: 42, role: "select" },
-  { label: "D41", gpio: 41, role: "select" },
-  { label: "D40", gpio: 40, role: "select" },
-  { label: "D39", gpio: 39, role: "select" },
-  { label: "D37", gpio: 37, role: "select" },
-  { label: "D36", gpio: 36, role: "select" },
-  { label: "D35", gpio: 35, role: "select" },
-  { label: "D21", gpio: 21, role: "select" },
-  { label: "D20", gpio: 20, role: "select" },
-  { label: "D19", gpio: 19, role: "select" },
-  { label: "D18", gpio: 18, role: "select" },
-  { label: "D17", gpio: 17, role: "select" },
-  { label: "D16", gpio: 16, role: "select" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
-const V21_GCU_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "NC" },
-  { label: "D45", gpio: 45, role: "select" },
-  { label: "D42", gpio: 42, role: "select" },
-  { label: "D41", gpio: 41, role: "select" },
-  { label: "D40", gpio: 40, role: "select" },
-  { label: "D39", gpio: 39, role: "select" },
-  { label: "D37", gpio: 37, role: "select" },
-  { label: "D36", gpio: 36, role: "select" },
-  { label: "D35", gpio: 35, role: "select" },
-  { label: "D21", gpio: 21, role: "select" },
-  { label: "D20", gpio: 20, role: "select" },
-  { label: "D19", gpio: 19, role: "select" },
-  { label: "D18", gpio: 18, role: "select" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
-const GCU_ANALOG_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "A1", gpio: 1, role: "analog" },
-  { label: "A2", gpio: 2, role: "analog" },
-  { label: "A3", gpio: 3, role: "analog" },
-  { label: "A4", gpio: 4, role: "analog" },
-  { label: "A5", gpio: 5, role: "analog" },
-  { label: "A6", gpio: 6, role: "analog" },
-  { label: "A7", gpio: 7, role: "analog" },
-  { label: "A8", gpio: 8, role: "analog" },
-  { label: "A9", gpio: 9, role: "analog" },
-  { label: "A10", gpio: 10, role: "analog" },
-  { label: "A11", gpio: 11, role: "analog" },
-  { label: "A12", gpio: 12, role: "analog" },
-  { label: "A13", gpio: 13, role: "analog" },
-  { label: "A14", gpio: 14, role: "analog" },
-  { label: "A15", gpio: 15, role: "analog" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
-const V21_GCU_ANALOG_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "A1", gpio: 1, role: "analog" },
-  { label: "A2", gpio: 2, role: "analog" },
-  { label: "A3", gpio: 3, role: "analog" },
-  { label: "A4", gpio: 4, role: "analog" },
-  { label: "A5", gpio: 5, role: "analog" },
-  { label: "A6", gpio: 6, role: "analog" },
-  { label: "A7", gpio: 7, role: "analog" },
-  { label: "A8", gpio: 8, role: "analog" },
-  { label: "A9", gpio: 9, role: "analog" },
-  { label: "A10", gpio: 10, role: "analog" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
-const V22C_GCU_ANALOG_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "A1", gpio: 1, role: "analog" },
-  { label: "A2", gpio: 2, role: "analog" },
-  { label: "A3", gpio: 3, role: "analog" },
-  { label: "A4", gpio: 4, role: "analog" },
-  { label: "A5", gpio: 5, role: "analog" },
-  { label: "A6", gpio: 6, role: "analog" },
-  { label: "A7", gpio: 7, role: "analog" },
-  { label: "A8", gpio: 8, role: "analog" },
-  { label: "A9", gpio: 9, role: "analog" },
-  { label: "A10", gpio: 10, role: "analog" },
-  // IO11 reaches the connector but must not be used on this revision.
-  { label: "DNU" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "NC" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
-const V22C_GCU_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
-  { label: "5V" },
-  { label: "3V3" },
-  { label: "3V3" },
-  { label: "NC" },
-  { label: "D45", gpio: 45, role: "select" },
-  { label: "D42", gpio: 42, role: "select" },
-  { label: "D41", gpio: 41, role: "select" },
-  { label: "D40", gpio: 40, role: "select" },
-  { label: "D39", gpio: 39, role: "select" },
-  { label: "D37", gpio: 37, role: "select" },
-  { label: "D36", gpio: 36, role: "select" },
-  { label: "D35", gpio: 35, role: "select" },
-  { label: "D21", gpio: 21, role: "select" },
-  { label: "D20", gpio: 20, role: "select" },
-  { label: "D19", gpio: 19, role: "select" },
-  { label: "D18", gpio: 18, role: "select" },
-  // IO17 reaches the connector but must not be used on this revision.
-  { label: "DNU" },
-  { label: "NC" },
-  { label: "GND" },
-  { label: "GND" },
-];
-
 const V1_PROFILE: BoardProfile = {
   hardwareModel: V1_HARDWARE_MODEL,
   wikiSlug: "vd-ctl-r-v1.0f",
@@ -293,7 +65,7 @@ const V1_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: false,
   supportsActionButtonSettings: false,
   powerUx: "local_button",
-  overviewAsset: null,
+  overviewAsset: v10fOverview,
   analogPinOrder: V1_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: V1_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: V1_ANALOG_PIN_SLOTS,
@@ -318,7 +90,7 @@ const V21_GCU_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: false,
   supportsActionButtonSettings: false,
   powerUx: "remote_only",
-  overviewAsset: null,
+  overviewAsset: v21GcuOverview,
   analogPinOrder: V21_GCU_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: V21_GCU_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: V21_GCU_ANALOG_PIN_SLOTS,
@@ -344,7 +116,7 @@ const V22C_GCU_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: false,
   supportsActionButtonSettings: false,
   powerUx: "remote_only",
-  overviewAsset: null,
+  overviewAsset: v22cGcuOverview,
   analogPinOrder: V22C_GCU_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: V22C_GCU_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: V22C_GCU_ANALOG_PIN_SLOTS,
@@ -369,7 +141,7 @@ const V15F_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: true,
   supportsActionButtonSettings: true,
   powerUx: "local_button",
-  overviewAsset: null,
+  overviewAsset: v15fOverview,
   analogPinOrder: V15F_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: V15F_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: V15F_ANALOG_PIN_SLOTS,
@@ -395,7 +167,7 @@ const V20F_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: true,
   supportsActionButtonSettings: true,
   powerUx: "local_button",
-  overviewAsset: null,
+  overviewAsset: v20fOverview,
   analogPinOrder: V15F_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: V15F_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: V15F_ANALOG_PIN_SLOTS,
@@ -420,7 +192,7 @@ const GCU_PROFILE: BoardProfile = {
   supportsBatteryPercentageIndicator: false,
   supportsActionButtonSettings: false,
   powerUx: "remote_only",
-  overviewAsset: null,
+  overviewAsset: v23dGcuOverview,
   analogPinOrder: GCU_ANALOG_PIN_SLOTS.map((pin) => pin.label),
   digitalPinOrder: GCU_DIGITAL_PIN_SLOTS.map((pin) => pin.label),
   analogPinSlots: GCU_ANALOG_PIN_SLOTS,

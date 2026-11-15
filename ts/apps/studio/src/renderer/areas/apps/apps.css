@@ -783,3 +783,12 @@ button.sdk-diagnostic:hover { background: var(--panel-soft); }
   .dapps-row-blocker { display: none; }
   .dapps-sheet { border-radius: 20px 20px 0 0; }
 }
+
+/* The external strip on a running card (apps with drive_ext_led). */
+.dapps-card-preview { flex-wrap: wrap; }
+.dapps-card-strip { display: grid; gap: 4px; flex: 1 1 100%; min-width: 0; font-size: 10px; color: #aeaeb2; }
+.dapps-card-strip-head { display: flex; align-items: center; gap: 6px; }
+.dapps-card-strip-head em { font-style: normal; padding: 0 6px; border-radius: 999px; background: rgb(255 255 255 / 0.12); }
+.dapps-card-strip small { color: #ff9f0a; }
+.dapps-card-strip .apps-strip { flex-wrap: wrap; }
+.dapps-section .button > svg, .dapps-sheet .button > svg { flex: none; display: block; }

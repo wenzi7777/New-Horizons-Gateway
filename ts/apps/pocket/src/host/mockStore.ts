@@ -459,6 +459,10 @@ export class MockPocketStore implements PocketStore {
       case 'tare_clear':
         device.tare = null;
         break;
+      case 'matrix_layout':
+        device.pins = { analog: command.analogPins, select: command.selectPins };
+        device.matrix = { rows: command.analogPins.length, cols: command.selectPins.length };
+        break;
     }
     this.emit();
     return { ok: true, message: 'ok', data: { uid, command: command.kind } };

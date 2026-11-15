@@ -40,6 +40,7 @@ import { useAppsT } from '../../strings';
 import '../../apps.css';
 import { AppDetailSheet } from './AppDetailSheet';
 import { isViewKind } from './AppParts';
+import { CAPABILITIES } from '../../sdk/lib/index.mjs';
 import { AppResourceBar } from './AppResourceBar';
 import { InstalledAppRow } from './InstalledAppRow';
 import { RunningAppCard } from './RunningAppCard';
@@ -171,6 +172,12 @@ export function DeviceAppsSection({ device }: { device: DeviceView }) {
     [apps, packages, catalog, locale],
   );
   const running = useMemo(() => merged.filter((app) => app.active && !isViewKind(app.kind)), [merged]);
+  // Running apps that may drive the external strip: the device reports one
+  // merged strip, so a card says "shared" when more than one could have lit it.
+  const stripDrivers = useMemo(() => {
+    const bit = (CAPABILITIES as Record<string, number>).drive_ext_led ?? 0;
+    return bit ? running.filter((app) => (app.capabilities & bit) !== 0).length : 0;
+  }, [running]);
   const installed = useMemo(() => merged.filter((app) => !app.active && !isViewKind(app.kind)), [merged]);
   const views = useMemo(() => merged.filter((app) => isViewKind(app.kind)), [merged]);
   const colourOf = useCallback(
@@ -366,6 +373,7 @@ export function DeviceAppsSection({ device }: { device: DeviceView }) {
                 history={history.get(runtimeName(app)) ?? []}
                 disabled={disabled}
                 pending={pending === app.id}
+                stripShared={stripDrivers > 1}
                 onToggle={() => void toggle(app)}
                 onOpen={() => setSheetId(app.id)}
               />

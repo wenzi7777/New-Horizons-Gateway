@@ -556,6 +556,8 @@ export class MockStudioApi implements StudioApi {
         return this.sendCommand(uid, { command: 'set_vref', mv: 330 });
       case 'rfb_measure':
         return this.sendCommand(uid, { command: 'rfb_measure' });
+      case 'matrix_layout':
+        return this.sendCommand(uid, { command: 'set_matrix_layout', analog_pins: command.analogPins, select_pins: command.selectPins });
     }
   }
 

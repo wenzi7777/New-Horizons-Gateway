@@ -386,6 +386,8 @@ const en = {
   appsMoveFirst: "Move first",
   appsInStore: "In App Store",
   appsSectionCopy: "What runs on this device and how much of it each app takes. Apps share one memory pool and the per-frame time budget: light apps can run many at once, a heavy one can take most of it.",
+  appsStripShared: "shared",
+  appsStripNotShown: "External LED mode is not App: the strip stays dark.",
   readoutClose: "Close",
 };
 
@@ -774,6 +776,8 @@ export const APPS_STRINGS = defineAreaStrings<Key>(
     appsMoveFirst: "先頭へ",
     appsInStore: "App Store で見る",
     appsSectionCopy: "このデバイスで動いているアプリと、それぞれが使っているリソース。アプリはメモリプールとフレームごとの時間予算を共有します。軽いアプリなら多数同時に、重いアプリならほぼ全部を使って動かせます。",
+    appsStripShared: "共有",
+    appsStripNotShown: "外部 LED のモードが App ではないため、実機では点灯しません。",
     readoutClose: "閉じる",
   },
   {
@@ -1157,6 +1161,8 @@ export const APPS_STRINGS = defineAreaStrings<Key>(
     appsMoveFirst: "移到最前",
     appsInStore: "在应用商店查看",
     appsSectionCopy: "这台设备上正在运行的应用，以及各自占用的资源。应用共用一个内存池和每帧的时间预算：轻量应用可以同时运行很多个，重的应用可以占用大部分。",
+    appsStripShared: "共用",
+    appsStripNotShown: "外部 LED 模式不是 App，实体灯条不会亮。",
     readoutClose: "关闭",
   },
 );

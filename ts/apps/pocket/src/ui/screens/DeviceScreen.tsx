@@ -2,6 +2,7 @@ import { Stack, useRouter } from 'expo-router';
 import {
   Activity,
   CircleDot,
+  Cpu,
   Gauge,
   RotateCcw,
   Crosshair,
@@ -36,6 +37,7 @@ import {
   SectionHeader,
   SegmentedControl,
   StatusDot,
+  SwitchRow,
   TextField,
   type Tone,
 } from '../components/primitives';
@@ -210,6 +212,13 @@ export function DeviceScreen({ uid }: { uid: string }) {
           disabled={!device.matrix}
           onPress={() => router.push({ pathname: '/live/[uid]', params: { uid } })}
         />
+        <Divider inset={48} />
+        <ListRow
+          title={t('ioTitle')}
+          subtitle={t('ioOpenCopy')}
+          leading={<Cpu size={22} color={theme.colors.accent} />}
+          onPress={() => router.push({ pathname: '/pins/[uid]', params: { uid } })}
+        />
       </Card>
 
       <SectionHeader title={t('recordingSection')} />
@@ -337,27 +346,32 @@ export function DeviceScreen({ uid }: { uid: string }) {
             <Divider />
             <FactRow label={t('rangeSaturated')} value={device.vref.saturatedRows ?? '-'} />
             <Divider inset={0} />
-            <View style={{ padding: 16, gap: 8 }}>
-              <Caption>{t('rangeMode')}</Caption>
-              <SegmentedControl
-                accessibilityLabel={t('rangeMode')}
-                options={[
-                  { value: 'raw' as const, label: t('rangeMode_raw') },
-                  { value: 'virtual' as const, label: t('rangeMode_virtual') },
-                  { value: 'auto' as const, label: t('rangeMode_auto') },
-                ]}
-                value={device.vref.mode}
-                disabled={offline || busy === 'range_mode'}
-                onChange={(mode) => {
-                  if (mode !== 'raw' && device.vref && device.vref.rfbMeasuredRows === 0) {
-                    toast.show(t('rangeNeedsRfb'), 'danger');
-                    return;
-                  }
-                  void run('range_mode', { kind: 'range_mode', mode });
-                }}
-              />
-              <Caption>{t(`rangeModeHint_${device.vref.mode}`)}</Caption>
-            </View>
+            <SwitchRow
+              title={t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}
+              subtitle={device.vref.mode === 'raw' ? t('vrefConvertOffHint') : t('vrefConvertOnHint')}
+              value={device.vref.mode !== 'raw'}
+              disabled={offline || busy === 'range_mode'}
+              onValueChange={(on) => {
+                if (on && device.vref && device.vref.rfbMeasuredRows === 0) {
+                  toast.show(t('rangeNeedsRfb'), 'danger');
+                  return;
+                }
+                void run('range_mode', { kind: 'range_mode', mode: on ? 'virtual' : 'raw' });
+              }}
+            />
+            <Divider inset={16} />
+            <SwitchRow
+              title={t('vrefSmartSwitch')}
+              subtitle={t('vrefSmartHint')}
+              value={device.vref.mode === 'auto'}
+              disabled={offline || busy === 'range_mode' || device.vref.mode === 'raw'}
+              onValueChange={(on) => void run('range_mode', { kind: 'range_mode', mode: on ? 'auto' : 'virtual' })}
+            />
+            {device.vref.mode === 'raw' && device.vref.mv === 330 ? (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+                <Caption>{t('vrefLegacyMatch')}</Caption>
+              </View>
+            ) : null}
             <Divider inset={48} />
             <ActionRow
               label={t('rfbMeasure')}

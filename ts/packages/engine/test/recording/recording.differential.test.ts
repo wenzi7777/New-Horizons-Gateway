@@ -121,6 +121,24 @@ describe.skipIf(!hasPython)('recording, differential against the Desktop backend
     compare(s.spec({ device: '{"device_name": "NHOS-3CDC7545CCD0"}' }));
   });
 
+  it('a v2.0.F records how its rows were read, and a mode change mid-way', () => {
+    const s = new Scenario();
+    s.enable();
+    let epoch = 1792056866000;
+    const frame = (i: number) => s.advance(17).frame({ frameId: i, timestamp: (epoch += 17), flags: FLAG.EPOCH, matrix: floats(4) });
+    for (let i = 1; i <= 3; i++) frame(i);
+    // Raw JSON text, so floats such as 20000.0 reach both sides as written.
+    const v20 = (mode: string, mv: string) =>
+      FULL_STATUS.slice(0, -1) +
+      `, "vref": {"supported": true, "ok": true, "mv": ${mv}}, "range": {"mode": "${mode}", "ref_rfb_ohm": 20000, "leak_compensation": true, "rfb_ohm": [20010.5, 20000.0], "offset_mv": [3.25, -1.0]}}`;
+    s.setKnowledge({ status: v20('raw', '330') }, true);
+    for (let i = 4; i <= 6; i++) frame(i);
+    s.setKnowledge({ status: v20('auto', '264.0') }, true);
+    for (let i = 7; i <= 8; i++) frame(i);
+    s.advance(1).enable(false);
+    compare(s.spec({ device: '{"device_name": "NHOS-3CDC7545CCD0"}' }));
+  });
+
   it('a stop while frames are queued drains up to the stop; the drain timer; enabling during a drain', () => {
     const s = new Scenario();
     s.enable();

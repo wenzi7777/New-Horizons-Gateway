@@ -657,7 +657,7 @@ export class DeviceTable {
       connected = true;
       const existingFindme = dictOr(existing.findme);
       device = { ...device, connected: true, findme_state: 'attached' };
-      setDefault(device, 'addr', get(existingFindme, 'host', ''));
+      setDefault(device, 'addr', get(existingFindme, 'device_addr', ''));
       setDefault(device, 'gateway_name', get(existingFindme, 'gateway_name', ''));
       setDefault(device, 'udp_port', get(existingFindme, 'udp_port', ''));
     }
@@ -672,10 +672,13 @@ export class DeviceTable {
       state: strOr(device.findme_state) || (connected ? 'attached' : 'disconnected'),
       gateway_id: gatewayId,
       gateway_name: get(device, 'gateway_name', ''),
-      host: or(device.last_findme_addr, device.addr, ''),
+      // Not host / last_success_ms: the device's own status means the relay's
+      // address and its uptime ms by those, and the two writers took turns
+      // (gateway_registry.py, same fix).
+      device_addr: or(device.last_findme_addr, device.addr, ''),
       udp_port: get(device, 'udp_port', ''),
       claim_id: get(device, 'claim_id', ''),
-      last_success_ms: get(device, 'last_findme_at', ''),
+      last_findme_at: get(device, 'last_findme_at', ''),
       last_heartbeat_at: get(device, 'last_heartbeat_at', ''),
       last_error: get(device, 'findme_reason', ''),
     };

@@ -36,5 +36,7 @@ export function quickCommandPayload(command: QuickCommand): Record<string, unkno
       return { command: 'set_vref', mv: VREF_SAFE_MV };
     case 'rfb_measure':
       return { command: 'rfb_measure' };
+    case 'matrix_layout':
+      return { command: 'set_matrix_layout', analog_pins: command.analogPins, select_pins: command.selectPins };
   }
 }

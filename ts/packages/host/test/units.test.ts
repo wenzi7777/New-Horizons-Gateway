@@ -12,6 +12,7 @@ import { LatestThrottle, type TimerPort } from '../src/throttle';
 import {
   configPatchFromSettings,
   deviceView,
+  pinsOf,
   isolationSuspected,
   liveFrame,
   nearbyView,
@@ -68,7 +69,15 @@ describe('views', () => {
       recording: { enabled: true, finishing: false, error: '' },
       lastSeenMs: Date.UTC(2026, 10, 10, 3, 0, 0),
       vref: null,
+      pins: null,
     });
+  });
+
+  it('reads the matrix pins in matrix order', () => {
+    expect(pinsOf({ matrix_layout: { analog_pins: [3, 1, 2], select_pins: [17, 18] } })).toEqual({ analog: [3, 1, 2], select: [17, 18] });
+    // Older firmware named them active_rows / active_cols.
+    expect(pinsOf({ matrix_layout: { active_rows: [1], active_cols: [13] } })).toEqual({ analog: [1], select: [13] });
+    expect(pinsOf({})).toBeNull();
   });
 
   it('maps the v2.0.F Vref and range block', () => {

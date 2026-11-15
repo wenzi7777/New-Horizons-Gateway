@@ -4,7 +4,7 @@
 // safe value, what needs a measured Rfb); this only asks and shows the answer.
 import { useEffect, useState } from 'react';
 
-import { Card, Checkbox, Disclosure, Field, Notice, NumberInput, Segmented, Slider } from '../../components/ui';
+import { Card, Disclosure, Field, Notice, NumberInput, Slider, SwitchRow } from '../../components/ui';
 import { record } from '../../lib/deviceDetails';
 import { rsSpreadFraction, summarizeSweep, sweepCsv, type SweepCalibration, type SweepStep, type SweepSummary } from '../../lib/vrefSweep';
 import { useStudio } from '../../state/studio';
@@ -164,6 +164,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
 
   async function applyMode(mode: RangeMode) {
     if (mode !== 'raw' && !rfbValid) return;
+    if (mode === modeNow) return;
     await ask(ds('rangeApply'), { command: 'set_range', mode, ref_rfb_ohm: fieldNumber(refRfbDraft) ?? refRfbNow, leak_comp: leakDraft });
   }
 
@@ -208,6 +209,12 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const span = sliderMax - MIN_VREF_MV;
   const share = (from: number, to: number) => Math.max(0, Math.min(to, sliderMax) - Math.max(from, MIN_VREF_MV)) / span;
 
+  // Three firmware modes as two switches: conversion (virtual) and, on top of
+  // it, smart Vref (auto). Off/off is raw, the old boards' way of reading.
+  const converting = modeNow !== 'raw';
+  const autoSteps = num(range.auto_steps);
+  const legacyScale = modeNow === 'raw' && currentMv === SAFE_VREF_MV;
+
   if (vref.supported !== true) return null;
   return (
     <Card title={ds('vrefTitle')} copy={ds('vrefCopy')}>
@@ -236,15 +243,21 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
       </div>
 
       <div className="settings-subsection">
-        <h4>{ds('rangeMode')}</h4>
-        <Segmented<RangeMode>
-          label={ds('rangeMode')}
-          value={modeNow}
-          disabled={working || running('set_range')}
-          options={(['raw', 'virtual', 'auto'] as const).map((mode) => ({ value: mode, label: ds(`rangeModeShort_${mode}`), disabled: mode !== 'raw' && !rfbValid }))}
-          onChange={(mode) => void applyMode(mode)}
+        <h4>{ds('vrefReadingTitle')}</h4>
+        <SwitchRow
+          checked={converting}
+          disabled={working || running('set_range') || (!converting && !rfbValid)}
+          title={ds('vrefConvertSwitch', { ref: kOhm(refRfbNow) })}
+          copy={converting ? ds('vrefConvertOnHint') : ds('vrefConvertOffHint')}
+          onChange={(on) => void applyMode(on ? 'virtual' : 'raw')}
         />
-        <p className="field-note">{ds(`rangeModeHint_${modeNow}`)}</p>
+        <SwitchRow
+          checked={modeNow === 'auto'}
+          disabled={working || running('set_range') || !converting}
+          title={ds('vrefSmartSwitch')}
+          copy={ds('vrefSmartHint')}
+          onChange={(on) => void applyMode(on ? 'auto' : 'virtual')}
+        />
         {!rfbValid ? (
           <div className="vref-needs-rfb">
             <Notice>{ds('rangeNeedsRfb')}</Notice>
@@ -253,11 +266,53 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
             </button>
           </div>
         ) : null}
-        {modeNow !== 'raw' ? (
+        {legacyScale ? <Notice kind="success">{ds('vrefLegacyMatch')}</Notice> : null}
+      </div>
+
+      <div className="settings-subsection">
+        <h4>{ds('vrefControlTitle')}</h4>
+        {modeNow === 'auto' ? (
+          <p className="field-note">{ds('vrefSmartStatus', { mv: currentMv ?? '-', steps: autoSteps ?? 0 })}</p>
+        ) : (
+          <>
+            <div className="vref-slider">
+              <Slider
+                min={MIN_VREF_MV}
+                max={sliderMax}
+                step={10}
+                value={Math.min(Math.max(draftMv, MIN_VREF_MV), sliderMax)}
+                disabled={working}
+                aria-label={ds('vrefInputLabel')}
+                onChange={(e) => setVrefDraft(e.target.value)}
+              />
+              <NumberInput min={MIN_VREF_MV} max={sliderMax} step={10} value={vrefDraft} aria-label={ds('vrefInputLabel')} onChange={(e) => setVrefDraft(e.target.value)} />
+              <span>mV</span>
+            </div>
+            <div className="vref-zone-bar" aria-hidden="true">
+              <span className="safe" style={{ flexGrow: share(MIN_VREF_MV, STRAP_MARGIN_MV) }} />
+              <span className="near" style={{ flexGrow: share(STRAP_MARGIN_MV, STRAP_RISK_MV) }} />
+              <span className="risk" style={{ flexGrow: share(STRAP_RISK_MV, sliderMax) }} />
+            </div>
+            <p className="field-note">{ds('vrefZoneLegend')}</p>
+            <div className="form-footer">
+              <button className="button" type="button" disabled={working || currentMv === SAFE_VREF_MV} onClick={() => void ask(ds('vrefReset'), { command: 'set_vref', mv: SAFE_VREF_MV })}>
+                {ds('vrefReset')}
+              </button>
+              <button className="button primary" type="button" disabled={working} onClick={() => void setVref(ds('vrefApply'), { mv: vrefDraft })}>
+                {running('set_vref') ? t('running') : ds('vrefApply')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <Disclosure summary={ds('vrefToolsTitle')}>
+        <div className="settings-subsection">
+          <h4>{ds('vrefAdvancedRangeTitle')}</h4>
           <div className="field-grid three">
             <Field label={ds('rangeRefRfb')}>{(id) => <NumberInput id={id} min={1000} max={1000000} step={1000} value={refRfbDraft} onChange={(e) => setRefRfbDraft(e.target.value)} />}</Field>
             <div className="vref-check">
-              <Checkbox checked={leakDraft} onChange={(e) => setLeakDraft(e.target.checked)} label={ds('rangeLeak')} />
+              <SwitchRow checked={leakDraft} onChange={setLeakDraft} title={ds('rangeLeak')} />
             </div>
             <div className="vref-check">
               <button className="button" type="button" disabled={working} onClick={() => void applyRangeSettings()}>
@@ -265,42 +320,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
               </button>
             </div>
           </div>
-        ) : null}
-      </div>
-
-      <div className="settings-subsection">
-        <h4>{ds('vrefControlTitle')}</h4>
-        {modeNow === 'auto' ? <p className="field-note">{ds('vrefAutoControlled')}</p> : null}
-        <div className="vref-slider">
-          <Slider
-            min={MIN_VREF_MV}
-            max={sliderMax}
-            step={10}
-            value={Math.min(Math.max(draftMv, MIN_VREF_MV), sliderMax)}
-            disabled={working || modeNow === 'auto'}
-            aria-label={ds('vrefInputLabel')}
-            onChange={(e) => setVrefDraft(e.target.value)}
-          />
-          <NumberInput min={MIN_VREF_MV} max={sliderMax} step={10} value={vrefDraft} disabled={modeNow === 'auto'} aria-label={ds('vrefInputLabel')} onChange={(e) => setVrefDraft(e.target.value)} />
-          <span>mV</span>
         </div>
-        <div className="vref-zone-bar" aria-hidden="true">
-          <span className="safe" style={{ flexGrow: share(MIN_VREF_MV, STRAP_MARGIN_MV) }} />
-          <span className="near" style={{ flexGrow: share(STRAP_MARGIN_MV, STRAP_RISK_MV) }} />
-          <span className="risk" style={{ flexGrow: share(STRAP_RISK_MV, sliderMax) }} />
-        </div>
-        <p className="field-note">{ds('vrefZoneLegend')}</p>
-        <div className="form-footer">
-          <button className="button" type="button" disabled={working || currentMv === SAFE_VREF_MV} onClick={() => void ask(ds('vrefReset'), { command: 'set_vref', mv: SAFE_VREF_MV })}>
-            {ds('vrefReset')}
-          </button>
-          <button className="button primary" type="button" disabled={working || modeNow === 'auto'} onClick={() => void setVref(ds('vrefApply'), { mv: vrefDraft })}>
-            {running('set_vref') ? t('running') : ds('vrefApply')}
-          </button>
-        </div>
-      </div>
-
-      <Disclosure summary={ds('vrefToolsTitle')}>
         <div className="settings-subsection">
           <h4>{ds('rfbTitle')}</h4>
           <p className="field-note">{ds('rfbCopy')}</p>

@@ -93,7 +93,18 @@ export function deviceView(entry: Record<string, unknown>, nowMono: number): Dev
     },
     lastSeenMs: parseIsoMs(entry.last_seen_at),
     vref: vrefOf(status),
+    pins: pinsOf(status),
   };
+}
+
+/** status.matrix_layout -> the pins in matrix order (older firmware: active_rows / active_cols). */
+export function pinsOf(status: Record<string, unknown>): { analog: number[]; select: number[] } | null {
+  const layout = dict(status.matrix_layout);
+  const list = (value: unknown): number[] | null =>
+    Array.isArray(value) ? value.map(Number).filter((n) => Number.isInteger(n) && n >= 0) : null;
+  const analog = list(layout.analog_pins) ?? list(layout.active_rows);
+  const select = list(layout.select_pins) ?? list(layout.active_cols);
+  return analog && select ? { analog, select } : null;
 }
 
 /** The v2.0.F firmware's safe Vref and GPIO45 strap thresholds (VrefPolicy.h). */

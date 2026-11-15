@@ -84,6 +84,21 @@ export type BuildDeviceMetaOptions = {
   localRelayId?: string | null;
 };
 
+/** _range_meta: status.vref + status.range, on a board with a Vref DAC (v2.0.F); null elsewhere. */
+function rangeMeta(status: Dict): Dict | null {
+  const vref = asDict(status.vref);
+  if (vref.supported !== true) return null;
+  const range = asDict(status.range);
+  return {
+    mode: known(range.mode),
+    vref_mv: known(vref.mv),
+    ref_rfb_ohm: known(range.ref_rfb_ohm),
+    leak_compensation: typeof range.leak_compensation === 'boolean' ? range.leak_compensation : null,
+    rfb_ohm: Array.isArray(range.rfb_ohm) ? deepCopy(range.rfb_ohm) : null,
+    offset_mv: Array.isArray(range.offset_mv) ? deepCopy(range.offset_mv) : null,
+  };
+}
+
 /** build_device_meta: the device-describing blocks of the meta. */
 export function buildDeviceMeta(deviceUid: string, device: Dict, status: Dict, options: BuildDeviceMetaOptions = {}): Dict {
   const system = asDict(status.system);
@@ -154,6 +169,7 @@ export function buildDeviceMeta(deviceUid: string, device: Dict, status: Dict, o
       relay_id: relayId,
     },
     clock: copyDict(status.clock),
+    range: rangeMeta(status),
     battery_at_start: pyTruthyOf(streamBattery)
       ? { soc_percent: known(streamBattery.soc_percent), vbat_mv: known(streamBattery.vbat_mv) }
       : null,
@@ -249,6 +265,10 @@ export class RecordingMeta {
     ['transport', 'path'],
     ['transport', 'relay_id'],
     ['device', 'firmware_version'],
+    ['range', 'mode'],
+    ['range', 'vref_mv'],
+    ['range', 'ref_rfb_ohm'],
+    ['range', 'leak_compensation'],
   ];
 
   private readonly sink: RecordingFileSink;

@@ -2,7 +2,8 @@
 // RunningAppCard.tsx): what it draws now, how busy it is, a switch that ends it.
 import { type AppLoadStats, type AppViewState, type DeviceApp, formatBytes, formatCpu, runtimeName } from '../../lib/deviceApps';
 import { useAppsT } from '../../strings';
-import { LedDot, OledPanel } from '../IndicatorViews';
+import { CAPABILITIES } from '../../sdk/lib/index.mjs';
+import { LedDot, OledPanel, StripPixels } from '../IndicatorViews';
 import { AppGlyph, AppSwitch, LoadBadge, LoadSparkline } from './AppParts';
 
 /** What the card's status dot says. An idle "running" app has nothing to run. */
@@ -24,6 +25,7 @@ export function RunningAppCard({
   history,
   disabled,
   pending,
+  stripShared = false,
   onToggle,
   onOpen,
 }: {
@@ -35,6 +37,11 @@ export function RunningAppCard({
   history: readonly number[];
   disabled: boolean;
   pending: boolean;
+  /**
+   * More than one running app may drive the external strip. The device
+   * reports one merged strip, not who lit which pixel, so the card says so.
+   */
+  stripShared?: boolean;
   onToggle: () => void;
   onOpen: () => void;
 }) {
@@ -44,6 +51,9 @@ export function RunningAppCard({
   const rows = (view?.oled.rows ?? []).map((row) => (row && row.app === name ? row : null));
   const drawsOled = rows.some(Boolean);
   const ledRequest = view?.statusLed.request && view.statusLed.request.app === name ? view.statusLed.request : null;
+  const extCap = (CAPABILITIES as Record<string, number>).drive_ext_led ?? 0;
+  const strip =
+    state === 'running' && extCap && (app.capabilities & extCap) !== 0 && view?.extLed.pixels && view.extLed.count > 0 ? view.extLed : null;
   const level = state === 'running' ? load?.level ?? 'low' : 'low';
 
   return (
@@ -72,7 +82,7 @@ export function RunningAppCard({
         <AppSwitch checked disabled={disabled} pending={pending} label={t('appsTurnOff', { app: app.name })} onChange={() => onToggle()} />
       </header>
 
-      <div className={`dapps-card-preview${drawsOled || ledRequest ? '' : ' empty'}`}>
+      <div className={`dapps-card-preview${drawsOled || ledRequest || strip ? '' : ' empty'}`}>
         {drawsOled ? <OledPanel rows={rows} /> : null}
         {ledRequest ? (
           <div className="dapps-card-led">
@@ -80,7 +90,17 @@ export function RunningAppCard({
             {ledRequest.suppressed ? <small>{t('appsLedHeld')}</small> : null}
           </div>
         ) : null}
-        {!drawsOled && !ledRequest ? <span>{t('appsNoOutput')}</span> : null}
+        {strip && strip.pixels ? (
+          <div className="dapps-card-strip">
+            <div className="dapps-card-strip-head">
+              <span>{t('sdkEmuExtLed')}</span>
+              {stripShared ? <em>{t('appsStripShared')}</em> : null}
+            </div>
+            <StripPixels pixels={strip.pixels} />
+            {strip.owner !== 'app' ? <small>{t('appsStripNotShown')}</small> : null}
+          </div>
+        ) : null}
+        {!drawsOled && !ledRequest && !strip ? <span>{t('appsNoOutput')}</span> : null}
       </div>
 
       {state === 'running' && load ? (

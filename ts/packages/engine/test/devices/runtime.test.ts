@@ -34,7 +34,7 @@ describe('devices on the LAN', () => {
       device_name: `NHOS-${UID}`,
       gateway_connected: true,
       transport_path: 'arduino_heartbeat',
-      findme: { state: 'attached', host: DEVICE_ADDR.ip, udp_port: 13250 },
+      findme: { state: 'attached', device_addr: DEVICE_ADDR.ip, udp_port: 13250 },
     });
     h.service.tick();
     expect(h.service.getDevice(UID)).toMatchObject({ gateway_id: 'gw-a', client_type: 'studio', gateway_state: { connected: true } });

@@ -31,6 +31,7 @@ function RootStack() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false, title: t('appShortName') }} />
       <Stack.Screen name="device/[uid]" options={{ title: t('deviceTitle') }} />
       <Stack.Screen name="live/[uid]" options={{ title: t('liveTitle') }} />
+      <Stack.Screen name="pins/[uid]" options={{ title: t('ioTitle') }} />
       <Stack.Screen name="recording/[...id]" options={{ title: t('recordingTitle') }} />
       <Stack.Screen name="analysis/[...id]" options={{ title: t('analysisTitle') }} />
     </Stack>

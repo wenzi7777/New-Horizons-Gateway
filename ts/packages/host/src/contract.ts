@@ -55,6 +55,8 @@ export interface DeviceView {
   lastSeenMs: number | null;
   /** TIA-CTL v2.0.F: its Vref DAC and range; null (or absent) on a board without one. */
   vref?: VrefView | null;
+  /** status.matrix_layout: the analog (row) and select (column) GPIOs in matrix order; null before the first status. */
+  pins?: { analog: number[]; select: number[] } | null;
   /**
    * Another relay took this device over (it is in yielded_devices) and it is
    * not streaming here. It stays listed; adopting it again takes it back.
@@ -179,7 +181,9 @@ export type QuickCommand =
   /** v2.0.F: Vref back to its safe 330 mV. */
   | { kind: 'vref_reset' }
   /** v2.0.F: measure each row's Rfb (about 1.5 s). */
-  | { kind: 'rfb_measure' };
+  | { kind: 'rfb_measure' }
+  /** The matrix pins, in matrix order (the IO Visualizer's apply). */
+  | { kind: 'matrix_layout'; analogPins: number[]; selectPins: number[] };
 
 /** The engine's full record of one device and its last status (plain JSON), for settings pages. */
 export interface DeviceDetail {
