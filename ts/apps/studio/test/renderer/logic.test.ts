@@ -18,6 +18,7 @@ describe('navigation', () => {
     const routes = [
       { area: 'devices', uid: null, tab: 'overview' },
       { area: 'devices', uid: '3C84279A1F20', tab: 'settings' },
+      { area: 'devices', uid: '3C84279A1F20', tab: 'settings', section: 'apps' },
       { area: 'live', uids: ['A', 'B'] },
       { area: 'recordings', id: 'recordings/3C84279A1F20/20261110/091217' },
       { area: 'apps', path: [] },

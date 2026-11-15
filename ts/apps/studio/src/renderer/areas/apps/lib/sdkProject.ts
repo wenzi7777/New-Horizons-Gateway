@@ -9,7 +9,7 @@
 // pull request.
 
 import type { DeviceView } from "../../../../shared/contract";
-import { DANGEROUS_CAPABILITIES, MAX_SLOTS, appShareUs, type Analysis } from "../sdk/lib/index.mjs";
+import { DANGEROUS_CAPABILITIES, appShareUs, type Analysis } from "../sdk/lib/index.mjs";
 
 /** "VD-CTL/R …" and "TIA-CTL/R …" are older names of "TIA-CTL …" (the Desktop's boardProfile.ts). */
 export function normalizeHardwareModel(value: string) {
@@ -550,9 +550,14 @@ export function emittedEvents(source: string): string[] {
   return names;
 }
 
-/** Per-app run-time share the Build tab shows, for one to four running apps. */
+/**
+ * Per-app run-time share the Build tab shows. There is no fixed number of
+ * apps (v2.1.0: the memory pool and the time budget are the limit), so these
+ * are sample counts, not a ceiling.
+ */
+const SHARE_SAMPLES = [1, 2, 4, 8] as const;
 export function runtimeShares(fps: number): { apps: number; us: number }[] {
-  return Array.from({ length: MAX_SLOTS }, (_, index) => ({ apps: index + 1, us: appShareUs(fps, index + 1) }));
+  return SHARE_SAMPLES.map((apps) => ({ apps, us: appShareUs(fps, apps) }));
 }
 
 /**

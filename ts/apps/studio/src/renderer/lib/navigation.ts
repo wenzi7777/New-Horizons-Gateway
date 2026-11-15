@@ -29,7 +29,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
 export const DEVICE_TABS: readonly DeviceTab[] = ['overview', 'settings', 'calibration'];
 
 export type Route =
-  | { area: 'devices'; uid: string | null; tab: DeviceTab }
+  /** `section`: a settings section to open on ("#/devices/<uid>/settings/apps"). */
+  | { area: 'devices'; uid: string | null; tab: DeviceTab; section?: string }
   | { area: 'live'; uids: string[] }
   | { area: 'recordings'; id: string | null }
   | { area: 'profiles'; path: string[] }
@@ -47,6 +48,7 @@ export function parseRoute(hash: string): Route {
     case 'devices': {
       const uid = rest[0] ? decodeURIComponent(rest[0]) : null;
       const tab = DEVICE_TABS.includes(rest[1] as DeviceTab) ? (rest[1] as DeviceTab) : 'overview';
+      if (tab === 'settings' && uid && rest[2]) return { area: 'devices', uid, tab, section: decodeURIComponent(rest[2]) };
       return { area: 'devices', uid, tab };
     }
     case 'live':
@@ -68,6 +70,7 @@ export function formatRoute(route: Route): string {
   switch (route.area) {
     case 'devices':
       if (!route.uid) return '#/devices';
+      if (route.tab === 'settings' && route.section) return `#/devices/${encodeURIComponent(route.uid)}/settings/${encodeURIComponent(route.section)}`;
       return `#/devices/${encodeURIComponent(route.uid)}${route.tab === 'overview' ? '' : `/${route.tab}`}`;
     case 'live':
       return route.uids.length ? `#/live/${route.uids.map(encodeURIComponent).join(',')}` : '#/live';

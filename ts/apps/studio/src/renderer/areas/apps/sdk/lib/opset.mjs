@@ -33,7 +33,16 @@ export const DEFAULT_BUDGET_US = 1500; // FlowApp::kDefaultBudgetUs
 // At run time the apps share whatever the scanner leaves: this share of one
 // frame period, divided among the apps actually running (AppGovernor).
 export const GOVERNOR_CEILING_PERMILLE = 250; // AppGovernor::kDefaultCeilingPermille
-export const MAX_SLOTS = 4; // AppRegistry::kMaxSlots
+// v2.1.0: no slots. Every running app lives whole in one pool: a control
+// block, a store with the `storage` capability, and its image (code, arena,
+// stack). How many run is whatever fits, and whatever the time budget admits.
+export const POOL_BYTES = 8192; // AppVm::kPoolBytes
+// sizeof(AppVm) and sizeof(AppStore) on the ESP32-S3, rounded to 4. The
+// device reports its own as `control_bytes` in app_list_packages.
+export const APP_CONTROL_BYTES = 572;
+export const APP_STORE_BYTES = 444;
+// The running-app count the analyzer warns against: not a limit, a yardstick.
+export const TYPICAL_RUNNING_APPS = 4;
 // FlowNode::ms is a uint16_t; a larger hold silently wraps on the device.
 export const MAX_DEBOUNCE_MS = 65535;
 // FlowNode::r0..c1 are uint8_t.
@@ -441,6 +450,19 @@ export function windowFloats(nodes) {
 export function appShareUs(fps, runningApps) {
   const periodUs = 1e6 / Math.max(1, fps);
   return Math.floor((periodUs * GOVERNOR_CEILING_PERMILLE) / 1000 / Math.max(1, runningApps));
+}
+
+/**
+ * What an app takes of the device's app pool while it runs (v2.1.0): its
+ * control block, its image (`poolBytes`, from the verifier) and, with the
+ * `storage` capability, its store.
+ * @param {number} poolBytes
+ * @param {readonly unknown[]} [capabilities]
+ */
+export function appMemoryBytes(poolBytes, capabilities = []) {
+  const align4 = (/** @type {number} */ n) => (n + 3) & ~3;
+  const store = capabilities.includes("storage") ? APP_STORE_BYTES : 0;
+  return APP_CONTROL_BYTES + align4(poolBytes) + store;
 }
 
 /**

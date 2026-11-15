@@ -11,7 +11,7 @@
 
 import { canonicalBytes } from "./canonical.mjs";
 import { CompileError, compileSource } from "./compile.mjs";
-import { MAX_SLOTS, appShareUs } from "./opset.mjs";
+import { TYPICAL_RUNNING_APPS, appShareUs } from "./opset.mjs";
 import { PackageError, validatePackage } from "./validate.mjs";
 
 /**
@@ -84,12 +84,12 @@ export function analyzeFlow(source, options = {}) {
   }
 
   const estimated = result.validation.estimatedUs;
-  const share = appShareUs(WARN_FPS, MAX_SLOTS);
+  const share = appShareUs(WARN_FPS, TYPICAL_RUNNING_APPS);
   if (estimated > share) {
     result.diagnostics.push(diagnostic({
       severity: "warning",
       message: `~${estimated}us per frame at ${result.validation.cellCount} cells exceeds the ${share}us each app gets `
-        + `with all ${MAX_SLOTS} slots running at ${WARN_FPS} Hz; the device may suspend it then`,
+        + `when ${TYPICAL_RUNNING_APPS} such apps run at ${WARN_FPS} Hz; the device may suspend it then`,
     }));
   }
   return result;

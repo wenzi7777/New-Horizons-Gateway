@@ -188,7 +188,7 @@ export function DevicesPage({ route, navigate }: Props) {
         {route.uid && !selected ? (
           <p className="empty">{t('deviceGone')}</p>
         ) : selected ? (
-          <DeviceDetail device={selected} tab={route.tab} navigate={navigate} />
+          <DeviceDetail device={selected} tab={route.tab} section={route.section} navigate={navigate} />
         ) : (
           <div className="empty-state">
             <h2>{t('selectDevice')}</h2>
@@ -248,7 +248,7 @@ function useTakenOverToasts(devices: DeviceView[]) {
 
 const TAB_LABEL = { overview: 'tabOverview', settings: 'tabSettings', calibration: 'tabCalibration' } as const;
 
-function DeviceDetail({ device, tab, navigate }: { device: DeviceView; tab: DeviceTab; navigate: (route: Route) => void }) {
+function DeviceDetail({ device, tab, section, navigate }: { device: DeviceView; tab: DeviceTab; section?: string; navigate: (route: Route) => void }) {
   const { t } = useStudio();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const go = (next: DeviceTab) => navigate({ area: 'devices', uid: device.uid, tab: next });
@@ -299,7 +299,7 @@ function DeviceDetail({ device, tab, navigate }: { device: DeviceView; tab: Devi
         {tab === 'overview' ? (
           <DeviceOverview device={device} navigate={navigate} />
         ) : tab === 'settings' ? (
-          <DeviceSettings key={device.uid} device={device} />
+          <DeviceSettings key={`${device.uid}:${section ?? ''}`} device={device} initialSection={section} />
         ) : (
           <DeviceCalibration device={device} />
         )}

@@ -64,31 +64,30 @@ export const COMMAND_BLOCKS: CommandBlock[] = [
   { command: "service-list", groupKey: "commandGroupCore", params: [] },
   { command: "capabilities", groupKey: "commandGroupCore", params: [] },
   { command: "app-list", groupKey: "commandGroupCore", params: [] },
-  {
-    command: "app-enable",
-    groupKey: "commandGroupConfig",
-    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "flow" }],
-  },
-  {
-    command: "app-disable",
-    groupKey: "commandGroupConfig",
-    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "flow1" }],
-  },
   // Stops last until reboot (firmware v1.19.0+): nothing is persisted.
   {
     command: "app-stop",
     groupKey: "commandGroupConfig",
-    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "flow" }],
+    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "heel_strike" }],
   },
   {
     command: "app-start",
     groupKey: "commandGroupConfig",
-    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "flow" }],
+    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "heel_strike" }],
+  },
+  // Firmware v2.1.0: lower order wins shared OLED rows and the status LED.
+  {
+    command: "app-reorder",
+    groupKey: "commandGroupConfig",
+    params: [
+      { key: "id", labelKey: "paramAppId", type: "text", required: true, placeholder: "heel_strike" },
+      { key: "to", labelKey: "paramAppOrder", type: "number", required: true, placeholder: "0" },
+    ],
   },
   {
     command: "app-revive",
     groupKey: "commandGroupMaintenance",
-    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "flow" }],
+    params: [{ key: "name", labelKey: "paramAppName", type: "text", required: true, placeholder: "heel_strike" }],
   },
   {
     command: "app-events",
@@ -138,16 +137,14 @@ export const COMMAND_BLOCKS: CommandBlock[] = [
     groupKey: "commandGroupMaintenance",
     params: [
       { key: "id", labelKey: "paramAppId", type: "text", required: true, placeholder: "heel_strike" },
-      { key: "slot", labelKey: "paramSlot", type: "number", placeholder: "1" },
     ],
   },
   {
     command: "app-deactivate",
     groupKey: "commandGroupMaintenance",
-    // The backend wants --id or --slot (either one), so neither is required here.
+    // Apps have no slots since firmware v2.1.0: the id names the app.
     params: [
-      { key: "id", labelKey: "paramAppId", type: "text", placeholder: "heel_strike" },
-      { key: "slot", labelKey: "paramSlot", type: "number", placeholder: "1" },
+      { key: "id", labelKey: "paramAppId", type: "text", required: true, placeholder: "heel_strike" },
     ],
   },
   {
@@ -156,12 +153,6 @@ export const COMMAND_BLOCKS: CommandBlock[] = [
     params: [{ key: "id", labelKey: "paramAppId", type: "text", required: true, placeholder: "heel_strike" }],
   },
   { command: "app-reindex", groupKey: "commandGroupMaintenance", params: [] },
-  {
-    command: "app-load-flow",
-    groupKey: "commandGroupConfig",
-    params: [{ key: "path", labelKey: "paramFlowPath", type: "text", placeholder: "apps/flow.json" }],
-  },
-  { command: "app-unload-flow", groupKey: "commandGroupConfig", params: [] },
   { command: "config-schema", groupKey: "commandGroupConfig", params: [] },
   {
     command: "config-get",

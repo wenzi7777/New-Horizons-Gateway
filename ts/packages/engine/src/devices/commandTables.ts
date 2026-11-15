@@ -9,10 +9,10 @@ export const DEVICE_COMMAND_ALLOWLIST: ReadonlySet<string> = new Set([
   'scan_health', 'storage_status', 'task_list', 'crash_log', 'crash_clear', 'health',
   'service_list', 'service_restart', 'dmesg',
   'sysmon', 'thread_list', 'task_stop', 'task_start', 'task_set_period', 'service_stop',
-  'service_start', 'app_stop', 'app_start',
+  'service_start', 'app_stop', 'app_start', 'app_reorder',
   'set_time', 'clock_sync', 'clock_status', 'set_clock_config', 'set_power_profile',
   'config_schema', 'config_get', 'config_set', 'capabilities', 'commands',
-  'app_list', 'app_enable', 'app_disable', 'app_revive', 'app_load_flow', 'app_unload_flow',
+  'app_list', 'app_revive',
   'app_events', 'app_view', 'app_list_packages', 'app_install', 'app_uninstall', 'app_activate',
   'app_deactivate', 'app_verify', 'app_reindex',
   'calibration_status', 'calibration_enable', 'calibration_disable', 'calibration_clear_profile',
@@ -40,11 +40,13 @@ export const SHARED_COMMANDS: ReadonlySet<string> = new Set([
   'check_update', 'apply_update', 'reboot', 'reboot_wifi_setup', 'set_transport',
   'task_list', 'service_list', 'service_restart', 'dmesg', 'crash_log', 'crash_clear', 'health',
   'capabilities', 'config_schema', 'config_get', 'config_set', 'set_time', 'clock_sync',
-  'clock_status', 'set_clock_config', 'set_power_profile', 'app_list', 'app_enable',
-  'app_disable', 'app_revive', 'app_load_flow', 'app_unload_flow', 'app_events',
+  'clock_status', 'set_clock_config', 'set_power_profile', 'app_list',
+  'app_revive', 'app_events',
   'app_list_packages', 'app_verify', 'app_view', 'commands',
   'sysmon', 'thread_list', 'task_stop', 'task_start', 'task_set_period', 'service_stop',
   'service_start', 'app_stop', 'app_start',
+  // v2.1.0: which running app wins shared OLED rows and the status LED.
+  'app_reorder',
 ]);
 
 export const NORMAL_COMMANDS: ReadonlySet<string> = new Set([

@@ -44,6 +44,7 @@ import {
   REL_COLS,
   REL_ROWS,
   compareVersions,
+  appMemoryBytes,
 } from "./opset.mjs";
 import { Assembler, I2C_DENIED, VmImageError, encodeImage, toBase64, verifyImage } from "./vm.mjs";
 import {
@@ -2439,7 +2440,8 @@ function calleeName(callee) {
  * @typedef {object} CompileReport
  * @property {number} codeBytes
  * @property {number} arenaSlots
- * @property {number} poolBytes RAM the app takes from the device's app pool
+ * @property {number} poolBytes RAM the image takes from the device's app pool
+ * @property {number} memoryBytes all the app takes of the pool while it runs: control block, image and store (v2.1.0)
  * @property {number} maxStack
  * @property {boolean} loopFree
  * @property {number|null} estimatedUs worst case per frame at `cellCount`; null with loops (time-sliced)
@@ -2468,6 +2470,7 @@ export function compileSource(source, options = {}) {
     codeBytes: verified.image.code.length,
     arenaSlots: verified.image.arena,
     poolBytes: verified.poolBytes,
+    memoryBytes: appMemoryBytes(verified.poolBytes, pkg.manifest.capabilities),
     maxStack: verified.maxStack,
     loopFree: verified.loopFree,
     estimatedUs: verified.loopFree ? Math.ceil(verified.estimatedNs / 1000) : null,

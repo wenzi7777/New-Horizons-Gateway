@@ -18,6 +18,7 @@ import {
   DEFAULT_CELL_COUNT,
   MAX_PACKAGE_BYTES,
   RESERVED_APP_IDS,
+  appMemoryBytes,
   compareVersions,
   windowFloats,
 } from "./opset.mjs";
@@ -135,6 +136,10 @@ export function validateManifest(manifest) {
   if ("budget_us" in manifest) {
     require(isInt(manifest.budget_us) && /** @type {number} */ (manifest.budget_us) > 0,
       `invalid_budget_us:${text(manifest.budget_us)}`);
+  }
+  // v2.1.0: may borrow time other apps leave unused. Older firmware ignores it.
+  if ("burst" in manifest) {
+    require(typeof manifest.burst === "boolean", `invalid_burst:${text(manifest.burst)}`);
   }
 
   for (const key of MANIFEST_FORBIDDEN_KEYS) {
@@ -562,7 +567,7 @@ function validateImage(doc, manifest, options) {
     estimatedUs,
     budgetUs,
     cellCount,
-    memoryBytes: verified.poolBytes,
+    memoryBytes: appMemoryBytes(verified.poolBytes, Array.isArray(manifest.capabilities) ? manifest.capabilities : []),
     loopFree: verified.loopFree,
     vmBytes: image.length,
     poolBytes: verified.poolBytes,

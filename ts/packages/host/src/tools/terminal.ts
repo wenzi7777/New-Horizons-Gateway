@@ -183,21 +183,18 @@ export function terminalHelpItems(): TerminalHelpItem[] {
     { command: "clock-sync", description: "Re-sync the device clock now from its own source (the Gateway, else NTP, in WiFi mode; the Hub in ESP-NOW mode).", example: "clock-sync" },
     { command: "clock-status", description: "Show the device clock: source, sync age, uncertainty and its clock settings.", example: "clock-status" },
     { command: "app-list", description: "List installed on-device apps with state, time budget and measured cost.", example: "app-list" },
-    { command: "app-enable", description: "Enable an installed app slot.", example: "app-enable --name flow" },
-    { command: "app-disable", description: "Disable an app slot without uninstalling its package.", example: "app-disable --name flow1" },
-    { command: "app-revive", description: "Clear a budget-overrun kill and restart the app.", example: "app-revive --name flow" },
-    { command: "app-stop", description: "Stop an app slot until it is started again or the device reboots, without touching its saved enabled state (firmware v1.19.0+).", example: "app-stop --name flow" },
-    { command: "app-start", description: "Start an app slot stopped with app-stop (firmware v1.19.0+).", example: "app-start --name flow" },
+    { command: "app-revive", description: "Clear a budget-overrun kill and restart the app.", example: "app-revive --name heel_strike" },
+    { command: "app-stop", description: "Pause an app until it is started again or the device reboots, keeping its memory and its on/off setting (firmware v1.19.0+).", example: "app-stop --name heel_strike" },
+    { command: "app-start", description: "Resume an app paused with app-stop (firmware v1.19.0+).", example: "app-start --name heel_strike" },
+    { command: "app-reorder", description: "Move a running app in the display order: lower wins shared OLED rows and the status LED (firmware v2.1.0+).", example: "app-reorder --id heel_strike --to 0" },
     { command: "app-events", description: "Events emitted by apps since a sequence number, with a dropped count.", example: "app-events --since-seq 0" },
-    { command: "app-list-packages", description: "Installed app packages and which slot each is bound to.", example: "app-list-packages" },
+    { command: "app-list-packages", description: "Installed app packages, which are on, and what each takes of the app pool.", example: "app-list-packages" },
     { command: "app-install", description: "Install an uploaded .nha package into the registry.", example: "app-install --path apps/heel_strike.nha" },
     { command: "app-uninstall", description: "Remove a package from the registry and delete its file.", example: "app-uninstall --id heel_strike" },
-    { command: "app-activate", description: "Bind an installed package to a flow slot.", example: "app-activate --id heel_strike --slot 1" },
-    { command: "app-deactivate", description: "Unbind a package from its slot, leaving it installed.", example: "app-deactivate --id heel_strike" },
+    { command: "app-activate", description: "Turn an installed app on: it runs now and at every boot (needs maintenance mode).", example: "app-activate --id heel_strike" },
+    { command: "app-deactivate", description: "Turn an app off and free its resources, leaving it installed (needs maintenance mode).", example: "app-deactivate --id heel_strike" },
     { command: "app-verify", description: "Re-hash an installed package and compare it with the index.", example: "app-verify --id heel_strike" },
     { command: "app-reindex", description: "Rebuild the package index from the .nha files present.", example: "app-reindex" },
-    { command: "app-load-flow", description: "Load a flow graph into slot 0; rejected at load time if it exceeds the budget.", example: "app-load-flow --path apps/flow.json" },
-    { command: "app-unload-flow", description: "Unload the flow graph in slot 0.", example: "app-unload-flow" },
     { command: "capabilities", description: "Report protocol, config schema hash, board features, and available subsystems.", example: "capabilities" },
     { command: "config-schema", description: "Describe every configuration knob: path, type, range, and owning command.", example: "config-schema" },
     { command: "config-get", description: "Read one configuration path, or all of them when no path is given.", example: "config-get --path scan.target_fps" },
@@ -284,7 +281,6 @@ const SIMPLE_COMMANDS: Readonly<Record<string, string>> = {
   'app-list-packages': 'app_list_packages',
   'app-view': 'app_view',
   'app-reindex': 'app_reindex',
-  'app-unload-flow': 'app_unload_flow',
 };
 
 export function compileTerminalCommand(commandLine: string, deviceCommands?: Iterable<string> | null): CompiledTerminalCommand {
@@ -524,8 +520,6 @@ export function compileTerminalCommand(commandLine: string, deviceCommands?: Ite
     case 'service-start':
     case 'task-stop':
     case 'task-start':
-    case 'app-enable':
-    case 'app-disable':
     case 'app-revive':
     case 'app-stop':
     case 'app-start': {
@@ -568,12 +562,9 @@ export function compileTerminalCommand(commandLine: string, deviceCommands?: Ite
       const parsed = parseOptions(args);
       return done('set_power_profile', { command: 'set_power_profile', profile: req(parsed, 'profile') });
     }
-    case 'app-load-flow': {
+    case 'app-reorder': {
       const parsed = parseOptions(args);
-      const payload: Record<string, unknown> = { command: 'app_load_flow' };
-      // The firmware defaults to apps/flow.json when path is omitted.
-      if (parsed.has('path')) payload.path = parsed.get('path');
-      return done('app_load_flow', payload);
+      return done('app_reorder', { command: 'app_reorder', id: req(parsed, 'id'), to: pyInt(String(opt(parsed, 'to', '0'))) });
     }
     case 'app-events': {
       const parsed = parseOptions(args);

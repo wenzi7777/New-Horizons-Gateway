@@ -55,6 +55,7 @@ import { formatMicros, scanRateLow } from '../../lib/scanHealth';
 import { formatBytes } from '../../lib/format';
 import { progressOf, updateTransferProgress } from '../../lib/updateProgress';
 import { useStudio } from '../../state/studio';
+import { DeviceAppsSection } from '../../areas/apps/components/deviceApps/DeviceAppsSection';
 import { VrefCards } from './VrefCards';
 import { ActionButtonCard, BatteryLedCard, ConnectionCard, LightsCard, PinsCard, RamCard, RestartCard, useDeviceSettingsT } from './DeviceHardware';
 
@@ -83,10 +84,10 @@ function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
 
 // The Desktop's device settings sections (pages/DeviceSettingsPage.tsx), in
 // its order. Streaming carries the clock; Hardware carries the Action Button.
-export const DEVICE_SETTINGS_SECTIONS = ['overview', 'hardware', 'runtime', 'update', 'diagnostics'] as const;
+export const DEVICE_SETTINGS_SECTIONS = ['overview', 'hardware', 'runtime', 'update', 'apps', 'diagnostics'] as const;
 export type DeviceSettingsSectionId = (typeof DEVICE_SETTINGS_SECTIONS)[number];
 
-export function DeviceSettings({ device }: { device: DeviceView }) {
+export function DeviceSettings({ device, initialSection }: { device: DeviceView; initialSection?: string }) {
   const { t, exec, api, snapshot } = useStudio();
   const ds = useDeviceSettingsT();
   const detail = snapshot?.deviceDetails[device.uid];
@@ -95,7 +96,9 @@ export function DeviceSettings({ device }: { device: DeviceView }) {
   const status = record(detail?.status ?? rec.last_status);
   const [busy, setBusy] = useState('');
   const [dialog, ask] = useConfirm();
-  const [active, setActive] = useState<DeviceSettingsSectionId>('hardware');
+  const [active, setActive] = useState<DeviceSettingsSectionId>(() =>
+    DEVICE_SETTINGS_SECTIONS.includes(initialSection as DeviceSettingsSectionId) ? (initialSection as DeviceSettingsSectionId) : 'hardware',
+  );
   const disabled = !device.online || busy !== '';
 
   /** Send one payload through the engine; logged, toasted, returns ok. */
@@ -139,6 +142,9 @@ export function DeviceSettings({ device }: { device: DeviceView }) {
         <MaintenanceSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
       </>
     ),
+    // The device's apps (the Desktop's settings → Apps): its own command pipe,
+    // since the live view polls and must not mark the page busy.
+    apps: <DeviceAppsSection device={device} />,
     diagnostics: (
       <>
         <SignalSection view={view} disabled={disabled} busy={busy} send={send} />

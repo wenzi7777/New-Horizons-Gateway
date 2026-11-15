@@ -12,7 +12,10 @@ export const MAX_WINDOW: number;
 export const WINDOW_POOL: number;
 export const DEFAULT_BUDGET_US: number;
 export const GOVERNOR_CEILING_PERMILLE: number;
-export const MAX_SLOTS: number;
+export const POOL_BYTES: number;
+export const APP_CONTROL_BYTES: number;
+export const APP_STORE_BYTES: number;
+export const TYPICAL_RUNNING_APPS: number;
 export const MAX_DEBOUNCE_MS: number;
 export const MAX_REGION_INDEX: number;
 export const MAX_APP_ID: number;
@@ -87,6 +90,8 @@ export function graphCostUs(nodes: ReadonlyArray<{ op?: unknown }>, cellCount: n
 export function graphMemoryBytes(nodes: ReadonlyArray<Record<string, unknown>>): number;
 export function windowFloats(nodes: ReadonlyArray<Record<string, unknown>>): number;
 export function appShareUs(fps: number, runningApps: number): number;
+/** what an app takes of the device's app pool while it runs (v2.1.0) */
+export function appMemoryBytes(poolBytes: number, capabilities?: readonly unknown[]): number;
 export function minOsFor(nodes: ReadonlyArray<Record<string, unknown>>, capabilities?: readonly unknown[]): string;
 export function capabilitiesMask(names: readonly string[]): number;
 export function compareVersions(a: string, b: string): number;
@@ -250,6 +255,8 @@ export interface CompileReport {
   arenaSlots: number;
   /** bytes the image takes from the device's app pool */
   poolBytes: number;
+  /** all the app takes of the pool while it runs: control block, image, store */
+  memoryBytes: number;
   maxStack: number;
   /** true when no handler has a loop, so a worst case is known */
   loopFree: boolean;

@@ -153,10 +153,12 @@ test("a virtual device's matrix stays within its board", async () => {
 test("the runtime share shrinks as more apps run", async () => {
   const { project } = await modules;
   const shares = project.runtimeShares(60);
-  assert.deepEqual(shares.map((s) => s.apps), [1, 2, 3, 4]);
+  // Sample counts only: v2.1.0 has no fixed number of apps.
+  assert.deepEqual(shares.map((s) => s.apps), [1, 2, 4, 8]);
   // 250 permille of a 60 Hz frame, divided among the running apps.
   assert.equal(shares[0].us, 4166);
-  assert.equal(shares[3].us, 1041);
+  assert.equal(shares[2].us, 1041);
+  assert.equal(shares[3].us, 520);
 });
 
 test("diagnostics land on the characters the compiler pointed at", async () => {

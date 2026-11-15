@@ -61,7 +61,7 @@ a store key or file, a message topic.
 
 | Form | What it is |
 |---|---|
-| `export const manifest = { ... }` | The app's id, name, version, author, summary and optional category, icon and `budget_us`. Capabilities and `min_os` are computed; do not write them. |
+| `export const manifest = { ... }` | The app's id, name, version, author, summary and optional category, icon, `budget_us` and `burst`. Capabilities and `min_os` are computed; do not write them. |
 | `let x = 0;` / `const k = 2.5;` | A global number or boolean, initialised to a constant. Globals keep their value between runs. To compute a starting value, assign it in `on("start", ...)`. |
 | `const buf = new Float32Array(16);` | A fixed array of numbers, zeroed at start. |
 | `const t = new Threshold(400, 50);` | A stateful object ([below](#stateful-objects)). |
@@ -287,7 +287,7 @@ stops.
 | Package size | 8192 bytes |
 | App id | `a-z`, `0-9`, `_`, starting with a letter, up to 15 characters |
 | Code | 8192 bytes (in practice the package size limits it first) |
-| Memory (arena: objects, globals, arrays) | 1536 floats, from the pool the four slots share |
+| Memory (arena: objects, globals, arrays) | 1536 floats, from the 8 KB pool every running app shares |
 | Stateful objects + globals | 32 |
 | Functions and handlers | 32, calls at most 8 deep |
 | Window length | 128 updates |
@@ -296,15 +296,32 @@ stops.
 | Stored files / values / write buffer | 16 KB / 16 / 256 B per app |
 | Messages waiting | 4 per app |
 
-The compiler reports how much of each an app uses.
+The compiler reports how much of each an app uses, and `memoryBytes`: all it
+takes of the device's app pool while it runs (a ~570 B control block, its
+image, and ~450 B more with `storage`). Firmware v2.1.0 has no fixed number of
+app slots: as many apps run as fit the pool and the time budget, and the
+device refuses one more with `app_pool_exhausted` or `app_budget_exhausted`.
+Memory is fixed when the app is built -- the language has no dynamic memory --
+so a running app can never run out of it.
 
 ## Budgets
 
 An app's time budget is **not fixed**. The device divides a configurable share
-of CPU among the apps that are actually running, so enabling a fourth app
-shrinks the other three's allocation. Scanning always wins: if the scan loop
+of CPU among the apps that are actually running, so starting another app
+shrinks the others' allocation. Scanning always wins: if the scan loop
 starts missing deadlines the apps' share is reduced automatically, and in the
 limit every app is suspended.
+
+An app that declares `burst: true` in its manifest may borrow time the other
+running apps leave unused (firmware v2.1.0+). Once a second the device looks
+at the last second: an app that kept running out of its share (or was
+suspended, or skipped frames) gets the spare time of the apps that used well
+under theirs, up to half of everything the apps may spend (all of it when it
+runs alone). Nothing is promised: a loan is taken back at the next second as
+soon as a lender needs its time, and dropped at once when an app starts or
+stops or the scan needs the capacity. Every app reports its load -- 0 to 100,
+how close it ran to its allocation over the last ~10 s -- so the Desktop shows
+which app is busy.
 
 For code without loops the compiler gives a worst case in microseconds, and an
 app over its budget is refused at install. Code with a loop cannot be

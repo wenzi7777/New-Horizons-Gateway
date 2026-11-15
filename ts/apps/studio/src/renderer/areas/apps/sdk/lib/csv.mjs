@@ -194,8 +194,8 @@ export function formatEventsCsv(events) {
 
 /**
  * Line up simulated events against recorded ones by (frame_seq, event,
- * detail). The app name is ignored: the device records events under its slot
- * name ("flow1"), which a simulation cannot know.
+ * detail). The app name is ignored: firmware before v2.1.0 recorded events
+ * under a slot name ("flow1") rather than the app id.
  *
  * `detail` for emit_value is a formatted number, and float32 on both sides
  * should agree to three places; `toleranceFrames` allows a recorded event to

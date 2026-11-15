@@ -61,6 +61,13 @@ interface NhosManifest {
   readonly icon?: string;
   /** Microseconds per frame the app may take (default 1500). */
   readonly budget_us?: number;
+  /**
+   * May borrow time other running apps leave unused (firmware v2.1.0+): an
+   * app that keeps running out of its share gets more, up to half of what
+   * all apps may spend, while there is some to spare. Never guaranteed --
+   * the loan is taken back as soon as the others need their time.
+   */
+  readonly burst?: boolean;
 }
 
 /**

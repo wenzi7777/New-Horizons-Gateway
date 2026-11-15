@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommandOutcome } from '../../src/shared/contract';
 import { categoriesOf, installBlocker, installMinFirmware, localised, satisfiesMinOs } from '../../src/renderer/areas/apps/lib/appLibrary';
-import { appErrorKey, budgetPercent, freeSlots, isUnknownCommand, needsRevive, parseAppEvents, parseAppList, parseAppView, parsePackageList } from '../../src/renderer/areas/apps/lib/deviceApps';
+import { admissionBlocker, appErrorKey, budgetPercent, isUnknownCommand, mergeDeviceApps, needsRevive, parseAppEvents, parseAppList, parseAppResources, parseAppView, parsePackageList, runtimeName } from '../../src/renderer/areas/apps/lib/deviceApps';
+import { withMaintenance } from '../../src/renderer/areas/apps/lib/deviceCommand';
 import { commandRunner, isMaintenance, outcomeResult, runAppInstall, type InstallStep } from '../../src/renderer/areas/apps/lib/deviceCommand';
 import { CHUNK_BYTES, MAX_USER_PATH, bytesToHex, hexToBytes, installAppPackage, readDeviceFile, writeDeviceFile, type CommandRunner } from '../../src/renderer/areas/apps/lib/deviceFileTransfer';
 
@@ -145,7 +146,7 @@ describe('CommandOutcome adapter', () => {
 });
 
 describe('device app state', () => {
-  it('parses app_list, packages, events and free slots', () => {
+  it('parses app_list, packages and events (a v2.0.x device with slots)', () => {
     const apps = parseAppList({ data: { apps: [
       { name: 'slot0', state: 'running', budget_us: 1000, last_us: 250, state_detail: { package: 'steps', nodes: 5 } },
       { name: 'slot1', state: 'killed', idle: true },
@@ -156,7 +157,10 @@ describe('device app state', () => {
     expect(needsRevive(apps[1]!)).toBe(true);
     const packages = parsePackageList({ data: { packages: [{ id: 'steps', slot: 0, kind: 'flow' }, { id: 'scan', kind: 'readout' }] } });
     expect(packages.map((p) => [p.id, p.slot, p.kind])).toEqual([['steps', 0, 'flow'], ['scan', -1, 'readout']]);
-    expect(freeSlots(apps, packages)).toEqual([1, 2]);
+    // Mapped onto the slot-free model: the package is on; commands still use the slot's name.
+    const merged = mergeDeviceApps(apps, packages);
+    expect(merged.map((a) => [a.id, a.active])).toEqual([['steps', true], ['scan', false]]);
+    expect(runtimeName(merged[0]!)).toBe('slot0');
     expect(parsePackageList({ data: { registry: { packages: [{ id: 'x' }] } } })[0]?.id).toBe('x');
     const events = parseAppEvents({ data: { seq: 40, dropped: 2, events: [{ seq: 39, ms: 10, frame_seq: 7, app: 'slot0', event: 'pressed', value: 3 }] } });
     expect(events).toEqual({ seq: 40, dropped: 2, events: [{ seq: 39, ms: 10, frameSeq: 7, app: 'slot0', event: 'pressed', detail: '', value: 3 }] });
@@ -171,10 +175,46 @@ describe('device app state', () => {
     expect(view.oled.rows[0]).toMatchObject({ kind: 'text', text: 'Hi' });
     expect(view.oled.rows[2]).toMatchObject({ kind: 'bar', bar: { x0: 20, width: 100, fillPx: 50 }, contended: ['slot2'] });
     expect(view.oled.rows[3]).toBeNull();
-    expect(view.statusLed.request).toMatchObject({ slot: 'slot0', suppressed: false });
+    expect(view.statusLed.request).toMatchObject({ app: 'slot0', suppressed: false });
     expect(view.extLed.pixels).toEqual([[1, 2, 3]]);
     expect(isUnknownCommand({ status: 'error', error: 'unknown_command' })).toBe(true);
     expect(isUnknownCommand({ status: 'ok' })).toBe(false);
+  });
+
+  it('reads a v2.1.0 device: apps by id, load, and the pool', () => {
+    const apps = parseAppList({ data: { apps: [
+      { name: 'steps', state: 'running', order: 0, burst: true, memory_bytes: 1500, load: 62, level: 'medium', cpu1: 40, cpu10: 35, cpu60: 20, base_us: 2083, borrowed_us: 400, lent_us: 0, state_detail: { package: 'steps', nodes: 5 } },
+    ] } });
+    const registry = { data: { pool_bytes: 8192, pool_used: 1500, pool_free: 6692, control_bytes: 572, budget_us: 4166, used_us: 15, packages: [
+      { id: 'steps', active: true, order: 0, memory_bytes: 1500, burst: true },
+      { id: 'big', active: false, order: -1, memory_bytes: 7000 },
+    ] } };
+    const resources = parseAppResources(registry);
+    const merged = mergeDeviceApps(apps, parsePackageList(registry));
+    expect(merged.map((a) => a.id)).toEqual(['steps', 'big']);
+    expect(merged[0]!.runtime?.load).toMatchObject({ load: 62, level: 'medium', borrowedUs: 400 });
+    expect(resources).toMatchObject({ poolBytes: 8192, poolFree: 6692 });
+    expect(admissionBlocker(merged[1]!, resources)).toEqual({ kind: 'memory', needBytes: 7000 - 6692 });
+    const view = parseAppView({ data: { oled: { rows: [{ kind: 'text', text: 'x', app: 'steps', contended: [] }] }, load: { cpu10: 35, apps: [{ name: 'steps', state: 'running', load: 62, level: 'medium' }] } } });
+    expect(view.oled.rows[0]).toMatchObject({ app: 'steps' });
+    expect(view.load?.apps[0]).toMatchObject({ name: 'steps', level: 'medium' });
+  });
+
+  it('enters maintenance only when not in it, and leaves only what it entered', async () => {
+    const { sent, run } = recorder();
+    await withMaintenance(run, false, 'apps', () => run({ command: 'app_activate', id: 'steps' }));
+    expect(sent.map((p) => p.command)).toEqual(['enter_maintenance', 'app_activate', 'exit_maintenance']);
+    const already = recorder();
+    await withMaintenance(already.run, true, 'apps', () => already.run({ command: 'app_activate', id: 'steps' }));
+    expect(already.sent.map((p) => p.command)).toEqual(['app_activate']);
+    const failing = recorder((p) => (p.command === 'app_activate' ? 'app_pool_exhausted' : null));
+    await expect(
+      withMaintenance(failing.run, false, 'apps', async () => {
+        const { result } = await failing.run({ command: 'app_activate', id: 'big' });
+        if (result?.status === 'error') throw new Error(String(result.error));
+      }),
+    ).rejects.toThrow('app_pool_exhausted');
+    expect(failing.sent.at(-1)).toEqual({ command: 'exit_maintenance' });
   });
 
   it('explains known device errors by code', () => {

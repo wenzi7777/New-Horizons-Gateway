@@ -41,6 +41,28 @@ export function resultFailure(result: Record<string, unknown> | null | undefined
   return "";
 }
 
+/**
+ * Runs `work` in maintenance mode: enters it unless the device is already in
+ * it, and leaves it afterwards (after a failure too) only when this call
+ * entered it. Starting, stopping and removing apps need it on the device.
+ */
+export async function withMaintenance<T>(
+  queue: CommandRunner,
+  alreadyInMaintenance: boolean,
+  reason: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  if (alreadyInMaintenance) return work();
+  const entering = await queue({ command: "enter_maintenance", reason });
+  const failure = resultFailure(entering.result);
+  if (failure) throw new Error(failure);
+  try {
+    return await work();
+  } finally {
+    await queue({ command: "exit_maintenance" }).catch(() => undefined);
+  }
+}
+
 export type InstallStep = "maintenance" | "upload" | "install" | "restore";
 
 export type InstallRun = {
