@@ -535,7 +535,7 @@ button.chip:hover { color: var(--text); border-color: var(--line-strong); }
 
 /* ── Heatmap, live ── */
 .heatmap { width: 100%; min-width: 0; }
-.heatmap canvas { display: block; margin: 0 auto; }
+.heatmap canvas { display: block; margin: 0 auto; color: var(--text-muted); }
 .colour-scale { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .colour-scale-bar { flex: 1; max-width: 360px; height: 8px; border-radius: var(--radius-pill); }
 .toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 18px; }

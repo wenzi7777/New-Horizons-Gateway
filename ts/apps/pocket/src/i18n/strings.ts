@@ -134,6 +134,7 @@ const en = {
   liveRange: 'Colour range',
   heatmapTapHint: 'Tap a cell to read its value',
   heatmapReadout: '{label} · row {row}, col {col} · {value}',
+  heatmapReadoutPins: '{label} · {row} × {col} · {value}',
   selectChoose: 'Choose…',
 
   // Recordings
@@ -494,6 +495,7 @@ const ja = {
   liveRange: 'カラー範囲',
   heatmapTapHint: 'セルをタップすると値を表示します',
   heatmapReadout: '{label} · {row} 行 {col} 列 · {value}',
+  heatmapReadoutPins: '{label} · {row} × {col} · {value}',
   selectChoose: '選択…',
 
   noRecordings: '録画はまだありません。デバイスの画面から開始できます。',
@@ -849,6 +851,7 @@ const zhCN = {
   liveRange: '颜色范围',
   heatmapTapHint: '点按单元格查看数值',
   heatmapReadout: '{label} · 第 {row} 行 第 {col} 列 · {value}',
+  heatmapReadoutPins: '{label} · {row} × {col} · {value}',
   selectChoose: '请选择…',
 
   noRecordings: '还没有录制。可以在设备页面开始录制。',

@@ -336,3 +336,23 @@ export function togglePin(values: readonly number[], value: number): number[] {
 export function pinLayoutCommandLine(analogPins: readonly number[], selectPins: readonly number[]): string {
   return `set-matrix-layout --analog-pins ${analogPins.join(',')} --select-pins ${selectPins.join(',')}`;
 }
+
+/**
+ * The silkscreen name of each scanned pin, in scan order: rows are the
+ * analog pins (A..), columns the select pins (D..); null when the layout
+ * doesn't match the matrix. A GPIO the header doesn't show is named by number.
+ */
+export function matrixPinLabels(
+  hardwareModel: string | null | undefined,
+  pins: { analog: readonly number[]; select: readonly number[] } | null | undefined,
+  rows: number,
+  cols: number,
+): { rows: string[]; cols: string[] } | null {
+  if (!pins || pins.analog.length !== rows || pins.select.length !== cols) return null;
+  const board = boardPinsFor(hardwareModel);
+  const slots = [...board.analogPinSlots, ...board.digitalPinSlots];
+  const nameOf = (gpio: number, role: 'analog' | 'select') =>
+    (slots.find((slot) => slot.gpio === gpio && slot.role === role) ?? slots.find((slot) => slot.gpio === gpio))?.label
+    ?? `GPIO${gpio}`;
+  return { rows: pins.analog.map((gpio) => nameOf(gpio, 'analog')), cols: pins.select.map((gpio) => nameOf(gpio, 'select')) };
+}

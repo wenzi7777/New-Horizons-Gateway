@@ -27,6 +27,7 @@ export const Heatmap = memo(function Heatmap({
   cols,
   range,
   maxHeight,
+  pinLabels,
 }: {
   values: readonly number[] | null;
   rows: number;
@@ -34,6 +35,8 @@ export const Heatmap = memo(function Heatmap({
   range: PressureRange;
   /** Cap on the drawing's height (tablet landscape, small screens). */
   maxHeight?: number;
+  /** The pin each row (A..) and column (D..) is scanned on, for the tap readout. */
+  pinLabels?: { rows: readonly string[]; cols: readonly string[] } | null;
 }) {
   const theme = useTheme();
   const { t } = useI18n();
@@ -117,12 +120,19 @@ export const Heatmap = memo(function Heatmap({
         style={{ color: sel !== null ? theme.colors.text : theme.colors.textMuted, fontSize: 13, fontVariant: ['tabular-nums'] }}
       >
         {sel !== null
-          ? t('heatmapReadout', {
-              label: streamSensorLabel(sel),
-              row: Math.floor(sel / cols) + 1,
-              col: (sel % cols) + 1,
-              value: selValue === undefined ? '-' : cellValueText(selValue),
-            })
+          ? pinLabels && pinLabels.rows.length === rows && pinLabels.cols.length === cols
+            ? t('heatmapReadoutPins', {
+                label: streamSensorLabel(sel),
+                row: pinLabels.rows[Math.floor(sel / cols)] ?? '-',
+                col: pinLabels.cols[sel % cols] ?? '-',
+                value: selValue === undefined ? '-' : cellValueText(selValue),
+              })
+            : t('heatmapReadout', {
+                label: streamSensorLabel(sel),
+                row: Math.floor(sel / cols) + 1,
+                col: (sel % cols) + 1,
+                value: selValue === undefined ? '-' : cellValueText(selValue),
+              })
           : t('heatmapTapHint')}
       </Text>
     </View>

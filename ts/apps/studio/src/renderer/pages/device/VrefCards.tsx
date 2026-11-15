@@ -103,7 +103,6 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   // A table that came back from this very measurement counts even if `range` did not.
   const rfbValid = knownRows > 0 || (rfbRows?.some((row) => row.rfb_ohm > 0) ?? false);
   const [refRfbDraft, setRefRfbDraft] = useState(String(refRfbNow));
-  const [leakDraft, setLeakDraft] = useState(leakNow);
   const [sweepStart, setSweepStart] = useState('100');
   const [sweepStop, setSweepStop] = useState(String(DEFAULT_LIMIT_MV));
   const [sweepStep, setSweepStep] = useState('100');
@@ -113,8 +112,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
 
   useEffect(() => {
     setRefRfbDraft(String(refRfbNow));
-    setLeakDraft(leakNow);
-  }, [refRfbNow, leakNow]);
+  }, [refRfbNow]);
   useEffect(() => {
     if (currentMv !== null) setVrefDraft(String(currentMv));
   }, [currentMv]);
@@ -165,12 +163,19 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   async function applyMode(mode: RangeMode) {
     if (mode !== 'raw' && !rfbValid) return;
     if (mode === modeNow) return;
-    await ask(ds('rangeApply'), { command: 'set_range', mode, ref_rfb_ohm: fieldNumber(refRfbDraft) ?? refRfbNow, leak_comp: leakDraft });
+    await ask(ds('rangeApply'), { command: 'set_range', mode, ref_rfb_ohm: fieldNumber(refRfbDraft) ?? refRfbNow });
+  }
+
+  // Leak compensation applies at once like the other switches and touches
+  // nothing else (the device keeps its mode and reference Rfb).
+  async function applyLeak(on: boolean) {
+    if (on === leakNow) return;
+    await ask(ds('rangeLeak'), { command: 'set_range', leak_comp: on });
   }
 
   async function applyRangeSettings() {
     const values = typed({ ref_rfb_ohm: refRfbDraft });
-    if (values) await ask(ds('rangeApply'), { command: 'set_range', mode: modeNow, leak_comp: leakDraft, ...values });
+    if (values) await ask(ds('rangeApply'), { command: 'set_range', mode: modeNow, ...values });
   }
 
   async function clearRfb() {
@@ -312,7 +317,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
           <div className="field-grid three">
             <Field label={ds('rangeRefRfb')}>{(id) => <NumberInput id={id} min={1000} max={1000000} step={1000} value={refRfbDraft} onChange={(e) => setRefRfbDraft(e.target.value)} />}</Field>
             <div className="vref-check">
-              <SwitchRow checked={leakDraft} onChange={setLeakDraft} title={ds('rangeLeak')} />
+              <SwitchRow checked={leakNow} disabled={working} onChange={(on) => void applyLeak(on)} title={ds('rangeLeak')} />
             </div>
             <div className="vref-check">
               <button className="button" type="button" disabled={working} onClick={() => void applyRangeSettings()}>

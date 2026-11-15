@@ -5,6 +5,7 @@
 // presets and "Show COP" apply to every card.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { matrixPinLabels } from '@nhgw/host';
 import { Circle, Square, X } from 'lucide-react';
 
 import type { DeviceView } from '../../shared/contract';
@@ -144,6 +145,15 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
   const rows = device.matrix?.rows ?? frame?.rows ?? 0;
   const cols = device.matrix?.cols ?? frame?.cols ?? 0;
   const values = useMemo(() => (frame ? mirrorValues(frame.values, rows, cols, view.rowMirror, view.colMirror) : null), [frame, rows, cols, view.rowMirror, view.colMirror]);
+  // A.. / D.. names for the drawn rows and columns (mirroring moves them too).
+  const pinLabels = useMemo(() => {
+    const labels = matrixPinLabels(device.hardwareModel, device.pins, rows, cols);
+    if (!labels) return null;
+    return {
+      rows: view.rowMirror ? [...labels.rows].reverse() : labels.rows,
+      cols: view.colMirror ? [...labels.cols].reverse() : labels.cols,
+    };
+  }, [device.hardwareModel, device.pins, rows, cols, view.rowMirror, view.colMirror]);
   const surface = useMemo(() => (values && mode === '3d' ? interpolateGrid(values, rows, cols) : null), [values, mode, rows, cols]);
   const cop = useMemo(() => computeCop(values ?? [], rows, cols), [values, rows, cols]);
   const maxPressure = values && values.length ? Math.max(...values) : 0;
@@ -277,7 +287,7 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
           <Surface3D values={surface?.values ?? null} rows={surface?.rows ?? rows} cols={surface?.cols ?? cols} range={range} label={label} onUnavailable={onUnavailable3d} />
         </Suspense>
       ) : (
-        <Heatmap values={values} rows={rows} cols={cols} range={range} label={label} maxHeight={520} profile={shownProfile} />
+        <Heatmap values={values} rows={rows} cols={cols} range={range} label={label} maxHeight={520} profile={shownProfile} pinLabels={pinLabels} />
       )}
       {!device.online ? <p className="muted">{t('deviceOffline')}</p> : device.matrix && !frame ? <p className="muted">{lt('noData')}</p> : null}
     </article>

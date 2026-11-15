@@ -30,6 +30,7 @@ export function Heatmap({
   label,
   maxHeight,
   profile,
+  pinLabels,
 }: {
   values: readonly number[] | null;
   rows: number;
@@ -40,13 +41,16 @@ export function Heatmap({
   maxHeight?: number;
   /** A sensor-layout profile: draw its sensors over its background instead of the grid. */
   profile?: Pick<Profile, 'sensors' | 'background' | 'display'> | null;
+  /** The pin each drawn row (A..) and column (D..) is scanned on, shown in a gutter. */
+  pinLabels?: { rows: readonly string[]; cols: readonly string[] } | null;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sizeRef = useRef({ width: 0, height: 0 });
   const usesProfile = Boolean(profile && profilePoints(profile, null, values?.length ?? Infinity).length);
-  const latest = useRef({ values, rows, cols, range, profile: usesProfile ? profile! : null });
-  latest.current = { values, rows, cols, range, profile: usesProfile ? profile! : null };
+  const pins = pinLabels && pinLabels.rows.length === rows && pinLabels.cols.length === cols ? pinLabels : null;
+  const latest = useRef({ values, rows, cols, range, profile: usesProfile ? profile! : null, pins });
+  latest.current = { values, rows, cols, range, profile: usesProfile ? profile! : null, pins };
 
   const draw = () => {
     const canvas = canvasRef.current;
@@ -55,7 +59,7 @@ export function Heatmap({
     if (width <= 0 || height <= 0) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const { values: v, rows: r, cols: c, range: rg, profile: pf } = latest.current;
+    const { values: v, rows: r, cols: c, range: rg, profile: pf, pins: pl } = latest.current;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
       canvas.width = Math.round(width * dpr);
@@ -78,10 +82,23 @@ export function Heatmap({
       ctx.globalAlpha = 1;
       return;
     }
-    const cell = Math.min(width / c, height / r);
+    const gutterLeft = pl ? 30 : 0;
+    const gutterTop = pl ? 16 : 0;
+    const cell = Math.min((width - gutterLeft) / c, (height - gutterTop) / r);
     const gap = Math.max(1, Math.min(3, cell * 0.08));
-    const offX = (width - cell * c) / 2;
-    const offY = (height - cell * r) / 2;
+    const offX = gutterLeft + (width - gutterLeft - cell * c) / 2;
+    const offY = gutterTop + (height - gutterTop - cell * r) / 2;
+    if (pl) {
+      ctx.save();
+      ctx.font = `600 ${Math.max(8, Math.min(11, cell * 0.4))}px system-ui, -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.fillStyle = getComputedStyle(canvas).color || 'rgba(128, 128, 128, 0.9)';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      pl.cols.forEach((name, col) => ctx.fillText(name, offX + col * cell + cell / 2, offY - gutterTop / 2));
+      ctx.textAlign = 'right';
+      pl.rows.forEach((name, row) => ctx.fillText(name, offX - 4, offY + row * cell + cell / 2));
+      ctx.restore();
+    }
     const radius = Math.min(4, cell * 0.18);
     for (let row = 0; row < r; row++) {
       for (let col = 0; col < c; col++) {
@@ -106,7 +123,12 @@ export function Heatmap({
     const measure = () => {
       const width = wrap.clientWidth;
       const { rows: r, cols: c, profile: pf } = latest.current;
-      let height = pf ? width / Math.max(0.01, pf.background.aspectRatio) : (width * r) / Math.max(1, c);
+      const { pins: pl } = latest.current;
+      let height = pf
+        ? width / Math.max(0.01, pf.background.aspectRatio)
+        : pl
+          ? 16 + ((width - 30) * r) / Math.max(1, c)
+          : (width * r) / Math.max(1, c);
       if (maxHeight && height > maxHeight) height = maxHeight;
       sizeRef.current = { width, height };
       if (canvasRef.current) {
@@ -120,7 +142,7 @@ export function Heatmap({
     observer?.observe(wrap);
     return () => observer?.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, cols, maxHeight, usesProfile, profile?.background.aspectRatio]);
+  }, [rows, cols, maxHeight, usesProfile, profile?.background.aspectRatio, pins !== null]);
 
   useEffect(draw);
 

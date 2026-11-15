@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BOARD_PINS, boardPinsFor, pinLayoutCommandLine, quickCommandPayload, togglePin } from '../src';
+import { BOARD_PINS, boardPinsFor, matrixPinLabels, pinLayoutCommandLine, quickCommandPayload, togglePin } from '../src';
 
 describe('board pins (IO Visualizer)', () => {
   it('finds each board, old spellings included, and falls back to v1.0.F', () => {
@@ -29,5 +29,16 @@ describe('board pins (IO Visualizer)', () => {
       analog_pins: [1, 2],
       select_pins: [17],
     });
+  });
+});
+
+describe('matrixPinLabels', () => {
+  it('names rows by A pins and columns by D pins, in scan order', () => {
+    const labels = matrixPinLabels('TIA-CTL v2.0.F 2026.10', { analog: [1, 2, 14], select: [17, 18, 45, 99] }, 3, 4);
+    expect(labels).toEqual({ rows: ['A0', 'A1', 'A13'], cols: ['D0', 'D1', 'D13', 'GPIO99'] });
+  });
+  it('gives nothing when the layout does not match the matrix', () => {
+    expect(matrixPinLabels('TIA-CTL v2.0.F 2026.10', { analog: [1], select: [17] }, 2, 1)).toBeNull();
+    expect(matrixPinLabels('TIA-CTL v2.0.F 2026.10', null, 2, 1)).toBeNull();
   });
 });

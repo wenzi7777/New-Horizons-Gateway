@@ -1,4 +1,5 @@
 import { Stack, useIsFocused } from 'expo-router';
+import { matrixPinLabels } from '@nhgw/host';
 import { Activity } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'react-native';
@@ -84,7 +85,14 @@ export function LiveScreen({ uid }: { uid: string }) {
       <Card>
         {rows > 0 && cols > 0 ? (
           <>
-            <Heatmap values={frame?.values ?? null} rows={rows} cols={cols} range={range} maxHeight={Math.max(240, height * 0.55)} />
+            <Heatmap
+              values={frame?.values ?? null}
+              rows={rows}
+              cols={cols}
+              range={range}
+              maxHeight={Math.max(240, height * 0.55)}
+              pinLabels={device ? matrixPinLabels(device.hardwareModel, device.pins, rows, cols) : null}
+            />
             {!frame ? <Caption style={{ textAlign: 'center' }}>{t('liveWaiting')}</Caption> : null}
             <HeatmapLegend range={range} />
           </>
