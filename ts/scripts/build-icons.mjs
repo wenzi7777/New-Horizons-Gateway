@@ -12,8 +12,8 @@
 //   brand/windows/    nh-studio.ico (16-256, PNG-compressed entries)
 //
 // Run from ts/: node scripts/build-icons.mjs   (needs macOS iconutil for .icns,
-// and Node 22.18+ to import brand.ts directly). Then copy brand/android/* into
-// apps/pocket/assets (icon.png, android-icon-*.png).
+// and Node 22.18+ to import brand.ts directly). It also writes the copies the
+// apps bundle (Studio renderer mark + tray icon, Pocket assets).
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -149,4 +149,19 @@ write(
   ico(winSizes.map((size) => ({ size, data: png(svg('studio', { radius: 22, small: smallAt(size) }), size) }))),
 );
 
-console.log(`icons written to ${OUT}${icnsWritten ? '' : ' (no .icns)'}`);
+// The copies the apps bundle themselves (written here so they cannot go
+// stale): Studio's sidebar/splash mark and tray icon, Pocket's launcher icons.
+const APPS = resolve(here, '../apps');
+const appCopy = (rel, data) => {
+  const file = join(APPS, rel);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, data);
+};
+appCopy('studio/src/renderer/assets/nh-studio-rounded.svg', svg('studio', { radius: 22 }));
+appCopy('studio/public/tray-icon.png', png(svg('studio', { radius: 22, small: true }), 32));
+appCopy('pocket/assets/icon.png', png(svg('pocket'), 1024));
+appCopy('pocket/assets/android-icon-background.png', png(svg('pocket', { ...adaptive, parts: 'background' }), 1024));
+appCopy('pocket/assets/android-icon-foreground.png', png(svg('pocket', { ...adaptive, parts: 'foreground' }), 1024));
+appCopy('pocket/assets/android-icon-monochrome.png', png(svg('pocket', { ...adaptive, parts: 'foreground', mono: '#ffffff' }), 1024));
+
+console.log(`icons written to ${OUT}${icnsWritten ? '' : ' (no .icns)'} and the apps' bundled copies`);
