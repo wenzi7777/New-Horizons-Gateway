@@ -18,6 +18,9 @@ import {
   PROBE_BACKOFF_AFTER_MS,
   PROBE_INTERVAL_MS,
   PROBE_SLOW_INTERVAL_MS,
+  STREAM_BLOCKED_AFTER_MS,
+  STREAM_PATH_INTERVAL_MS,
+  STREAM_PATH_KEEPALIVE_MS,
 } from '../../src/runtime';
 import { DEVICE_ADDR, MemoryStore, UID, heartbeatPacket, jsonFrame, makeRuntime, v5Packet } from './helpers';
 
@@ -477,6 +480,76 @@ describe('ownership: takeover, fallback, reclaim', () => {
     expect(h.findme.json(0)).toMatchObject({ accept: true, priority: MANAGED_OFFER_PRIORITY + CLAIM_PRIORITY_BOOST });
     h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
     expect(h.findme.json(1)).toMatchObject({ accept: true, priority: 100 });
+  });
+});
+
+describe('opening the stream path through a firewall on this computer', () => {
+  const pathBytes = (h: Awaited<ReturnType<typeof managedRuntime>>) =>
+    h.stream.sent.filter((s) => s.data.length === 1 && s.data[0] === 0).map((s) => s.to);
+
+  it('sends one byte to the stream port of a device it offers to but does not serve, at most every interval', async () => {
+    const h = await managedRuntime();
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
+    expect(pathBytes(h)).toEqual([{ ip: DEVICE_ADDR.ip, port: 13250 }]);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
+    expect(pathBytes(h)).toHaveLength(1);
+    h.clock.advance(STREAM_PATH_INTERVAL_MS / 1000);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
+    expect(pathBytes(h)).toHaveLength(2);
+  });
+
+  it('not to a device it serves, nor to one it does not offer to', async () => {
+    const h = await managedRuntime();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'gw-a', current_priority: 200 }), FINDME_FROM);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: 'AABBCCDDEEFF' }), FINDME_FROM);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'studio-elsewhere' }), FINDME_FROM);
+    expect(pathBytes(h)).toEqual([]);
+  });
+
+  it('keeps the path open for a served device', async () => {
+    const h = await managedRuntime();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    await h.runtime.tick();
+    expect(pathBytes(h)).toEqual([{ ip: DEVICE_ADDR.ip, port: 13250 }]);
+    h.clock.advance(STREAM_PATH_KEEPALIVE_MS / 1000 - 5);
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    await h.runtime.tick();
+    expect(pathBytes(h)).toHaveLength(1);
+    h.clock.advance(5);
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    await h.runtime.tick();
+    expect(pathBytes(h)).toHaveLength(2);
+  });
+
+  it('says the stream looks blocked when the device renews its lease here but is never heard on the stream port', async () => {
+    const h = await managedRuntime();
+    const renew = () =>
+      h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'gw-a', current_priority: 200 }), FINDME_FROM);
+    renew();
+    expect(h.runtime.streamBlocked(UID)).toBe(false);
+    for (let t = 0; t < STREAM_BLOCKED_AFTER_MS / 1000; t += 5) {
+      h.clock.advance(5);
+      renew();
+    }
+    expect(h.runtime.streamBlocked(UID)).toBe(true);
+    // A heartbeat gets through: no longer blocked.
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    expect(h.runtime.streamBlocked(UID)).toBe(false);
+    renew();
+    expect(h.runtime.streamBlocked(UID)).toBe(false);
+  });
+
+  it('a device that stops renewing (gone) is not reported blocked', async () => {
+    const h = await managedRuntime();
+    const renew = () =>
+      h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'gw-a', current_priority: 200 }), FINDME_FROM);
+    renew();
+    h.clock.advance(STREAM_BLOCKED_AFTER_MS / 1000);
+    renew();
+    expect(h.runtime.streamBlocked(UID)).toBe(true);
+    h.clock.advance(STREAM_BLOCKED_AFTER_MS / 1000 + 1);
+    expect(h.runtime.streamBlocked(UID)).toBe(false);
   });
 });
 

@@ -121,6 +121,7 @@ describe('FindMe -> adopt -> stream -> record -> app events -> stop', () => {
       h.stream.sent.forEach((sent, index) => {
         if (pollsSeen.has(index)) return;
         pollsSeen.add(index);
+        if (sent.data[0] !== 0x7b) return; // not JSON: the one-byte stream path opener (openStreamPath)
         const frame = JSON.parse(utf8Decode(sent.data)) as Json;
         const payload = frame.payload as Json;
         // The dispatcher resends until acked: one request per request_id.
@@ -145,7 +146,7 @@ describe('FindMe -> adopt -> stream -> record -> app events -> stop', () => {
       if (i === 41) {
         // The gap (2, 3) is asked for; the device answers the latest request.
         capturePolls();
-        const request = [...h.stream.sent].reverse().map((s) => JSON.parse(utf8Decode(s.data)) as Json).find((f) => (f.payload as Json)?.command === 'app_events')!;
+        const request = [...h.stream.sent].reverse().filter((s) => s.data[0] === 0x7b).map((s) => JSON.parse(utf8Decode(s.data)) as Json).find((f) => (f.payload as Json)?.command === 'app_events')!;
         const reply = utf8Encode(
           `{"type":"result","device_uid":"${UID}","request_id":"${request.request_id}","payload":{"ok":true,"cmd":"app_events","message":"app_events","data":{"seq":4,"streaming":true,"events":[{"seq":2,"frame_seq":${frameId - 5},"ms":7,"app":"flow","event":"tap","detail":"","value":1.0}]},"error":""}}`,
         );

@@ -119,7 +119,9 @@ export function DevicesPage({ route, navigate }: Props) {
                         <span className="device-detail">
                           {d.takenOver
                             ? takenOverText(t, d)
-                            : d.online
+                            : d.streamBlocked
+                              ? t('streamBlockedTag')
+                              : d.online
                               ? t('fpsValue', { fps: d.fps })
                               : d.lastSeenMs
                                 ? t('lastSeen', { time: formatAgo(d.lastSeenMs, now) })
@@ -267,6 +269,13 @@ function DeviceDetail({ device, tab, section, navigate }: { device: DeviceView; 
         </span>
       </header>
       {device.takenOver ? <TakenOverNotice device={device} /> : null}
+      {device.streamBlocked && !device.takenOver ? (
+        <div className="notice warning" role="status">
+          <span>
+            <strong>{t('streamBlockedTag')}</strong> {t('streamBlockedCopy')}
+          </span>
+        </div>
+      ) : null}
       <div className="tabs" role="tablist" aria-label={t('deviceTabs')}>
         {DEVICE_TABS.map((id, index) => (
           <button

@@ -64,6 +64,12 @@ export interface DeviceView {
   takenOver?: boolean;
   /** The relay it is attached to now, when its FindMe said so ('' when unknown). */
   takenOverBy?: string;
+  /**
+   * The device keeps renewing its FindMe lease with this relay, but nothing
+   * it streams reaches it: a firewall on this computer most likely blocks
+   * the app (GatewayRuntime.streamBlocked).
+   */
+  streamBlocked?: boolean;
 }
 
 /** Where a Vref sits against the GPIO45 boot strap (see vrefZone in views.ts). */

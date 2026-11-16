@@ -478,7 +478,8 @@ export class AppHost implements HostStore {
       .listDevices()
       .filter((entry) => this.isMine(str(entry.device_uid)))
       .map((entry) => {
-        const view = withOwnership(deviceView(entry, now), owner);
+        const base = withOwnership(deviceView(entry, now), owner);
+        const view = !base.online && run.runtime.streamBlocked(base.uid) ? { ...base, streamBlocked: true } : base;
         listed.add(normalizeListUid(view.uid));
         // The table's flag lags a capture that is still draining.
         const recorder = run.service.recorders.get(view.uid);
@@ -487,7 +488,8 @@ export class AppHost implements HostStore {
     for (const uid of store.managedDevices()) {
       if (listed.has(uid) || store.isReleased(uid)) continue;
       const label = { nickname: run.service.labels.nickname(uid), group: run.service.labels.group(uid) };
-      views.push(withOwnership(placeholderDeviceView(uid, store.deviceHint(uid), label), owner));
+      const placeholder = withOwnership(placeholderDeviceView(uid, store.deviceHint(uid), label), owner);
+      views.push(run.runtime.streamBlocked(uid) ? { ...placeholder, streamBlocked: true } : placeholder);
     }
     return views;
   }

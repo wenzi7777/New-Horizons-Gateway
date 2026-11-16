@@ -13,7 +13,7 @@ import { isPlainObject, pyInt, pyStr, pyTruthy } from '../py';
 import { RESULT_CHUNK_TYPE, ResultChunkReassembler } from '../resultChunks';
 import { parseJsonKeepFloats } from '../floatJson';
 import { buildTimeResponse, isTimeRequest } from '../time';
-import { PROTOCOL } from '../wire';
+import { PROTOCOL, STREAM_PORT } from '../wire';
 import { DiscoveryResponder, MANAGED_OFFER_PRIORITY, NON_OWNER_OFFER_DELAY_MS } from './discovery';
 import { GatewayOperations } from './operations';
 import { type Dict, dictOr, looksLikeJson, pyGet, pyOr, setDefault, strOr } from './pyCompat';
@@ -37,6 +37,18 @@ export const RECLAIM_COOLDOWN_MS = 30_000;
  * says where it is attached instead. After PROBE_BACKOFF_AFTER_MS without
  * every managed device served, PROBE_SLOW_INTERVAL_MS.
  */
+/** How often openStreamPath() may send to one device (FindMe answers come every 3-5 s). */
+export const STREAM_PATH_INTERVAL_MS = 2_000;
+/** The same byte to a device being served, so a firewall's memory of the path (often 30-120 s) never runs out. */
+export const STREAM_PATH_KEEPALIVE_MS = 20_000;
+/**
+ * A device renewing its lease with this relay (FindMe naming it) but not heard
+ * on the stream port for this long: something on this computer drops its
+ * datagrams to 13250 (streamBlocked()). Above the firmware's first heartbeat
+ * (at most 5 s after it attaches) plus a lost one.
+ */
+export const STREAM_BLOCKED_AFTER_MS = 15_000;
+const STREAM_PATH_BYTE = new Uint8Array([0]);
 export const PROBE_INTERVAL_MS = 10_000;
 export const PROBE_SLOW_INTERVAL_MS = 30_000;
 export const PROBE_BACKOFF_AFTER_MS = 120_000;
@@ -194,6 +206,9 @@ export class GatewayRuntime {
   /** serviceProbes(): when the last probe went out, and since when a managed device has been missing. */
   private lastProbeAt: number | null = null;
   private missingSince: number | null = null;
+  private readonly streamPathOpenedAt = new Map<string, number>();
+  /** Devices renewing with this relay while not served: since when, last renewal (monotonic ms). */
+  private readonly unservedRenewals = new Map<string, { since: number; last: number; warned: boolean }>();
 
   constructor(options: GatewayRuntimeOptions) {
     this.options = options;
@@ -256,6 +271,10 @@ export class GatewayRuntime {
               firmware_version: strOr(payload.firmware_version),
             });
             this.guard('ownership', () => this.observeAttachment(payload));
+            if (accepted) {
+              this.openStreamPath(payload.device_uid, addr.ip);
+              this.noteRenewal(payload);
+            }
             this.notify('findme', (o) => o.onFindmeRequest?.(payload, addr, accepted, reason));
           },
           offerPolicy: () => this.configStore.offerPolicy(),
@@ -342,6 +361,86 @@ export class GatewayRuntime {
       .then(() => this.notify('taken over', (o) => o.onTakenOver?.(uid, current)))
       .catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorMessage(error)}`));
   }
+
+  /**
+   * One byte from the stream socket to the stream port of a device this relay
+   * just offered to but does not serve yet. A stateful firewall on this
+   * computer (an unsigned app the OS firewall blocks, for one) drops a
+   * device's unsolicited datagrams to 13250 -- heartbeats, the stream -- but
+   * lets in replies to what this socket sent: FindMe kept working (this relay
+   * sends on 22346) while the device, attached and renewing, never showed up
+   * until a command went out on 13250. The device drops a datagram that is not
+   * JSON or a TIME_RESP (ControlServer::serviceUdpCommand), every firmware so
+   * far. At most every STREAM_PATH_INTERVAL_MS per device.
+   */
+  private openStreamPath(deviceUid: unknown, ip: string): void {
+    const uid = normalizeDeviceUid(deviceUid);
+    if (!uid || !ip || this.state.isServing(uid)) return;
+    this.sendStreamPathByte(uid, ip, STREAM_PATH_INTERVAL_MS);
+  }
+
+  private sendStreamPathByte(uid: string, ip: string, intervalMs: number): void {
+    const now = this.clock.monotonicMs();
+    const last = this.streamPathOpenedAt.get(uid);
+    if (last !== undefined && now - last < intervalMs) return;
+    this.streamPathOpenedAt.set(uid, now);
+    try {
+      this.streamSocket.send(STREAM_PATH_BYTE, { ip, port: STREAM_PORT });
+    } catch {
+      // Not bound yet, or the send failed: tried again later.
+    }
+  }
+
+  /** Keeps the path open for every device being served (see STREAM_PATH_KEEPALIVE_MS). */
+  private keepStreamPaths(): void {
+    for (const [uid, addr] of this.udpCommands.sessions) {
+      if (this.state.isServing(uid)) this.sendStreamPathByte(uid, addr.ip, STREAM_PATH_KEEPALIVE_MS);
+    }
+  }
+
+  /** A FindMe this relay answered: a lease renewal naming it, from a device it does not serve, is remembered. */
+  private noteRenewal(payload: Dict): void {
+    const uid = normalizeDeviceUid(payload.device_uid);
+    if (!uid) return;
+    const current = strOr(payload.current_gateway_id);
+    if (!current || !this.isOwnRelayId(current) || this.state.isServing(uid)) {
+      this.unservedRenewals.delete(uid);
+      return;
+    }
+    const now = this.clock.monotonicMs();
+    const entry = this.unservedRenewals.get(uid);
+    if (entry === undefined) {
+      this.unservedRenewals.set(uid, { since: now, last: now, warned: false });
+      return;
+    }
+    entry.last = now;
+    if (!entry.warned && this.streamBlocked(uid)) {
+      entry.warned = true;
+      this.logger.warn(
+        `${uid} renews its lease with this relay but nothing it sends to UDP ${this.boundUdpPort()} arrives: ` +
+          'a firewall on this computer may be blocking NH Studio',
+      );
+    }
+  }
+
+  /**
+   * The device says it is attached here (it keeps renewing its FindMe lease
+   * with this relay) yet none of its heartbeats or stream reached the stream
+   * port for STREAM_BLOCKED_AFTER_MS: a firewall on this computer most likely
+   * drops them. The UI says so.
+   */
+  streamBlocked(deviceUid: string): boolean {
+    const uid = normalizeDeviceUid(deviceUid);
+    const entry = this.unservedRenewals.get(uid);
+    if (entry === undefined) return false;
+    if (this.state.isServing(uid)) {
+      this.unservedRenewals.delete(uid);
+      return false;
+    }
+    const now = this.clock.monotonicMs();
+    return now - entry.since >= STREAM_BLOCKED_AFTER_MS && now - entry.last <= STREAM_BLOCKED_AFTER_MS;
+  }
+
 
   /** Remembers a managed device's address (GatewayConfigStore.noteDevice); a failed write is only logged. */
   private noteDevice(deviceUid: unknown, info: { ip?: string; name?: string; hardware_model?: string; firmware_version?: string }): void {
@@ -512,6 +611,7 @@ export class GatewayRuntime {
     // send) escape and end the main loop; one bad tick must not stop the Gateway.
     this.guard('udp_commands', () => this.udpCommands.service());
     this.guard('probes', () => this.serviceProbes(now));
+    this.guard('stream_paths', () => this.keepStreamPaths());
     this.resultChunks.purge();
     await this.commandHandler.service();
   }
