@@ -1,32 +1,62 @@
 {
   "version": "v2.12.1",
   "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.12.1/releases/notes/studio-v2.12.1.md",
-  "released_at": "2026-11-16T20:26:42.093Z",
+  "released_at": "2026-11-16T20:50:51.519Z",
   "assets": {
     "darwin-arm64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.1/nh-studio-headless-darwin-arm64",
       "sha256": "ed7294cbb4a38f91ebb3c35971391717f61466d84bdf894943990a8c5fe6e2e8",
-      "size": 111900288
+      "size": 111900288,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/ed7294cbb4a38f91ebb3c35971391717f61466d84bdf894943990a8c5fe6e2e8",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-16T20:40:39.717Z"
+      }
     },
     "darwin-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.1/nh-studio-headless-darwin-x64",
       "sha256": "4ae52bae35a86b20a1983e1775da9134f7cf96607e83a595fcacd4f4d4c2c5b1",
-      "size": 114391280
+      "size": 114391280,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/4ae52bae35a86b20a1983e1775da9134f7cf96607e83a595fcacd4f4d4c2c5b1",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-16T20:43:00.760Z"
+      }
     },
     "win32-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.1/nh-studio-headless-win32-x64.exe",
       "sha256": "bc1941d01772687ce729134f1eb925646f7059b0ecb9f6e09fa8d0adddfe3a28",
-      "size": 86406656
+      "size": 86406656,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/bc1941d01772687ce729134f1eb925646f7059b0ecb9f6e09fa8d0adddfe3a28",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-16T20:50:32.734Z"
+      }
     },
     "linux-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.1/nh-studio-headless-linux-x64",
       "sha256": "3f2fe996f5ff7677f3d51e43b5a9273a5334dc0b444cb836e810a259d6c1526c",
-      "size": 123931840
+      "size": 123931840,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/3f2fe996f5ff7677f3d51e43b5a9273a5334dc0b444cb836e810a259d6c1526c",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-16T20:48:12.155Z"
+      }
     },
     "linux-arm64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.1/nh-studio-headless-linux-arm64",
       "sha256": "c41fb978c64e30fd32c84f70c8e2ecab25639459ed5dbcc960b9d214509a25e4",
-      "size": 121179264
+      "size": 121179264,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/c41fb978c64e30fd32c84f70c8e2ecab25639459ed5dbcc960b9d214509a25e4",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-16T20:45:21.474Z"
+      }
     }
   }
 }
