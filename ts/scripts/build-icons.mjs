@@ -9,7 +9,8 @@
 //   brand/android/    NH Pocket adaptive icon layers (foreground, background,
 //                     monochrome) + legacy icon, for Expo's app.json
 //   brand/macos/      nh-studio.icns (Big Sur grid: 824 px body on 1024)
-//   brand/windows/    nh-studio.ico (16-256, PNG-compressed entries)
+//   brand/windows/    nh-studio.ico (16-256, PNG-compressed entries), the
+//                     installer wizard sidebar/header BMPs
 //
 // Run from ts/: node scripts/build-icons.mjs   (needs macOS iconutil for .icns,
 // and Node 22.18+ to import brand.ts directly). It also writes the copies the
@@ -149,6 +150,59 @@ write(
   ico(winSizes.map((size) => ({ size, data: png(svg('studio', { radius: 22, small: smallAt(size) }), size) }))),
 );
 
+/** 24-bit BMP (what the NSIS wizard pages take) of an opaque SVG. */
+function bmp(svgText) {
+  const image = new Resvg(svgText).render();
+  const { width, height } = image;
+  const rgba = image.pixels;
+  const stride = (width * 3 + 3) & ~3;
+  const out = Buffer.alloc(54 + stride * height);
+  out.write('BM', 0);
+  out.writeUInt32LE(out.length, 2);
+  out.writeUInt32LE(54, 10);
+  out.writeUInt32LE(40, 14);
+  out.writeInt32LE(width, 18);
+  out.writeInt32LE(height, 22);
+  out.writeUInt16LE(1, 26);
+  out.writeUInt16LE(24, 28);
+  out.writeUInt32LE(stride * height, 34);
+  for (let y = 0; y < height; y++) {
+    const row = 54 + (height - 1 - y) * stride;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      out[row + x * 3] = rgba[i + 2];
+      out[row + x * 3 + 1] = rgba[i + 1];
+      out[row + x * 3 + 2] = rgba[i];
+    }
+  }
+  return out;
+}
+
+// NH Studio's Windows installer wizard (electron-builder nsis): the welcome /
+// finish sidebar (164x314: the Studio scene at the bottom, its sky above) and
+// the page header (150x57: the rounded icon on the right, on white).
+const studioSky = brandIconShapes('studio', { parts: 'background' })[0].fill;
+write(
+  'windows/installer-sidebar.bmp',
+  bmp(`<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <rect width="164" height="314" fill="${studioSky}"/>
+  <defs><clipPath id="c"><rect width="164" height="314"/></clipPath></defs>
+  <g clip-path="url(#c)"><g transform="translate(0 150) scale(1.64)">
+    ${scene('studio')}
+  </g></g>
+</svg>`),
+);
+write(
+  'windows/installer-header.bmp',
+  bmp(`<svg xmlns="http://www.w3.org/2000/svg" width="150" height="57" viewBox="0 0 150 57">
+  <rect width="150" height="57" fill="#ffffff"/>
+  <defs><clipPath id="c"><rect x="99" y="6.5" width="44" height="44" rx="9.68"/></clipPath></defs>
+  <g clip-path="url(#c)"><g transform="translate(99 6.5) scale(0.44)">
+    ${scene('studio')}
+  </g></g>
+</svg>`),
+);
+
 // The copies the apps bundle themselves (written here so they cannot go
 // stale): Studio's sidebar/splash mark and tray icon, Pocket's launcher icons.
 const APPS = resolve(here, '../apps');
@@ -163,5 +217,7 @@ appCopy('pocket/assets/icon.png', png(svg('pocket'), 1024));
 appCopy('pocket/assets/android-icon-background.png', png(svg('pocket', { ...adaptive, parts: 'background' }), 1024));
 appCopy('pocket/assets/android-icon-foreground.png', png(svg('pocket', { ...adaptive, parts: 'foreground' }), 1024));
 appCopy('pocket/assets/android-icon-monochrome.png', png(svg('pocket', { ...adaptive, parts: 'foreground', mono: '#ffffff' }), 1024));
+appCopy('pocket/assets/splash-icon.png', png(svg('pocket', { radius: 22 }), 1024));
+appCopy('pocket/assets/favicon.png', png(svg('pocket', { radius: 22, small: true }), 48));
 
 console.log(`icons written to ${OUT}${icnsWritten ? '' : ' (no .icns)'} and the apps' bundled copies`);

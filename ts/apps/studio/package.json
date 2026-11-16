@@ -59,7 +59,8 @@
       }
     },
     "dmg": {
-      "title": "NH Studio ${version}"
+      "title": "NH Studio ${version}",
+      "icon": "../../../brand/macos/nh-studio.icns"
     },
     "win": {
       "icon": "../../../brand/windows/nh-studio.ico",
@@ -77,7 +78,12 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "NH Studio",
-      "uninstallDisplayName": "New Horizons Studio"
+      "uninstallDisplayName": "New Horizons Studio",
+      "installerIcon": "../../../brand/windows/nh-studio.ico",
+      "uninstallerIcon": "../../../brand/windows/nh-studio.ico",
+      "installerSidebar": "../../../brand/windows/installer-sidebar.bmp",
+      "uninstallerSidebar": "../../../brand/windows/installer-sidebar.bmp",
+      "installerHeader": "../../../brand/windows/installer-header.bmp"
     },
     "publish": null,
     "linux": {
