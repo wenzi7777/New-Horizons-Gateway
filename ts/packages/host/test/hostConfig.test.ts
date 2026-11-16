@@ -41,6 +41,8 @@ function makeHost(native: FakeNative, connector: WsConnector = new TrackingConne
     connector,
     logger: { info() {}, warn: (m) => warnings.push(m), error() {} },
     tickIntervalMs: 60_000,
+    adoptAddressWaitMs: 0,
+    adoptAttachWaitMs: 0,
   });
   hosts.push(host);
   return host;

@@ -64,7 +64,7 @@ async function start(config: Record<string, unknown> = {}): Promise<Started> {
   mkdirSync(join(t.dir, '.run', 'config'), { recursive: true });
   writeFileSync(paths.configFile, JSON.stringify({ ...LOCAL, ...config }));
   const connector = new FakeConnector();
-  const host = await runGateway({ paths, env: {}, cwd: t.dir, connector, http: offlineHttp, handleSignals: false, tickIntervalMs: 50 });
+  const host = await runGateway({ paths, env: {}, cwd: t.dir, connector, http: offlineHttp, handleSignals: false, tickIntervalMs: 50, adoptAddressWaitMs: 0 });
   cleanups.push(async () => {
     await host.stop();
     t.cleanup();
@@ -345,8 +345,10 @@ describe('web API', () => {
     expect(r).toMatchObject({ status: 409, json: { ok: false, error: 'device_denied' } });
     r = await api(base, '/api/devices/AABBCCDDEEFF/allow', {});
     expect(r).toMatchObject({ status: 200, json: { ok: true, denied_devices: [] } });
+    // Never heard here: it cannot be asked to switch, but it is taken on (it attaches when it is next heard).
     r = await api(base, '/api/devices/AABBCCDDEEFF/serve', {});
-    expect(r).toMatchObject({ status: 200, json: { ok: true, managed_devices: ['AABBCCDDEEFF'] } });
+    expect(r).toMatchObject({ status: 404, json: { ok: false, error: 'device_unreachable' } });
+    expect(JSON.parse(readFileSync(host.paths.configFile, 'utf8')).managed_devices).toEqual(['AABBCCDDEEFF']);
     expect((await api(base, '/api/discover', {})).json).toEqual({ ok: true });
   });
 

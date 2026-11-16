@@ -30,6 +30,16 @@ export const GATEWAY_STATUS_INTERVAL_MS = 5000;
 export const MIN_UPDATE_CHECK_INTERVAL_MS = 60_000;
 /** An owner takes a device back from a fallback relay at most this often (per device). */
 export const RECLAIM_COOLDOWN_MS = 30_000;
+/**
+ * While a managed device is not served here, this relay probes for it this
+ * often (broadcast plus unicast to its last address): the answer either
+ * re-attaches it (its owner's offer, with this host's current address) or
+ * says where it is attached instead. After PROBE_BACKOFF_AFTER_MS without
+ * every managed device served, PROBE_SLOW_INTERVAL_MS.
+ */
+export const PROBE_INTERVAL_MS = 10_000;
+export const PROBE_SLOW_INTERVAL_MS = 30_000;
+export const PROBE_BACKOFF_AFTER_MS = 120_000;
 
 /** Device JSON control frames the Gateway relays upstream as device_<type>. */
 const RELAYED_CONTROL_TYPES = ['hello', 'status', 'update_progress', 'result'];
@@ -138,6 +148,8 @@ export interface GatewayRuntimeOptions {
   resultChunkTtlMs?: number;
   /** FindMe: how much later a host the device does not stream to answers (default NON_OWNER_OFFER_DELAY_MS; 0 = at once). */
   findmeNonOwnerDelayMs?: number;
+  /** adopt(): how long to wait for an unknown device to answer a probe (default ADOPT_ADDRESS_WAIT_MS; tests 0). */
+  adoptAddressWaitMs?: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -179,6 +191,9 @@ export class GatewayRuntime {
   private readonly reclaimedAt = new Map<string, number>();
   /** device uid -> the relay it is attached to, when that is not this one (from its FindMe). */
   private readonly attachedElsewhere = new Map<string, string>();
+  /** serviceProbes(): when the last probe went out, and since when a managed device has been missing. */
+  private lastProbeAt: number | null = null;
+  private missingSince: number | null = null;
 
   constructor(options: GatewayRuntimeOptions) {
     this.options = options;
@@ -234,6 +249,12 @@ export class GatewayRuntime {
           activeClaim: (uid) => this.state.activeClaimFor(uid),
           onRequest: (payload, addr, accepted, reason) => {
             this.state.recordFindmeRequest(payload, addr, accepted, reason);
+            this.noteDevice(payload.device_uid, {
+              ip: addr.ip,
+              name: strOr(payload.device_name),
+              hardware_model: strOr(payload.hardware_model),
+              firmware_version: strOr(payload.firmware_version),
+            });
             this.guard('ownership', () => this.observeAttachment(payload));
             this.notify('findme', (o) => o.onFindmeRequest?.(payload, addr, accepted, reason));
           },
@@ -322,6 +343,51 @@ export class GatewayRuntime {
       .catch((error: unknown) => this.logger.warn(`yield ${uid}: ${errorMessage(error)}`));
   }
 
+  /** Remembers a managed device's address (GatewayConfigStore.noteDevice); a failed write is only logged. */
+  private noteDevice(deviceUid: unknown, info: { ip?: string; name?: string; hardware_model?: string; firmware_version?: string }): void {
+    const uid = normalizeDeviceUid(deviceUid);
+    if (!uid) return;
+    try {
+      this.configStore.noteDevice(uid, info, this.clock.nowMs())?.catch((error: unknown) => this.logger.warn(`device hint ${uid}: ${errorMessage(error)}`));
+    } catch (error) {
+      this.logger.warn(`device hint ${uid}: ${errorMessage(error)}`);
+    }
+  }
+
+  /** Where a device can be reached now: its last FindMe, its command session, then the address remembered from before. */
+  deviceAddress(deviceUid: string): string | null {
+    const uid = normalizeDeviceUid(deviceUid);
+    if (!uid) return null;
+    return this.state.lastFindmeAddr(uid) ?? this.udpCommands.sessions.get(uid)?.ip ?? (this.configStore.deviceHint(uid)?.ip || null);
+  }
+
+  /** Managed devices that are not served here right now (denied and released ones left out). */
+  private missingManaged(): string[] {
+    return this.configStore
+      .managedDevices()
+      .filter((uid) => !this.configStore.isDenied(uid) && !this.configStore.isReleased(uid) && !this.state.isServing(uid));
+  }
+
+  /**
+   * Probes for managed devices this relay does not serve (from the saved
+   * list, so also right after a start, before any of them was heard): at once,
+   * then every PROBE_INTERVAL_MS, slower after PROBE_BACKOFF_AFTER_MS.
+   */
+  private serviceProbes(now: number): void {
+    if (this.discovery === null || !this.discovery.started) return;
+    const missing = this.missingManaged();
+    if (missing.length === 0) {
+      this.missingSince = null;
+      return;
+    }
+    if (this.missingSince === null) this.missingSince = now;
+    const interval = now - this.missingSince >= PROBE_BACKOFF_AFTER_MS ? PROBE_SLOW_INTERVAL_MS : PROBE_INTERVAL_MS;
+    if (this.lastProbeAt !== null && now - this.lastProbeAt < interval) return;
+    this.lastProbeAt = now;
+    const targets = missing.map((uid) => this.deviceAddress(uid)).filter((ip): ip is string => Boolean(ip));
+    this.discovery.sendProbe(targets);
+  }
+
   /** Replaces the observer (an engine attaches after building on the runtime). */
   setObserver(observer: GatewayRuntimeObserver | null): void {
     this.observer = observer ?? {};
@@ -351,6 +417,13 @@ export class GatewayRuntime {
       discovery: this.discovery,
       updateControl: this.updateControl,
       onConfigSaved: (config) => this.applyRuntimeConfig(config),
+      deviceAddress: (uid) => this.deviceAddress(uid),
+      ...(this.options.adoptAddressWaitMs !== undefined ? { addressWaitMs: this.options.adoptAddressWaitMs } : {}),
+      probeTargets: () =>
+        this.configStore
+          .managedDevices()
+          .map((uid) => this.deviceAddress(uid))
+          .filter((ip): ip is string => Boolean(ip)),
     });
   }
 
@@ -438,6 +511,7 @@ export class GatewayRuntime {
     // Python let an exception here (e.g. from the timeout callback's upstream
     // send) escape and end the main loop; one bad tick must not stop the Gateway.
     this.guard('udp_commands', () => this.udpCommands.service());
+    this.guard('probes', () => this.serviceProbes(now));
     this.resultChunks.purge();
     await this.commandHandler.service();
   }
@@ -671,6 +745,8 @@ export class GatewayRuntime {
     let attached = false;
     if (isHeartbeat && deviceUid && !denied) {
       attached = true;
+      // Every 5 s: the address it streams from is the one to remember (cheap unless it changed).
+      this.noteDevice(deviceUid, { ip: addr.ip });
       this.arduinoHosts.set(deviceUid, addr.ip);
       this.udpCommands.setSession(deviceUid, addr);
       this.state.recordHeartbeat(

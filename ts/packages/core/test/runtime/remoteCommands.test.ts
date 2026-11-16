@@ -27,6 +27,7 @@ function ops(): GatewayOperations {
     udpControl: null,
     discovery: { sendProbe: () => void probes++ },
     updateControl: manager,
+    addressWaitMs: 0,
     onConfigSaved: (config) => {
       // What GatewayRuntime.applyRuntimeConfig does with the channel.
       saved.push(config);
@@ -171,9 +172,10 @@ describe('GatewayCommandHandler', () => {
     expect(result.denied_devices).toEqual(['AA11']);
     expect((await runCmd('device_serve', { device_uid: 'AA11' })).message).toBe('device_denied');
     expect((await runCmd('device_allow', { device_uid: 'AA11' })).denied_devices).toEqual([]);
+    // No UDP control here, so the device cannot be switched: the claim is still requested, the reply says so.
     result = await runCmd('device_serve', { device_uid: 'AA11' });
-    expect(result.ok).toBe(true);
-    expect(result.message).toBe('claim_requested');
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe('device_unreachable');
     expect((result.claim as Json).state).toBe('requested');
     expect(upstream.claims[0]![0]).toBe('AA11');
     expect((await runCmd('device_allow')).message).toBe('device_uid_required');

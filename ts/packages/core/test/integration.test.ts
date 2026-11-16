@@ -60,6 +60,7 @@ async function harness() {
   });
   const runtime = new GatewayRuntime({
     findmeNonOwnerDelayMs: 0,
+    adoptAddressWaitMs: 0,
     configStore: store,
     clock,
     streamSocket: stream,

@@ -43,8 +43,13 @@ export function opFail(error: string, status = 400, data: Json = {}): OpResult {
 export type ConfigCallback = (config: GatewayConfig) => void | Promise<void>;
 
 export interface ProbeSender {
-  sendProbe(): void;
+  /** Broadcast, plus unicast to each of `targets` (device IPs). */
+  sendProbe(targets?: readonly string[]): void;
 }
+
+/** adopt(): how long to wait for an unknown device's address after probing for it, and how often to look. */
+export const ADOPT_ADDRESS_WAIT_MS = 6_000;
+export const ADOPT_ADDRESS_POLL_MS = 250;
 
 export interface GatewayOperationsOptions {
   configStore: GatewayConfigStore;
@@ -55,6 +60,14 @@ export interface GatewayOperationsOptions {
   discovery?: ProbeSender | null;
   updateControl: UpdateControl;
   onConfigSaved?: ConfigCallback;
+  /** Where a device can be reached (FindMe, session, remembered hint). Default: its last FindMe address. */
+  deviceAddress?: (deviceUid: string) => string | null;
+  /** Addresses discover() also probes by unicast (the managed devices' known ones). */
+  probeTargets?: () => string[];
+  /** Waits (default setTimeout); tests pass a fake. */
+  sleep?: (ms: number) => Promise<void>;
+  /** adopt(): how long to wait for an unknown device to answer a probe (default ADOPT_ADDRESS_WAIT_MS; 0 = do not wait). */
+  addressWaitMs?: number;
 }
 
 function errorMessage(error: unknown): string {
@@ -69,6 +82,10 @@ export class GatewayOperations {
   readonly discovery: ProbeSender | null;
   readonly updateControl: UpdateControl;
   private readonly onConfigSaved: ConfigCallback | undefined;
+  private readonly deviceAddress: (deviceUid: string) => string | null;
+  private readonly probeTargets: () => string[];
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly addressWaitMs: number;
 
   constructor(options: GatewayOperationsOptions) {
     this.configStore = options.configStore;
@@ -78,6 +95,10 @@ export class GatewayOperations {
     this.discovery = options.discovery ?? null;
     this.updateControl = options.updateControl;
     this.onConfigSaved = options.onConfigSaved;
+    this.deviceAddress = options.deviceAddress ?? ((uid) => this.state.lastFindmeAddr(uid));
+    this.probeTargets = options.probeTargets ?? (() => []);
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.addressWaitMs = Math.max(0, options.addressWaitMs ?? ADOPT_ADDRESS_WAIT_MS);
   }
 
   /**
@@ -169,7 +190,7 @@ export class GatewayOperations {
   discover(): OpResult {
     const locked = this.locked();
     if (locked !== null) return locked;
-    this.discovery?.sendProbe();
+    this.discovery?.sendProbe(this.probeTargets());
     return opOk();
   }
 
@@ -202,16 +223,33 @@ export class GatewayOperations {
   }
 
   /**
-   * A claim (gateway_claim_request when the Backend is reachable) plus
-   * findme_switch_gateway to the address the device's last FindMe came from.
-   * switchSent is false when that address is unknown.
+   * Where to send the switch: the device's known address, or -- when none is
+   * known -- a probe (broadcast) and up to ADOPT_ADDRESS_WAIT_MS for its
+   * answer. null: the device did not answer.
    */
-  private claimAndSwitch(uid: string): { claim: Json; switchSent: boolean } {
+  private async findAddress(uid: string): Promise<string | null> {
+    const known = this.deviceAddress(uid);
+    if (known || this.discovery === null) return known;
+    this.discovery.sendProbe();
+    for (let waited = 0; waited < this.addressWaitMs; waited += ADOPT_ADDRESS_POLL_MS) {
+      await this.sleep(ADOPT_ADDRESS_POLL_MS);
+      const found = this.deviceAddress(uid);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * A claim (gateway_claim_request when the Backend is reachable) plus
+   * findme_switch_gateway to where the device can be reached (findAddress).
+   * switchSent is false when no address was found.
+   */
+  private async claimAndSwitch(uid: string): Promise<{ claim: Json; switchSent: boolean }> {
     const claim = this.state.createClaim(uid);
     this.state.updateClaim(claim.claim_id, { state: 'sent' });
     if (this.upstream.isConnected()) this.upstream.sendClaimRequest(claim.device_uid, claim.claim_id, pyInt(claim.ttl_ms));
     const updated = this.state.updateClaim(claim.claim_id, { state: 'requested' });
-    const deviceIp = this.state.lastFindmeAddr(uid);
+    const deviceIp = await this.findAddress(uid);
     let switchSent = false;
     if (deviceIp && this.udpControl !== null) {
       const gwId = strOr(this.configStore.snapshot().gateway_id);
@@ -224,7 +262,8 @@ export class GatewayOperations {
         expires_at_ms: pyInt(claim.expires_at_ms),
       });
     }
-    return { claim: updated ?? claim, switchSent };
+    // The claim is current state again (findAddress may have waited).
+    return { claim: this.state.activeClaimFor(uid) ?? updated ?? claim, switchSent };
   }
 
   // -- offer policy, adopt / release (NH Studio / NH Pocket) ----------------
@@ -248,6 +287,11 @@ export class GatewayOperations {
    * here. The Backend need not be reachable (NH Pocket adopts offline); the
    * claim is then only local, which is all the device needs -- the preferred
    * host mirrors the device's claim_id in its offer.
+   *
+   * A device that could not be reached (no address, no answer to a probe)
+   * fails with device_unreachable. It stays managed: it attaches here the
+   * next time it is heard. A device this relay serves already needs no
+   * switch and succeeds at once.
    */
   async adopt(deviceUid: unknown): Promise<OpResult> {
     const locked = this.locked();
@@ -256,8 +300,10 @@ export class GatewayOperations {
     if (!uid) return opFail('device_uid_required');
     if (this.configStore.isDenied(uid)) return opFail('device_denied', 409);
     const config = await this.configStore.manage(uid);
-    const { claim, switchSent } = this.claimAndSwitch(uid);
-    return opOk({ claim, managed_devices: config.managed_devices ?? [], switch_sent: switchSent });
+    const { claim, switchSent } = await this.claimAndSwitch(uid);
+    const data: Json = { claim, managed_devices: config.managed_devices ?? [], switch_sent: switchSent };
+    if (!switchSent && !this.state.isServing(uid)) return opFail('device_unreachable', 404, data);
+    return opOk(data);
   }
 
   /**

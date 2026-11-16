@@ -43,6 +43,8 @@ const en = {
   lastSeen: 'Last seen {time}',
   deviceAdded: '{device} added',
   actionFailed: 'Failed: {error}',
+  errDeviceUnreachable: 'The device did not answer. It stays in your list and connects when it is next on this Wi-Fi.',
+  errAdoptTimeout: 'The device was asked to switch here but has not connected yet. It stays in your list and connects when it can.',
 
   // Device detail
   deviceTitle: 'Device',
@@ -417,6 +419,8 @@ const ja = {
   lastSeen: '最終確認 {time}',
   deviceAdded: '{device} を追加しました',
   actionFailed: '失敗しました：{error}',
+  errDeviceUnreachable: 'デバイスが応答しませんでした。一覧には残り、次にこの Wi-Fi に現れたときに接続されます。',
+  errAdoptTimeout: 'デバイスに切り替えを依頼しましたが、まだ接続されていません。一覧には残り、接続できしだい接続されます。',
 
   deviceTitle: 'デバイス',
   deviceGone: 'このデバイスはもうこのスマートフォンで管理されていません。',
@@ -783,6 +787,8 @@ const zhCN = {
   lastSeen: '最后在线 {time}',
   deviceAdded: '已添加 {device}',
   actionFailed: '失败：{error}',
+  errDeviceUnreachable: '设备没有回应。它会留在列表中，下次出现在此 Wi-Fi 时自动连接。',
+  errAdoptTimeout: '已请设备切换到这里，但它尚未连接。它会留在列表中，能连接时自动连接。',
 
   deviceTitle: '设备',
   deviceGone: '这台手机已不再管理此设备。',
@@ -1166,8 +1172,15 @@ export function translate(locale: Locale, key: Key, vars?: Readonly<Record<strin
   return key;
 }
 
-/** A device or engine error code as text: the shared `err_<code>` string when there is one. */
+const ERROR_KEYS: Record<string, AppKey> = {
+  device_unreachable: 'errDeviceUnreachable',
+  adopt_timeout: 'errAdoptTimeout',
+};
+
+/** A device or engine error code as text: our own string, else the shared `err_<code>`, else the code. */
 export function errorText(locale: Locale, code: string): string {
+  const own = ERROR_KEYS[code];
+  if (own) return translate(locale, own);
   const key = `err_${code}`;
   return isMessageKey(key) ? translate(locale, key) : code;
 }

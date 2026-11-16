@@ -288,13 +288,24 @@ describe('FindMe claims (serve)', () => {
 
   it('serve() works while upstream is offline (a local claim only)', async () => {
     const h = await started();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
     h.upstream().connected = false;
-    expect(await h.runtime.operations().serve(UID)).toMatchObject({ ok: true });
+    expect(await h.runtime.operations().serve(UID)).toMatchObject({ ok: true, data: { switch_sent: true } });
     expect(h.upstream().claims).toEqual([]);
+  });
+
+  it('serve() of a device that cannot be reached fails, and the device stays managed', async () => {
+    const h = await started();
+    const result = await h.runtime.operations().serve(UID);
+    expect(result).toMatchObject({ ok: false, error: 'device_unreachable', data: { switch_sent: false } });
+    expect(h.runtime.configStore.isManaged(UID)).toBe(true);
+    // The claim went upstream all the same: the device may still turn up within its TTL.
+    expect(h.upstream().claims.length).toBe(1);
   });
 
   it('gateway_claim_update updates the claim', async () => {
     const h = await started();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
     await h.runtime.operations().serve(UID);
     h.runtime.onUpstreamMessage({ type: 'gateway_claim_update', claim_id: 'claim-1', state: 'rejected', message: 'owner_busy' });
     const claim = h.runtime.state.snapshot([]).claims[0]!;

@@ -62,6 +62,7 @@ import {
   APP_KEYS,
   hostDefaultConfig,
   matrixOf,
+  placeholderDeviceView,
   nearbyView,
   newRelayId,
   productName,
@@ -95,6 +96,13 @@ export function commandTimeoutMs(payload: Record<string, unknown>): number {
   }
   return COMMAND_RESULT_TIMEOUT_MS;
 }
+/**
+ * adopt(): how long to wait for the device to stream here after it was asked
+ * to switch (its next discover round is at most 3 s away, the switch
+ * command is resent for up to 15 s).
+ */
+export const ADOPT_ATTACH_WAIT_MS = 12_000;
+const ADOPT_POLL_MS = 250;
 /** Recordings, addresses and storage are re-read this often (and on every recording change). */
 const SLOW_REFRESH_MS = 5_000;
 /** Listeners hear about changes at most this often. */
@@ -143,6 +151,11 @@ export interface AppHostOptions {
   /** WebSocket constructor override (tests). */
   connector?: WsConnector;
   tickIntervalMs?: number;
+  /** adopt(): how long to wait for the device to stream here (default ADOPT_ATTACH_WAIT_MS) and how often to look. */
+  adoptAttachWaitMs?: number;
+  adoptPollMs?: number;
+  /** Passed to the runtime: how long adopt() waits for an unknown device to answer a probe (tests: 0). */
+  adoptAddressWaitMs?: number;
   /** Version reported upstream (hello / gateway_status). */
   version?: string;
 }
@@ -446,22 +459,37 @@ export class AppHost implements HostStore {
     return store.isManaged(uid);
   }
 
+  /**
+   * The devices this host manages: every one in managed_devices (the saved
+   * list, so a device not heard since the start is still listed, offline),
+   * plus -- under "all" -- any other device in the engine's table.
+   */
   private buildDevices(): DeviceView[] {
     const run = this.run_;
     if (run === null) return [];
     const now = this.clock.monotonicMs();
-    return run.service
+    const store = run.runtime.configStore;
+    const owner = {
+      isYielded: (uid: string) => store.isYielded(uid),
+      attachedTo: (uid: string) => run.runtime.attachedTo(uid),
+    };
+    const listed = new Set<string>();
+    const views = run.service
       .listDevices()
       .filter((entry) => this.isMine(str(entry.device_uid)))
       .map((entry) => {
-        const view = withOwnership(deviceView(entry, now), {
-          isYielded: (uid) => run.runtime.configStore.isYielded(uid),
-          attachedTo: (uid) => run.runtime.attachedTo(uid),
-        });
+        const view = withOwnership(deviceView(entry, now), owner);
+        listed.add(normalizeListUid(view.uid));
         // The table's flag lags a capture that is still draining.
         const recorder = run.service.recorders.get(view.uid);
         return recorder ? { ...view, recording: { ...view.recording, finishing: recorder.finishing } } : view;
       });
+    for (const uid of store.managedDevices()) {
+      if (listed.has(uid) || store.isReleased(uid)) continue;
+      const label = { nickname: run.service.labels.nickname(uid), group: run.service.labels.group(uid) };
+      views.push(withOwnership(placeholderDeviceView(uid, store.deviceHint(uid), label), owner));
+    }
+    return views;
   }
 
   private buildNearby(): NearbyDeviceView[] {
@@ -609,6 +637,7 @@ export class AppHost implements HostStore {
       logger: this.logger,
       // The Desktop backend kept partial chunked results 30 s.
       resultChunkTtlMs: 30_000,
+      ...(this.deps.adoptAddressWaitMs !== undefined ? { adoptAddressWaitMs: this.deps.adoptAddressWaitMs } : {}),
       host: {
         setServicesRunning: ({ udp, discovery }) => {
           if (udp || discovery) native.startService();
@@ -836,24 +865,8 @@ export class AppHost implements HostStore {
     }
     for (const [uid, error] of Object.entries(this.captures.errors())) this.logger.warn(`nhraw ${uid}: ${error}`);
     this.catalog.refresh(this.inProgressIds(), Date.now());
-    this.probeForMovedDevices();
+    // Probing for managed devices that went quiet is the runtime's (GatewayRuntime.serviceProbes).
     this.changed();
-  }
-
-  /**
-   * A managed device that went quiet may have been adopted by another host
-   * (an attached device no longer broadcasts FindMe, so nothing else would
-   * tell us). A probe makes it answer with the relay it is attached to, which
-   * the runtime then acts on (a takeover, or a fallback to take back).
-   */
-  private probeForMovedDevices(): void {
-    const run = this.run_;
-    if (run === null || this.configStore?.offerPolicy() !== 'managed') return;
-    const quiet = run.service.listDevices().some((entry) => {
-      const uid = str(entry.device_uid);
-      return this.isMine(uid) && entry.gateway_connected !== true;
-    });
-    if (quiet) run.runtime.operations().discover();
   }
 
   async stop(): Promise<void> {
@@ -924,12 +937,32 @@ export class AppHost implements HostStore {
 
   // -- devices ---------------------------------------------------------------------
 
+  /**
+   * Adds a device, or takes it over, and waits until it really streams here
+   * (up to ADOPT_ATTACH_WAIT_MS). Fails with device_unreachable when it could
+   * not be asked to switch, adopt_timeout when it did not come; either way it
+   * stays in the list and attaches whenever it is next heard.
+   */
   async adopt(uid: string): Promise<CommandOutcome> {
     const run = this.run_;
     if (run === null) return fail('not_running');
     const result = await run.runtime.operations().adopt(uid);
     this.changed();
-    return { ok: result.ok, message: result.ok ? 'ok' : result.error, data: plainJson(result.data) };
+    if (!result.ok) return { ok: false, message: result.error, data: plainJson(result.data) };
+    const attached = await this.waitUntilServed(run, uid);
+    this.changed();
+    return { ok: attached, message: attached ? 'ok' : 'adopt_timeout', data: plainJson(result.data) };
+  }
+
+  private async waitUntilServed(run: Running, uid: string): Promise<boolean> {
+    const step = this.deps.adoptPollMs ?? ADOPT_POLL_MS;
+    const limit = this.deps.adoptAttachWaitMs ?? ADOPT_ATTACH_WAIT_MS;
+    for (let waited = 0; ; waited += step) {
+      if (this.run_ !== run) return false;
+      if (run.runtime.state.isServing(uid)) return true;
+      if (waited >= limit) return false;
+      await new Promise((resolve) => setTimeout(resolve, step));
+    }
   }
 
   async discoverNearby(): Promise<CommandOutcome> {

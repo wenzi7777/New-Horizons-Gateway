@@ -1,6 +1,6 @@
 // Engine records -> the contract's plain views (pure functions, tested in
 // test/views.test.ts), and the settings <-> GatewayConfig mapping.
-import type { GatewayConfig, RawConfig, TargetMode } from '@nhgw/core';
+import type { DeviceHint, GatewayConfig, RawConfig, TargetMode } from '@nhgw/core';
 import type { Timeline } from '@nhgw/engine';
 
 import type {
@@ -151,6 +151,31 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
     rfbStatus: Array.isArray(range.rfb_status) ? range.rfb_status.map((v) => (typeof v === 'string' ? v : 'unknown')) : [],
     saturatedRows: int(range.saturated_rows),
     calibrationOn: vref.calibration_on === true,
+  };
+}
+
+/**
+ * A managed device this host has not heard since it started (it is in
+ * managed_devices but not in the engine's table): listed offline, from what
+ * was remembered of it (GatewayConfigStore.deviceHint) and its labels.
+ */
+export function placeholderDeviceView(uid: string, hint: DeviceHint | null, label: { nickname: string; group: string }): DeviceView {
+  return {
+    uid,
+    displayName: label.nickname || hint?.name || `NHOS-${uid}`,
+    nickname: label.nickname,
+    group: label.group,
+    online: false,
+    mode: 'unknown',
+    hardwareModel: hint?.hardware_model ?? '',
+    firmwareVersion: hint?.firmware_version ?? '',
+    battery: null,
+    fps: 0,
+    matrix: null,
+    recording: { enabled: false, finishing: false, error: '' },
+    lastSeenMs: hint !== null && hint.last_seen_ms > 0 ? hint.last_seen_ms : null,
+    vref: null,
+    pins: null,
   };
 }
 

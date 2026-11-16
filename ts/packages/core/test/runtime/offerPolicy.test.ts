@@ -4,7 +4,8 @@
 // "all" (the default) must stay exactly the Gateway's behaviour.
 import { describe, expect, it } from 'vitest';
 
-import { GatewayConfigStore, defaultConfig, normalizeConfig } from '../../src/config';
+import { utf8Decode } from '../../src/bytes';
+import { DEVICE_HINT_PERSIST_MS, GatewayConfigStore, defaultConfig, normalizeConfig } from '../../src/config';
 import type { Json } from '../../src/contracts';
 import {
   CLAIM_PRIORITY_BOOST,
@@ -12,7 +13,11 @@ import {
   MANAGED_OFFER_PRIORITY,
   decideFindme,
   type FindmeContext,
+  GatewayOperations,
   type GatewayRuntimeObserver,
+  PROBE_BACKOFF_AFTER_MS,
+  PROBE_INTERVAL_MS,
+  PROBE_SLOW_INTERVAL_MS,
 } from '../../src/runtime';
 import { DEVICE_ADDR, MemoryStore, UID, heartbeatPacket, jsonFrame, makeRuntime, v5Packet } from './helpers';
 
@@ -216,11 +221,44 @@ describe('adopt', () => {
     expect(await h.runtime.operations().serve(OTHER)).toMatchObject({ ok: true });
   });
 
-  it('without a known address it only joins the list', async () => {
+  it('without a known address it joins the list and says the device was not reached', async () => {
     const h = await managedRuntime({ managed_devices: [] });
     const result = await h.runtime.operations().adopt(OTHER);
-    expect(result).toMatchObject({ ok: true, data: { switch_sent: false, managed_devices: [OTHER] } });
+    expect(result).toMatchObject({ ok: false, error: 'device_unreachable', data: { switch_sent: false, managed_devices: [OTHER] } });
     expect(h.stream.sent).toEqual([]);
+  });
+
+  it('probes for an unknown device and switches it once it answers', async () => {
+    const h = await managedRuntime({ managed_devices: [] });
+    let answered = false;
+    const ops = new GatewayOperations({
+      configStore: h.runtime.configStore,
+      state: h.runtime.state,
+      upstream: h.runtime.upstream,
+      udpControl: h.runtime.udpCommands,
+      discovery: h.runtime.discovery,
+      updateControl: h.updates,
+      deviceAddress: (uid: string) => h.runtime.deviceAddress(uid),
+      sleep: async () => {
+        // The device answers the probe during the first wait.
+        if (!answered) h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER }), FINDME_FROM);
+        answered = true;
+      },
+    });
+    const probesBefore = h.findme.broadcasts.length;
+    const result = await ops.adopt(OTHER);
+    expect(h.findme.broadcasts.length).toBe(probesBefore + 1);
+    expect(result).toMatchObject({ ok: true, data: { switch_sent: true } });
+  });
+
+  it('switches to the address remembered from before when the device has not been heard yet', async () => {
+    const h = await managedRuntime({
+      managed_devices: [OTHER],
+      device_hints: { [OTHER]: { ip: '192.168.1.77', name: '', hardware_model: '', firmware_version: '', last_seen_ms: 1 } },
+    });
+    const result = await h.runtime.operations().adopt(OTHER);
+    expect(result).toMatchObject({ ok: true, data: { switch_sent: true } });
+    expect(h.stream.sent.at(-1)!.to.ip).toBe('192.168.1.77');
   });
 
   it('refuses denied devices, empty UIDs and a locked Gateway', async () => {
@@ -430,11 +468,118 @@ describe('ownership: takeover, fallback, reclaim', () => {
   it('a relay serving every device (headless) owns what it took over too', async () => {
     const h = await makeRuntime({ offer_policy: 'all' });
     await h.runtime.start();
+    // Heard first, so the switch has an address to go to.
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER }), FINDME_FROM);
+    h.findme.sent.length = 0;
     expect((await h.runtime.operations().serve(OTHER)).ok).toBe(true);
     h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER }), FINDME_FROM);
     // Owner priority, plus the boost while its claim is live.
     expect(h.findme.json(0)).toMatchObject({ accept: true, priority: MANAGED_OFFER_PRIORITY + CLAIM_PRIORITY_BOOST });
     h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID }), FINDME_FROM);
     expect(h.findme.json(1)).toMatchObject({ accept: true, priority: 100 });
+  });
+});
+
+describe('finding managed devices again (probes, remembered addresses)', () => {
+  const HINT_IP = '192.168.1.77';
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const probeUnicasts = (h: Awaited<ReturnType<typeof managedRuntime>>) =>
+    h.findme.sent.filter((s) => s.to.port === 22346 && JSON.parse(utf8Decode(s.data)).type === 'findme_probe');
+
+  it('probes at once for a managed device not served, broadcast and to its remembered address', async () => {
+    const h = await managedRuntime({
+      device_hints: { [UID]: { ip: HINT_IP, name: 'NHOS-x', hardware_model: '', firmware_version: '', last_seen_ms: 1 } },
+    });
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(1);
+    expect(probeUnicasts(h).map((s) => s.to.ip)).toEqual([HINT_IP]);
+    // Not again before PROBE_INTERVAL_MS.
+    h.clock.advance(PROBE_INTERVAL_MS / 1000 - 1);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(1);
+    h.clock.advance(1);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(2);
+  });
+
+  it('slows down after PROBE_BACKOFF_AFTER_MS, and stops once the device is served', async () => {
+    const h = await managedRuntime();
+    await h.runtime.tick();
+    h.clock.advance(PROBE_BACKOFF_AFTER_MS / 1000);
+    await h.runtime.tick();
+    const count = h.findme.broadcasts.length;
+    h.clock.advance(PROBE_INTERVAL_MS / 1000);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(count);
+    h.clock.advance((PROBE_SLOW_INTERVAL_MS - PROBE_INTERVAL_MS) / 1000);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(count + 1);
+    // Served (heartbeats every 5 s): no more probes.
+    for (let i = 0; i < 8; i++) {
+      h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+      await h.runtime.tick();
+      h.clock.advance(5);
+    }
+    expect(h.findme.broadcasts.length).toBe(count + 1);
+    // Gone again (stale after 16 s): probing resumes at the fast rate.
+    h.clock.advance(20);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(count + 2);
+    h.clock.advance(PROBE_INTERVAL_MS / 1000);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(count + 3);
+  });
+
+  it('does not probe when every managed device is served, or for released / denied ones', async () => {
+    const h = await managedRuntime({ managed_devices: [UID, OTHER], denied_devices: [OTHER] });
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    await h.runtime.tick();
+    expect(h.findme.broadcasts.length).toBe(0);
+  });
+
+  it('remembers a managed device address from its heartbeat and FindMe, and forgets it on release', async () => {
+    const h = await managedRuntime();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    await settle();
+    expect(h.runtime.configStore.deviceHint(UID)?.ip).toBe(DEVICE_ADDR.ip);
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: UID, firmware_version: 'v9', hardware_model: 'TIA-CTL' }), { ip: '192.168.1.9', port: 22346 });
+    await settle();
+    expect(h.runtime.configStore.deviceHint(UID)).toMatchObject({ ip: '192.168.1.9', firmware_version: 'v9', hardware_model: 'TIA-CTL' });
+    // Unmanaged devices are not remembered.
+    h.runtime.onFindmePacket(jsonFrame({ type: 'findme_discover', device_uid: OTHER }), FINDME_FROM);
+    await settle();
+    expect(h.runtime.configStore.deviceHint(OTHER)).toBeNull();
+    await h.runtime.operations().release(UID);
+    expect(h.runtime.configStore.deviceHint(UID)).toBeNull();
+  });
+
+  it('writes an unchanged hint at most every DEVICE_HINT_PERSIST_MS', async () => {
+    const store = new MemoryStore({ ...defaultConfig(), offer_policy: 'managed', managed_devices: [UID] });
+    const config = await GatewayConfigStore.load(store);
+    let writes = 0;
+    const save = store.save.bind(store);
+    store.save = async (value) => {
+      writes++;
+      await save(value);
+    };
+    await config.noteDevice(UID, { ip: '10.0.0.2' }, 1_000);
+    expect(writes).toBe(1);
+    expect(config.noteDevice(UID, { ip: '10.0.0.2' }, 2_000)).toBeNull();
+    expect(config.deviceHint(UID)?.last_seen_ms).toBe(2_000);
+    await config.noteDevice(UID, { ip: '10.0.0.3' }, 3_000);
+    expect(writes).toBe(2);
+    await config.noteDevice(UID, { ip: '10.0.0.3' }, 3_000 + DEVICE_HINT_PERSIST_MS);
+    expect(writes).toBe(3);
+    // A bad address keeps the one known.
+    expect(config.noteDevice(UID, { ip: 'not-an-ip' }, 3_001 + DEVICE_HINT_PERSIST_MS)).toBeNull();
+    expect(config.deviceHint(UID)?.ip).toBe('10.0.0.3');
+  });
+
+  it('discover() also probes the managed devices by unicast', async () => {
+    const h = await managedRuntime({
+      device_hints: { [UID]: { ip: HINT_IP, name: '', hardware_model: '', firmware_version: '', last_seen_ms: 1 } },
+    });
+    expect(h.runtime.operations().discover().ok).toBe(true);
+    expect(probeUnicasts(h).map((s) => s.to.ip)).toEqual([HINT_IP]);
   });
 });

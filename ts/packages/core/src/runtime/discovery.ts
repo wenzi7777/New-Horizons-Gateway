@@ -296,11 +296,13 @@ export class DiscoveryResponder {
   }
 
   /**
-   * Broadcast a findme_probe so attached devices announce themselves. Python
-   * never set SO_BROADCAST, so its probe failed with EACCES and never left the
+   * Broadcast a findme_probe so attached devices announce themselves, and
+   * send it to each of `targets` (device IPs) too: a network that does not
+   * pass broadcasts between clients still delivers a unicast. Python never
+   * set SO_BROADCAST, so its probe failed with EACCES and never left the
    * host; UdpSocket.broadcast has the host enable it.
    */
-  sendProbe(): void {
+  sendProbe(targets: readonly string[] = []): void {
     if (!this.started) return;
     const packet = utf8Encode(
       pyJsonDumpsCompact({
@@ -315,6 +317,15 @@ export class DiscoveryResponder {
       else this.socket.send(packet, { ip: '255.255.255.255', port: this.discoveryPort });
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
+    }
+    for (const ip of new Set(targets)) {
+      if (!ip) continue;
+      try {
+        // Devices listen for FindMe on the configured discovery port.
+        this.socket.send(packet, { ip, port: this.discoveryPort });
+      } catch (error) {
+        this.lastError = error instanceof Error ? error.message : String(error);
+      }
     }
   }
 }

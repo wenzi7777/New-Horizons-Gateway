@@ -62,8 +62,49 @@ export interface GatewayConfig {
    * them is attached to this host, not adopted elsewhere.
    */
   previous_gateway_ids?: string[];
+  /**
+   * What this host last knew of each managed device (its address above all),
+   * so a device it has not heard since starting is still listed and can be
+   * probed / switched by unicast where broadcasts do not get through.
+   */
+  device_hints?: Record<string, DeviceHint>;
   [key: string]: unknown;
 }
+
+/** A managed device as last heard (GatewayConfig.device_hints). */
+export interface DeviceHint {
+  ip: string;
+  name: string;
+  hardware_model: string;
+  firmware_version: string;
+  /** Wall clock ms of the last FindMe / heartbeat noted. */
+  last_seen_ms: number;
+}
+
+const IPV4_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function normalizeDeviceHints(value: unknown): Record<string, DeviceHint> {
+  const out: Record<string, DeviceHint> = {};
+  if (!isPlainObject(value)) return out;
+  for (const key of Object.keys(value).sort(pyCompareStr)) {
+    const uid = normalizeListUid(key);
+    const item = value[key];
+    if (!uid || !isPlainObject(item)) continue;
+    const ip = pyStrip(typeof item.ip === 'string' ? item.ip : '');
+    const seen = Number(item.last_seen_ms);
+    out[uid] = {
+      ip: IPV4_PATTERN.test(ip) ? ip : '',
+      name: typeof item.name === 'string' ? item.name : '',
+      hardware_model: typeof item.hardware_model === 'string' ? item.hardware_model : '',
+      firmware_version: typeof item.firmware_version === 'string' ? item.firmware_version : '',
+      last_seen_ms: Number.isFinite(seen) && seen > 0 ? Math.floor(seen) : 0,
+    };
+  }
+  return out;
+}
+
+/** A hint's last_seen_ms alone is written to disk at most this often (the rest on every change). */
+export const DEVICE_HINT_PERSIST_MS = 10 * 60_000;
 
 /** Raw, not-yet-normalized config (a loaded file, a patch, env overrides applied). */
 export type RawConfig = Record<string, unknown>;
@@ -226,6 +267,7 @@ export function normalizeConfig(raw: RawConfig): GatewayConfig {
   if ('released_devices' in config) config.released_devices = normalizeUidList(config.released_devices);
   if ('yielded_devices' in config) config.yielded_devices = normalizeUidList(config.yielded_devices);
   if ('previous_gateway_ids' in config) config.previous_gateway_ids = normalizePreviousIds(config.previous_gateway_ids, config.gateway_id as string);
+  if ('device_hints' in config) config.device_hints = normalizeDeviceHints(config.device_hints);
   config.server_url = resolveServerUrl(config);
   return config as GatewayConfig;
 }
@@ -261,6 +303,7 @@ export class GatewayConfigStore {
     if (this.config.released_devices) out.released_devices = [...this.config.released_devices];
     if (this.config.yielded_devices) out.yielded_devices = [...this.config.yielded_devices];
     if (this.config.previous_gateway_ids) out.previous_gateway_ids = [...this.config.previous_gateway_ids];
+    if (this.config.device_hints) out.device_hints = copyHints(this.config.device_hints);
     return out;
   }
 
@@ -377,6 +420,61 @@ export class GatewayConfigStore {
       released_devices: [...released],
     };
     if (this.config.yielded_devices) patch.yielded_devices = this.config.yielded_devices.filter((item) => item !== uid);
+    if (this.config.device_hints?.[uid]) {
+      const hints = copyHints(this.config.device_hints);
+      delete hints[uid];
+      patch.device_hints = hints;
+    }
     return this.save(patch);
   }
+
+  // -- device hints ------------------------------------------------------------
+
+  /** What this host last knew of a device (null: never noted). */
+  deviceHint(deviceUid: unknown): DeviceHint | null {
+    const hint = this.config.device_hints?.[normalizeListUid(deviceUid)];
+    return hint ? { ...hint } : null;
+  }
+
+  private hintsPersistedAt = 0;
+
+  /**
+   * Notes a managed device as heard now (ip / name / versions where known).
+   * Kept in memory at once; written to disk when something other than the
+   * time changed, or the time alone at most every DEVICE_HINT_PERSIST_MS.
+   * Returns the save, or null when nothing was written. Unmanaged devices are
+   * not noted (the list would grow with every device ever nearby).
+   */
+  noteDevice(deviceUid: unknown, info: Partial<Omit<DeviceHint, 'last_seen_ms'>>, nowMs: number): Promise<GatewayConfig> | null {
+    const uid = normalizeListUid(deviceUid);
+    if (!uid || !this.isManaged(uid)) return null;
+    const old = this.config.device_hints?.[uid];
+    const ip = info.ip && IPV4_PATTERN.test(info.ip) ? info.ip : (old?.ip ?? '');
+    const next: DeviceHint = {
+      ip,
+      name: info.name || old?.name || '',
+      hardware_model: info.hardware_model || old?.hardware_model || '',
+      firmware_version: info.firmware_version || old?.firmware_version || '',
+      last_seen_ms: Math.floor(nowMs),
+    };
+    const changed =
+      old === undefined ||
+      old.ip !== next.ip ||
+      old.name !== next.name ||
+      old.hardware_model !== next.hardware_model ||
+      old.firmware_version !== next.firmware_version;
+    const hints = { ...(this.config.device_hints ?? {}), [uid]: next };
+    if (!changed && nowMs - this.hintsPersistedAt < DEVICE_HINT_PERSIST_MS) {
+      this.config = { ...this.config, device_hints: hints };
+      return null;
+    }
+    this.hintsPersistedAt = nowMs;
+    return this.save({ device_hints: hints });
+  }
+}
+
+function copyHints(hints: Record<string, DeviceHint>): Record<string, DeviceHint> {
+  const out: Record<string, DeviceHint> = {};
+  for (const [uid, hint] of Object.entries(hints)) out[uid] = { ...hint };
+  return out;
 }

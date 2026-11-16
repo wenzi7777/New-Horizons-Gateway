@@ -67,6 +67,8 @@ export interface RunGatewayOptions {
   /** SIGINT/SIGTERM (and SIGHUP off Windows) end the run with `exit`. Default true. */
   handleSignals?: boolean;
   tickIntervalMs?: number;
+  /** How long a take-over waits for an unknown device to answer a probe (default 6 s; tests 0). */
+  adoptAddressWaitMs?: number;
   /** Test seams. */
   clock?: Clock;
   connector?: WsConnector;
@@ -245,6 +247,7 @@ export async function runGateway(options: RunGatewayOptions = {}): Promise<NodeG
   let restartRequested = false;
   runtime = new GatewayRuntime({
     configStore,
+    ...(options.adoptAddressWaitMs !== undefined ? { adoptAddressWaitMs: options.adoptAddressWaitMs } : {}),
     clock,
     streamSocket,
     findmeSocket,

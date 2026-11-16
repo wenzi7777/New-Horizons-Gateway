@@ -96,8 +96,17 @@ describe('StudioController', () => {
     const dev = await device();
     const send = (packet: Uint8Array) => dev.send(packet, port, '127.0.0.1');
 
-    expect((await controller.host.adopt(UID)).ok).toBe(true);
-    send(encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }));
+    // Heard first (Nearby), then added: adopt() returns once the device streams here.
+    dev.send(Buffer.from(JSON.stringify({ type: 'findme_discover', device_uid: UID })), controller.native.boundPorts().discovery!, '127.0.0.1');
+    await waitFor(() => controller.snapshot().nearby.some((item) => item.uid === UID));
+    const adopting = controller.host.adopt(UID);
+    let adopted = false;
+    void adopting.then(() => (adopted = true));
+    await waitFor(() => {
+      send(encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }));
+      return adopted;
+    });
+    expect((await adopting).ok).toBe(true);
     send(encodePacket({ uid: UID, frameId: 1, matrix: [1, 2] }));
     await waitFor(() => controller.snapshot().devices.some((item) => item.uid === UID && item.online));
     expect(controller.snapshot().deviceDetails[UID]?.record).toMatchObject({ device_uid: UID });
@@ -105,9 +114,10 @@ describe('StudioController', () => {
     const frames: number[][] = [];
     const off = controller.subscribeLive(UID, (frame) => frames.push(frame.values));
     send(encodePacket({ uid: UID, frameId: 2, matrix: [3, 4] }));
-    await waitFor(() => frames.length > 0);
+    // Frame 1 may still be in flight when the subscription starts: wait for frame 2 itself.
+    await waitFor(() => frames.some((values) => values[0] === 3));
     off();
-    expect(frames[0]).toEqual([3, 4]);
+    expect(frames.at(-1)).toEqual([3, 4]);
 
     expect((await controller.host.setRecording(UID, true)).ok).toBe(true);
     expect(controller.recordingCount()).toBe(1);

@@ -37,6 +37,8 @@ function makeHost(native: FakeNative, connector = new OfflineConnector()) {
     },
     logger: { info() {}, warn() {}, error() {} },
     tickIntervalMs: 60_000,
+    adoptAddressWaitMs: 0,
+    adoptAttachWaitMs: 0,
   });
   hosts.push(host);
   return { host, shared, connector };
@@ -81,8 +83,15 @@ describe('AppHost (pocket)', () => {
     const native = new FakeNative();
     const { host, shared } = makeHost(native);
     await host.start();
-    expect((await host.adopt(UID)).ok).toBe(true);
+    // Never heard: it cannot be asked to switch. Still listed (offline) from then on.
+    expect(await host.adopt(UID)).toMatchObject({ ok: false, message: 'device_unreachable' });
+    expect(host.devices()).toMatchObject([{ uid: UID, online: false }]);
+    // Heard in Nearby: asked to switch; not streaming here yet (no wait in tests).
+    native.receive(22346, new TextEncoder().encode(JSON.stringify({ type: 'findme_discover', device_uid: UID })));
+    expect(await host.adopt(UID)).toMatchObject({ ok: false, message: 'adopt_timeout', data: { switch_sent: true } });
     native.receive(13250, encodePacket({ uid: UID, frameId: 0, flags: FLAG.HEARTBEAT }));
+    // Streaming here: done at once.
+    expect((await host.adopt(UID)).ok).toBe(true);
     frame(native, 1, [1, 2]);
     const device = host.devices().find((item) => item.uid === UID);
     expect(device).toMatchObject({ uid: UID, online: true });
@@ -176,6 +185,50 @@ describe('AppHost (pocket)', () => {
     // Taking it back: owner again.
     await host.adopt(UID);
     expect(JSON.parse(native.text(PATHS.config)!).yielded_devices).toEqual([]);
+  });
+
+  it('lists a managed device not heard since the start (offline, from what was remembered) and probes for it', async () => {
+    const native = new FakeNative();
+    native.writeAtomic(
+      PATHS.config,
+      JSON.stringify({
+        enabled: true,
+        gateway_id: 'pocket-0000abcd',
+        offer_policy: 'managed',
+        managed_devices: [UID],
+        device_hints: { [UID]: { ip: '192.168.1.42', name: 'NHOS-x', hardware_model: 'TIA-CTL', firmware_version: 'v2.2.0', last_seen_ms: 1_700_000_000_000 } },
+      }),
+    );
+    native.writeAtomic(PATHS.nicknames, JSON.stringify({ [UID]: 'Left glove' }));
+    const { host } = makeHost(native);
+    await host.start();
+    expect(host.devices()).toMatchObject([
+      { uid: UID, displayName: 'Left glove', online: false, hardwareModel: 'TIA-CTL', firmwareVersion: 'v2.2.0', lastSeenMs: 1_700_000_000_000 },
+    ]);
+    // The runtime probes for it on its own, broadcast and to its last address.
+    await (host as unknown as { tick(): Promise<void> }).tick();
+    const probeTargets = native.sent
+      .filter((p) => p.port === 22346 && (JSON.parse(Buffer.from(p.data, 'base64').toString('utf8')) as { type: string }).type === 'findme_probe')
+      .map((p) => p.ip);
+    expect(probeTargets).toContain('192.168.1.42');
+    expect(probeTargets).toContain('255.255.255.255');
+  });
+
+  it('a managed device attached to another relay after a restart is listed as taken over, not hidden', async () => {
+    const native = new FakeNative();
+    native.writeAtomic(
+      PATHS.config,
+      JSON.stringify({ enabled: true, gateway_id: 'pocket-0000abcd', offer_policy: 'managed', managed_devices: [UID], yielded_devices: [UID] }),
+    );
+    const { host } = makeHost(native);
+    await host.start();
+    native.receive(
+      22346,
+      new TextEncoder().encode(JSON.stringify({ type: 'findme_discover', device_uid: UID, current_gateway_id: 'studio-1234abcd', current_priority: 200 })),
+      { ip: '192.168.1.250', port: 22346 },
+    );
+    await settle();
+    expect(host.devices()).toMatchObject([{ uid: UID, takenOver: true, takenOverBy: 'studio-1234abcd' }]);
   });
 
   it('Discover asks every device on the network to answer this host (FindMe probe)', async () => {
@@ -331,6 +384,8 @@ describe('AppHost (studio)', () => {
       connector: new OfflineConnector(),
       logger: { info() {}, warn() {}, error() {} },
       tickIntervalMs: 60_000,
+    adoptAddressWaitMs: 0,
+    adoptAttachWaitMs: 0,
     });
     hosts.push(host);
     return host;
