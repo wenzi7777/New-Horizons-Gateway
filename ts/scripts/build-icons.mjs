@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// NH Studio / NH Pocket app icons ("C": a planet rising behind one diagonal
-// horizon line, the ground below it in shadow). Every file under
-// New-Horizons-Gateway/brand/ is generated from the one scene below, so the
-// platforms cannot drift apart:
+// NH Studio / NH Pocket app icons. The artwork itself lives in
+// packages/ui-tokens/src/brand.ts (brandIconShapes), which the About pages
+// draw too; this script only renders it to every file under
+// New-Horizons-Gateway/brand/, so the platforms cannot drift apart:
 //
 //   brand/svg/        master SVGs (square full-bleed + rounded), favicons
 //   brand/png/        1024 masters and the download-page sizes
@@ -11,7 +11,9 @@
 //   brand/macos/      nh-studio.icns (Big Sur grid: 824 px body on 1024)
 //   brand/windows/    nh-studio.ico (16-256, PNG-compressed entries)
 //
-// Run from ts/: node scripts/build-icons.mjs   (needs macOS iconutil for .icns)
+// Run from ts/: node scripts/build-icons.mjs   (needs macOS iconutil for .icns,
+// and Node 22.18+ to import brand.ts directly). Then copy brand/android/* into
+// apps/pocket/assets (icon.png, android-icon-*.png).
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,64 +23,23 @@ import { fileURLToPath } from 'node:url';
 
 import { Resvg } from '@resvg/resvg-js';
 
+import { brandIconShapes } from '../packages/ui-tokens/src/brand.ts';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(here, '../../brand');
 
-// Colours: the Desktop UI tokens' accent family (ui-tokens: accent #1f6b54,
-// dark-mode accent family) on deep space.
-const PALETTES = {
-  studio: { sky: '#0b111c', planet: '#5fd4a3', ground: '#103a30', band: '#1f6b54', line: '#f2fbf6' },
-  pocket: { sky: '#1f6b54', planet: '#f2fbf6', ground: '#081a16', band: '#0e2a23', line: '#5fd4a3' },
-};
-
-// The horizon: from (-5,75) to (105,44) in a 100-unit square, extended far
-// past the edges so any crop or mask still shows a full-width line.
-const SLOPE = (44 - 75) / 110;
-const yAt = (x) => 75 + SLOPE * (x + 5);
-const FAR = 200;
-
-/**
- * Scene geometry in 100-unit space. `small` thickens the line and enlarges
- * the planet so 16-32 px renders keep their shape.
- */
-function scene(p, { small = false, parts = 'all', mono = null } = {}) {
-  const lineWidth = small ? 7.5 : 5;
-  const r = small ? 18 : 16;
-  const band = small ? 16 : 14;
-  const x0 = -FAR;
-  const x1 = 100 + FAR;
-  const shapes = [];
-  if (parts === 'all' || parts === 'background') {
-    shapes.push(`<rect x="${x0}" y="${x0}" width="${x1 - x0}" height="${x1 - x0}" fill="${p.sky}"/>`);
-  }
-  if (parts === 'all' || parts === 'foreground') {
-    shapes.push(`<circle cx="58" cy="50" r="${r}" fill="${mono ?? p.planet}"/>`);
-  }
-  if (parts === 'all' || parts === 'background') {
-    shapes.push(`<path d="M${x0},${yAt(x0)} L${x1},${yAt(x1)} L${x1},${x1} L${x0},${x1} Z" fill="${p.ground}"/>`);
-    shapes.push(
-      `<path d="M${x0},${yAt(x0)} L${x1},${yAt(x1)} L${x1},${yAt(x1) + band} L${x0},${yAt(x0) + band} Z" fill="${p.band}"/>`,
-    );
-  }
-  if (parts === 'foreground' && !mono) {
-    // The planet sinks behind the ground: in the foreground layer the
-    // ground is absent, so cut the planet at the horizon instead.
-    shapes[shapes.length - 1] = `<clipPath id="above"><path d="M${x0},${x0} L${x1},${x0} L${x1},${yAt(x1)} L${x0},${yAt(x0)} Z"/></clipPath>
-      <circle cx="58" cy="50" r="${r}" fill="${p.planet}" clip-path="url(#above)"/>`;
-  }
-  if (mono) {
-    shapes[shapes.length - 1] = `<clipPath id="above"><path d="M${x0},${x0} L${x1},${x0} L${x1},${yAt(x1)} L${x0},${yAt(x0)} Z"/></clipPath>
-      <circle cx="58" cy="50" r="${r}" fill="${mono}" clip-path="url(#above)"/>`;
-  }
-  shapes.push(
-    `<path d="M${x0},${yAt(x0)} L${x1},${yAt(x1)}" fill="none" stroke="${mono ?? p.line}" stroke-width="${lineWidth}" stroke-linecap="round"/>`,
-  );
-  return shapes.join('\n    ');
+function scene(name, { small = false, parts = 'all', mono = null } = {}) {
+  return brandIconShapes(name, { small, parts, mono })
+    .map((s) =>
+      s.stroke
+        ? `<path d="${s.d}" fill="none" stroke="${s.stroke}" stroke-width="${s.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"${s.opacity !== undefined ? ` opacity="${s.opacity}"` : ''}/>`
+        : `<path d="${s.d}" fill="${s.fill}"${s.opacity !== undefined ? ` opacity="${s.opacity}"` : ''}/>`,
+    )
+    .join('\n    ');
 }
 
 /** A whole SVG document. `frame`: 'square' full-bleed, 'rounded' (rx 22%), or a custom inset. */
 function svg(paletteName, { canvas = 100, inset = 0, radius = null, small = false, parts = 'all', mono = null, title } = {}) {
-  const p = PALETTES[paletteName];
   const body = canvas - inset * 2;
   const scale = body / 100;
   const clip =
@@ -91,7 +52,7 @@ function svg(paletteName, { canvas = 100, inset = 0, radius = null, small = fals
   <defs><clipPath id="frame">${clip}</clipPath></defs>
   <g${clipFrame ? ' clip-path="url(#frame)"' : ''}>
     <g transform="translate(${inset} ${inset}) scale(${scale})">
-    ${scene(p, { small, parts, mono })}
+    ${scene(paletteName, { small, parts, mono })}
     </g>
   </g>
 </svg>

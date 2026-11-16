@@ -1,22 +1,35 @@
-// The full NH Pocket icon (brand/svg/nh-pocket.svg) for the About screen,
-// and the University of Aizu wordmark for its credits. Brand artwork keeps
-// its own fixed colours, as the app icon does. With `playKey` the planet
-// rises once past the horizon each time the key changes (the screen gaining
-// focus); skipped when the system asks for reduced motion.
+// The full NH Pocket icon for the About screen, drawn from the shared artwork
+// (brandIconShapes, the same shapes scripts/build-icons.mjs renders), and the
+// University of Aizu wordmark for its credits. Brand artwork keeps its own
+// fixed colours, as the app icon does. With `playKey` the planet slides in
+// once from its corner each time the key changes (the screen gaining focus);
+// skipped when the system asks for reduced motion.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing } from 'react-native';
-import Svg, { Circle, ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
-import { BRAND_ICON, UAIZU_LOGO } from '@nhgw/ui-tokens';
+import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
+import { BRAND_ICON, UAIZU_LOGO, brandIconShapes, type BrandShape } from '@nhgw/ui-tokens';
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const SHAPES = brandIconShapes('pocket');
+
+function Shape({ s }: { s: BrandShape }) {
+  return s.stroke ? (
+    <Path d={s.d} fill="none" stroke={s.stroke} strokeWidth={s.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={s.opacity} />
+  ) : (
+    <Path d={s.d} fill={s.fill} opacity={s.opacity} />
+  );
+}
 
 export function PocketMark({ size = 72, playKey }: { size?: number; playKey?: number }) {
-  const c = BRAND_ICON.pocket;
-  const [x1, y1] = BRAND_ICON.horizon.from;
-  const [x2, y2] = BRAND_ICON.horizon.to;
-  const line = `M${x1},${y1} L${x2},${y2}`;
+  const { rise } = BRAND_ICON.pocket;
   const progress = useMemo(() => new Animated.Value(playKey === undefined ? 1 : 0), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // The planet is several paths: follow the animation in state and move their group.
+  const [t, setT] = useState(playKey === undefined ? 1 : 0);
+
+  useEffect(() => {
+    const id = progress.addListener(({ value }) => setT(value));
+    return () => progress.removeListener(id);
+  }, [progress]);
 
   useEffect(() => {
     if (playKey === undefined) return undefined;
@@ -45,8 +58,8 @@ export function PocketMark({ size = 72, playKey }: { size?: number; playKey?: nu
     };
   }, [playKey, progress]);
 
-  const cx = progress.interpolate({ inputRange: [0, 1], outputRange: [BRAND_ICON.planet.cx + BRAND_ICON.rise.dx, BRAND_ICON.planet.cx] });
-  const cy = progress.interpolate({ inputRange: [0, 1], outputRange: [BRAND_ICON.planet.cy + BRAND_ICON.rise.dy, BRAND_ICON.planet.cy] });
+  const dx = rise.dx * (1 - t);
+  const dy = rise.dy * (1 - t);
 
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100" accessibilityRole="image" accessibilityLabel="NH Pocket">
@@ -56,11 +69,8 @@ export function PocketMark({ size = 72, playKey }: { size?: number; playKey?: nu
         </ClipPath>
       </Defs>
       <G clipPath="url(#nhPocketFrame)">
-        <Rect x={-200} y={-200} width={500} height={500} fill={c.sky} />
-        <AnimatedCircle cx={cx} cy={cy} r={c.planetR} fill={c.planet} />
-        <Path d={`${line} L${x2},300 L${x1},300 Z`} fill={c.ground} />
-        <Path d={`${line} L${x2},${y2 + c.bandWidth} L${x1},${y1 + c.bandWidth} Z`} fill={c.band} />
-        <Path d={line} fill="none" stroke={c.line} strokeWidth={c.lineWidth} strokeLinecap="round" />
+        {SHAPES.filter((s) => s.layer !== 'body').map((s, i) => <Shape key={`s${i}`} s={s} />)}
+        <G transform={`translate(${dx} ${dy})`}>{SHAPES.filter((s) => s.layer === 'body').map((s, i) => <Shape key={`p${i}`} s={s} />)}</G>
       </G>
     </Svg>
   );
