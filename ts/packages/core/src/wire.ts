@@ -28,10 +28,15 @@ export const FLAG_HEARTBEAT = 0x80;
 
 // Extension TLV types (spec/PROTOCOL.md 3.1).
 export const EXT_APP_EVENT = 0x01;
+export const EXT_RANGE = 0x02;
 export const APP_EVENT_FLAG_VALUE = 0x01;
 export const APP_EVENT_MAX_APP = 15;
 export const APP_EVENT_MAX_EVENT = 23;
 export const APP_EVENT_MAX_DETAIL = 47;
+export const RANGE_TLV_LEN = 8;
+export const RANGE_UNIT_MV = 0;
+export const RANGE_UNIT_US = 1;
+export const RANGE_FLAG_AUTO = 0x01;
 
 // Time exchange (TIME_REQ / TIME_RESP), over ESP-NOW and over UDP.
 export const TIME_REQ_MAGIC = 0xE8;

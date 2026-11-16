@@ -83,25 +83,34 @@ describe('views', () => {
   it('maps the v2.0.F Vref and range block', () => {
     const status = {
       vref: { supported: true, ok: true, mv: 720, limit_mv: 800, calibration_on: false },
-      range: { mode: 'virtual', ref_rfb_ohm: 20000, leak_compensation: true, rfb_ohm: [20010, 0, 19990, 20030], rfb_known_rows: 3, saturated_rows: 1 },
+      range: {
+        mode: 'conductance', output_unit: 'uS', auto: false, auto_ceiling_mv: 750, auto_steps: 0, leak_compensation: true,
+        rfb_ohm: [20010, 0, 19990, 20030], rfb_status: ['ok', 'no_feedback', 'ok', 'ok'], rfb_known_rows: 3, saturated_rows: 1,
+      },
     };
     expect(vrefOf(status)).toEqual({
       mv: 720,
       zone: 'near',
       limitMv: 800,
-      mode: 'virtual',
-      refRfbOhm: 20000,
+      mode: 'conductance',
+      outputUnit: 'uS',
+      autoCeilingMv: 750,
+      autoSteps: 0,
       leakCompensation: true,
       rfbMeasuredRows: 3,
       rfbRows: 4,
       rfbMedianOhm: 20010,
+      rfbStatus: ['ok', 'no_feedback', 'ok', 'ok'],
       saturatedRows: 1,
       calibrationOn: false,
     });
+    // Firmware before v2.2 (virtual, or auto in mV): read as raw mV.
+    expect(vrefOf({ ...status, range: { mode: 'virtual' } })?.mode).toBe('raw');
+    expect(vrefOf({ ...status, range: { mode: 'auto', ref_rfb_ohm: 20000 } })?.mode).toBe('raw');
     expect(vrefOf({ vref: { supported: false } })).toBeNull();
     expect(vrefOf({})).toBeNull();
     expect(deviceView({ ...entry, last_status: status }, 1500).vref?.zone).toBe('near');
-    expect([vrefZone(330, 'raw'), vrefZone(500, 'raw'), vrefZone(750, 'virtual'), vrefZone(820, 'raw'), vrefZone(820, 'auto'), vrefZone(null, 'raw')]).toEqual([
+    expect([vrefZone(330, 'raw'), vrefZone(500, 'raw'), vrefZone(750, 'conductance'), vrefZone(820, 'raw'), vrefZone(820, 'auto'), vrefZone(null, 'raw')]).toEqual([
       'safe',
       'raised',
       'near',
@@ -198,12 +207,12 @@ describe('quick commands', () => {
     expect(quickCommandPayload({ kind: 'status' })).toEqual({ command: 'status' });
     expect(quickCommandPayload({ kind: 'reboot' })).toEqual({ command: 'reboot' });
     expect(quickCommandPayload({ kind: 'range_mode', mode: 'auto' })).toEqual({ command: 'set_range', mode: 'auto' });
-    expect(quickCommandPayload({ kind: 'range_mode', mode: 'virtual', refRfbOhm: 22000, leakCompensation: false })).toEqual({
+    expect(quickCommandPayload({ kind: 'range_mode', mode: 'conductance', leakCompensation: false })).toEqual({
       command: 'set_range',
-      mode: 'virtual',
-      ref_rfb_ohm: 22000,
+      mode: 'conductance',
       leak_comp: false,
     });
+    expect(quickCommandPayload({ kind: 'range_mode', leakCompensation: true })).toEqual({ command: 'set_range', leak_comp: true });
     expect(quickCommandPayload({ kind: 'vref_reset' })).toEqual({ command: 'set_vref', mv: 330 });
     expect(quickCommandPayload({ kind: 'rfb_measure' })).toEqual({ command: 'rfb_measure' });
     expect(quickCommandPayload({ kind: 'enter_maintenance' })).toEqual({ command: 'enter_maintenance', reason: 'manual' });

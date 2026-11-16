@@ -33,6 +33,9 @@ export type CalibrationFitSummary = {
   cells_fitted: number;
   complete: boolean;
   failures: { no_tare: number; too_few_points: number; singular: number };
+  // A conductance profile's sensors on rows without a measured Rfb: they read
+  // 0 by design and are not failures; `complete` leaves them out.
+  cells_no_rfb: number;
   // The first few sensors that could not be fitted.
   failed: { sensor_index: number; reason: string }[];
   // Firmware v1.12.0+: a profile can be saved with some sensors unfitted
@@ -45,7 +48,8 @@ export type CalibrationFitSummary = {
   points: string;
 };
 
-export type CalibrationPointStatus = 'used' | 'not_captured' | 'below_min' | 'saturated' | 'no_response';
+// no_rfb: a conductance profile's sensor on a row without Rfb (reads 0).
+export type CalibrationPointStatus = 'used' | 'not_captured' | 'below_min' | 'saturated' | 'no_response' | 'no_rfb';
 
 const POINT_STATUS_CODES: Record<string, CalibrationPointStatus> = {
   u: 'used',
@@ -53,6 +57,7 @@ const POINT_STATUS_CODES: Record<string, CalibrationPointStatus> = {
   b: 'below_min',
   s: 'saturated',
   n: 'no_response',
+  r: 'no_rfb',
 };
 
 // Level -> status for one sensor; empty when the firmware did not report.
@@ -75,6 +80,8 @@ export type SensorFitReport = {
   no_response: number[];
   // The lowest level at which it clipped: the top of its usable range.
   saturates_from: number | null;
+  // No Rfb on its row (conductance): not a sensor to fit.
+  no_rfb: boolean;
 };
 
 function reportFor(fit: CalibrationFitSummary, sensorIndex: number): SensorFitReport {
@@ -82,7 +89,9 @@ function reportFor(fit: CalibrationFitSummary, sensorIndex: number): SensorFitRe
   const saturated: number[] = [];
   const noResponse: number[] = [];
   let usable = 0;
+  let noRfb = false;
   for (const [level, status] of statuses) {
+    if (status === 'no_rfb') noRfb = true;
     if (status === 'used') usable += 1;
     else if (status === 'saturated') saturated.push(level);
     else if (status === 'no_response') noResponse.push(level);
@@ -94,6 +103,7 @@ function reportFor(fit: CalibrationFitSummary, sensorIndex: number): SensorFitRe
     usable,
     saturated,
     no_response: noResponse,
+    no_rfb: noRfb,
     saturates_from: saturated[0] ?? null,
   };
 }
@@ -105,7 +115,7 @@ export function unfittedSensorReports(fit: CalibrationFitSummary | null, minPoin
   const reports: SensorFitReport[] = [];
   for (let sensor = 0; sensor < fit.cells_total; sensor += 1) {
     const report = reportFor(fit, sensor);
-    if (report.usable < minPoints) reports.push(report);
+    if (report.usable < minPoints && !report.no_rfb) reports.push(report);
   }
   return reports;
 }
@@ -138,6 +148,14 @@ export type CalibrationState = {
   tare_enabled: boolean | null;
   output_mode: CalibrationOutputMode;
   output_mode_reported: boolean;
+  // The saved profile's unit and the device's (firmware before v2.2: both mV).
+  // A profile in the other unit is kept but not applied (output_mode 'raw').
+  unit: CalibrationUnit;
+  active_unit: CalibrationUnit;
+  unit_matches: boolean;
+  // The open session's unit; a session in the other unit starts empty and
+  // replaces the saved profile.
+  draft_unit: CalibrationUnit | null;
   tare: CalibrationCaptureSummary | null;
   draft_tare: CalibrationCaptureSummary | null;
   levels: CalibrationSummary[];
@@ -147,6 +165,17 @@ export type CalibrationState = {
   fit_settings: CalibrationFitSettings | null;
   metadata: Record<string, unknown>;
 };
+
+export type CalibrationUnit = 'mV' | 'uS';
+
+function unitValue(value: unknown): CalibrationUnit | null {
+  return value === 'uS' ? 'uS' : value === 'mV' ? 'mV' : null;
+}
+
+// What a reading or capture is shown in: µS for a conductance profile.
+export function calibrationUnitLabel(unit: CalibrationUnit) {
+  return unit === 'uS' ? 'µS' : 'mV';
+}
 
 export type CalibrationStep = 'not_started' | 'baseline' | 'levels';
 
@@ -171,6 +200,10 @@ const CALIBRATION_STATUS_KEYS = [
   'tare_complete',
   'tare_enabled',
   'output_mode',
+  'unit',
+  'active_unit',
+  'unit_matches',
+  'draft_unit',
   'tare',
   'draft_tare',
   'levels',
@@ -249,6 +282,7 @@ function parseFitSummary(value: unknown): CalibrationFitSummary | null {
       too_few_points: numberValue(failures.too_few_points, 0),
       singular: numberValue(failures.singular, 0),
     },
+    cells_no_rfb: numberValue(source.cells_no_rfb, 0),
     failed: (Array.isArray(source.failed) ? source.failed : [])
       .map((item) => recordValue(item))
       .map((item) => ({ sensor_index: numberValue(item.sensor_index, -1), reason: String(item.reason ?? '') }))
@@ -294,6 +328,10 @@ export function parseCalibrationState(value: unknown): CalibrationState {
     tare_enabled: typeof source.tare_enabled === 'boolean' ? source.tare_enabled : null,
     output_mode: outputModeReported ? reportedMode as CalibrationOutputMode : enabled && complete ? 'calibrated' : 'raw',
     output_mode_reported: outputModeReported,
+    unit: unitValue(source.unit) ?? 'mV',
+    active_unit: unitValue(source.active_unit) ?? unitValue(source.unit) ?? 'mV',
+    unit_matches: typeof source.unit_matches === 'boolean' ? source.unit_matches : true,
+    draft_unit: unitValue(source.draft_unit),
     tare: parseCaptureSummary(source.tare, 'saved'),
     draft_tare: parseCaptureSummary(source.draft_tare, 'draft'),
     levels: parseSummaryList(source.levels, 'saved'),
@@ -350,6 +388,7 @@ export function zeroBlockedReason(deviceConnected: boolean, state: CalibrationSt
 // i18n key for a firmware/transport error code from a calibration command.
 export type CalibrationErrorKey =
   | 'calErrorTareRequired' | 'calErrorSessionActive' | 'calErrorIncomplete' | 'calErrorMaintenanceRequired'
+  | 'calErrorUnitChanged' | 'calErrorUnitMismatch'
   | 'calErrorNoResponse' | 'calErrorReplyTimeout' | 'calErrorReplyTooLarge' | 'calErrorGeneric';
 
 export function calibrationErrorKey(code: string): CalibrationErrorKey {
@@ -360,6 +399,10 @@ export function calibrationErrorKey(code: string): CalibrationErrorKey {
       return 'calErrorSessionActive';
     case 'calibration_incomplete':
       return 'calErrorIncomplete';
+    case 'calibration_unit_changed':
+      return 'calErrorUnitChanged';
+    case 'calibration_unit_mismatch':
+      return 'calErrorUnitMismatch';
     case 'maintenance_required':
       return 'calErrorMaintenanceRequired';
     case '':

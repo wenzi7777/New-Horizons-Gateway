@@ -27,8 +27,8 @@ export function quickCommandPayload(command: QuickCommand): Record<string, unkno
     case 'tare_clear':
       return { command: 'calibration_tare_clear' };
     case 'range_mode': {
-      const payload: Record<string, unknown> = { command: 'set_range', mode: command.mode };
-      if (command.refRfbOhm !== undefined) payload.ref_rfb_ohm = command.refRfbOhm;
+      const payload: Record<string, unknown> = { command: 'set_range' };
+      if (command.mode !== undefined) payload.mode = command.mode;
       if (command.leakCompensation !== undefined) payload.leak_comp = command.leakCompensation;
       return payload;
     }

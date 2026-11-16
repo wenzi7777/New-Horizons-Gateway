@@ -4,7 +4,7 @@
 // safe value, what needs a measured Rfb); this only asks and shows the answer.
 import { useEffect, useState } from 'react';
 
-import { Card, Disclosure, Field, Notice, NumberInput, OnOffRow, Slider } from '../../components/ui';
+import { Card, Disclosure, Field, Notice, NumberInput, OnOffRow, Select, Slider } from '../../components/ui';
 import { record } from '../../lib/deviceDetails';
 import { rsSpreadFraction, summarizeSweep, sweepCsv, type SweepCalibration, type SweepStep, type SweepSummary } from '../../lib/vrefSweep';
 import { useStudio } from '../../state/studio';
@@ -24,7 +24,10 @@ const STRAP_RISK_MV = 800;
 /** How long a command's own answer outranks the status: a poll already on its way, not forever. */
 const ANSWER_FRESH_MS = 10_000;
 
-type RangeMode = 'raw' | 'virtual' | 'auto';
+// raw = ADC mV (every board's way); conductance = µS from the measured Rfb;
+// auto = conductance with smart Vref. "virtual" (before firmware v2.2) is gone.
+type RangeMode = 'raw' | 'conductance' | 'auto';
+const RANGE_MODES: RangeMode[] = ['raw', 'conductance', 'auto'];
 type VrefZone = 'auto' | 'safe' | 'raised' | 'near' | 'risk' | 'unknown';
 
 function vrefZone(mv: number | null, mode: string): VrefZone {
@@ -87,11 +90,12 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const limitMv = num(vref.limit_mv);
   const eepromMv = num(vref.eeprom_mv);
   const calibrationOn = vref.calibration_on === true;
-  const modeNow: RangeMode = range.mode === 'virtual' || range.mode === 'auto' ? range.mode : 'raw';
-  const refRfbNow = num(range.ref_rfb_ohm) ?? 20000;
+  const modeNow: RangeMode = (range.mode === 'conductance' || range.mode === 'auto') && range.output_unit === 'uS' ? range.mode : 'raw';
   const leakNow = range.leak_compensation !== false;
   const rfbTable = numbers(range.rfb_ohm);
   const rfbOffsets = numbers(range.offset_mv);
+  const rfbStatuses = Array.isArray(range.rfb_status) ? range.rfb_status.map((v) => (typeof v === 'string' ? v : '')) : [];
+  const autoCeilingMv = num(range.auto_ceiling_mv);
   const knownRows = num(range.rfb_known_rows) ?? 0;
   const saturatedRows = num(range.saturated_rows);
 
@@ -102,11 +106,9 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const [rfbRows, setRfbRows] = useState<RfbRow[] | null>(null);
   // A table that came back from this very measurement counts even if `range` did not.
   const rfbValid = knownRows > 0 || (rfbRows?.some((row) => row.rfb_ohm > 0) ?? false);
-  const [refRfbDraft, setRefRfbDraft] = useState(String(refRfbNow));
   const [leakDraft, setLeakDraft] = useState(leakNow);
-  // The reading mode as two on/off drafts, sent together with Apply.
-  const [convertDraft, setConvertDraft] = useState(modeNow !== 'raw');
-  const [smartDraft, setSmartDraft] = useState(modeNow === 'auto');
+  // The reading mode is chosen from a menu and sent with Apply.
+  const [modeDraft, setModeDraft] = useState<RangeMode>(modeNow);
   const [sweepStart, setSweepStart] = useState('100');
   const [sweepStop, setSweepStop] = useState(String(DEFAULT_LIMIT_MV));
   const [sweepStep, setSweepStep] = useState('100');
@@ -114,14 +116,8 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const [sweepSolderedRfb, setSweepSolderedRfb] = useState('');
   const [sweep, setSweep] = useState<SweepResult | null>(null);
 
-  useEffect(() => {
-    setRefRfbDraft(String(refRfbNow));
-  }, [refRfbNow]);
   useEffect(() => setLeakDraft(leakNow), [leakNow]);
-  useEffect(() => {
-    setConvertDraft(modeNow !== 'raw');
-    setSmartDraft(modeNow === 'auto');
-  }, [modeNow]);
+  useEffect(() => setModeDraft(modeNow), [modeNow]);
   useEffect(() => {
     if (currentMv !== null) setVrefDraft(String(currentMv));
   }, [currentMv]);
@@ -169,9 +165,6 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
     if (result && Array.isArray(result.rows)) setRfbRows(result.rows as RfbRow[]);
   }
 
-  // Off/off is raw, the old boards' way of reading; smart needs conversion.
-  const modeDraft: RangeMode = !convertDraft ? 'raw' : smartDraft ? 'auto' : 'virtual';
-
   async function applyMode() {
     if (modeDraft !== 'raw' && !rfbValid) return;
     if (modeDraft === modeNow) return;
@@ -179,8 +172,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   }
 
   async function applyRangeSettings() {
-    const values = typed({ ref_rfb_ohm: refRfbDraft });
-    if (values) await ask(ds('rangeApply'), { command: 'set_range', leak_comp: leakDraft, ...values });
+    await ask(ds('rangeApply'), { command: 'set_range', leak_comp: leakDraft });
   }
 
   async function clearRfb() {
@@ -207,7 +199,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const summary: SweepSummary[] = sweep ? summarizeSweep(sweep.steps, sweep.rows, sweep.cols, sweep.calibration, sweep.fallbackRfbOhm || undefined) : [];
   const spread = rsSpreadFraction(summary);
   const running = (name: string) => busy === name;
-  const rfbDisplay: RfbRow[] = rfbRows ?? rfbTable.map((value, row) => ({ row, off_mv: 0, on_mv: 0, rfb_ohm: value, offset_mv: rfbOffsets[row], status: value > 0 ? 'ok' : '' }));
+  const rfbDisplay: RfbRow[] = rfbRows ?? rfbTable.map((value, row) => ({ row, off_mv: 0, on_mv: 0, rfb_ohm: value, offset_mv: rfbOffsets[row], status: rfbStatuses[row] || (value > 0 ? 'ok' : '') }));
 
   // The status tiles.
   const measuredRfb = rfbDisplay.map((row) => row.rfb_ohm).filter((value) => value > 0).sort((a, b) => a - b);
@@ -220,7 +212,8 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const share = (from: number, to: number) => Math.max(0, Math.min(to, sliderMax) - Math.max(from, MIN_VREF_MV)) / span;
 
   const autoSteps = num(range.auto_steps);
-  const legacyScale = modeNow === 'raw' && currentMv === SAFE_VREF_MV;
+  // Rows without a measured Rfb read 0 in conductance: fine where none is soldered.
+  const unmeasuredRows = rfbDisplay.length - measuredRfb.length;
 
   if (vref.supported !== true) return null;
   return (
@@ -252,17 +245,26 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
       <div className="settings-subsection">
         <h4>{ds('vrefReadingTitle')}</h4>
         <div className="field-grid three">
-          <OnOffRow
-            checked={convertDraft}
-            disabled={working || (!convertDraft && !rfbValid)}
-            title={ds('vrefConvertSwitch', { ref: kOhm(refRfbNow) })}
-            copy={convertDraft ? ds('vrefConvertOnHint') : ds('vrefConvertOffHint')}
-            onChange={(on) => {
-              setConvertDraft(on);
-              if (!on) setSmartDraft(false);
-            }}
-          />
-          <OnOffRow checked={smartDraft} disabled={working || !convertDraft} title={ds('vrefSmartSwitch')} copy={ds('vrefSmartHint')} onChange={setSmartDraft} />
+          <Field
+            label={ds('rangeMode')}
+            hint={
+              modeDraft === 'raw'
+                ? ds('rangeReadingRawHint')
+                : modeDraft === 'conductance'
+                  ? ds('rangeReadingConductanceHint')
+                  : ds('rangeReadingAutoHint', { ceil: autoCeilingMv ?? DEFAULT_LIMIT_MV })
+            }
+          >
+            {(id) => (
+              <Select id={id} value={modeDraft} disabled={working} onChange={(e) => setModeDraft(e.target.value as RangeMode)}>
+                {RANGE_MODES.map((mode) => (
+                  <option key={mode} value={mode} disabled={mode !== 'raw' && !rfbValid}>
+                    {ds(`rangeModeShort_${mode}`)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
           <div className="vref-check">
             <button
               className="button primary"
@@ -282,13 +284,14 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
             </button>
           </div>
         ) : null}
-        {legacyScale ? <Notice kind="success">{ds('vrefLegacyMatch')}</Notice> : null}
+        {modeNow !== 'raw' ? <Notice>{ds('rangeConductanceCalibrationHint')}</Notice> : null}
+        {modeNow !== 'raw' && rfbValid && unmeasuredRows > 0 ? <p className="field-note">{ds('rfbUnmeasuredRowsHint', { n: unmeasuredRows })}</p> : null}
       </div>
 
       <div className="settings-subsection">
         <h4>{ds('vrefControlTitle')}</h4>
         {modeNow === 'auto' ? (
-          <p className="field-note">{ds('vrefSmartStatus', { mv: currentMv ?? '-', steps: autoSteps ?? 0 })}</p>
+          <p className="field-note">{ds('vrefSmartStatus', { mv: currentMv ?? '-', ceil: autoCeilingMv ?? '-', steps: autoSteps ?? 0 })}</p>
         ) : (
           <>
             <div className="vref-slider">
@@ -326,12 +329,11 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
         <div className="settings-subsection">
           <h4>{ds('vrefAdvancedRangeTitle')}</h4>
           <div className="field-grid three">
-            <Field label={ds('rangeRefRfb')}>{(id) => <NumberInput id={id} min={1000} max={1000000} step={1000} value={refRfbDraft} onChange={(e) => setRefRfbDraft(e.target.value)} />}</Field>
             <div className="vref-check">
               <OnOffRow checked={leakDraft} disabled={working} onChange={setLeakDraft} title={ds('rangeLeak')} />
             </div>
             <div className="vref-check">
-              <button className="button" type="button" disabled={working} onClick={() => void applyRangeSettings()}>
+              <button className="button" type="button" disabled={working || leakDraft === leakNow} onClick={() => void applyRangeSettings()}>
                 {ds('rangeApply')}
               </button>
             </div>
@@ -369,7 +371,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
                     <td>{item.row}</td>
                     <td>{kOhm(item.rfb_ohm)}</td>
                     <td>{item.offset_mv !== undefined && item.rfb_ohm > 0 ? `${item.offset_mv > 0 ? '+' : ''}${item.offset_mv.toFixed(1)} mV` : '-'}</td>
-                    <td>{item.status ? ds(`rfbStatus_${item.status}`) : ds('rfbNotMeasured')}</td>
+                    <td>{item.status && item.status !== 'unknown' ? ds(`rfbStatus_${item.status}`) : ds('rfbNotMeasured')}</td>
                   </tr>
                 ))}
               </tbody>

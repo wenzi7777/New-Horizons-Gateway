@@ -14,6 +14,7 @@ export type {
   LiveFrame,
   NearbyDeviceView,
   QuickCommand,
+  RangeMode,
   RecordingAnalysisInfo,
   RecordingChunk,
   RecordingSummary,

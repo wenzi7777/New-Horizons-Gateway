@@ -29,6 +29,7 @@ type FixtureCase = {
     imu: number[] | null;
     mag: number[] | null;
     app_events?: (Record<string, unknown> & { value: number | null })[];
+    range?: Record<string, unknown> | null;
     battery: Record<string, number> | null;
   };
 };
@@ -67,7 +68,9 @@ describe.skipIf(!hasFixtures)('spec/fixtures/packets.json', () => {
       return value === null ? rest : { ...rest, value };
     });
     expect(parsed.app_events).toEqual(expectedEvents);
-    expect(parsed.extensions.length).toBe(expectedEvents.length);
+    // The range TLV (v2.0.F) rides first; without it the levels are ADC mV.
+    expect(parsed.range).toEqual(e.range ?? null);
+    expect(parsed.extensions.length).toBe(expectedEvents.length + (e.range ? 1 : 0));
   });
 
   it('a packet with events parses with a known sensor count too', () => {

@@ -180,9 +180,34 @@ test("per-level point statuses explain each unfitted sensor", () => {
 
   const reports = unfittedSensorReports(fit, 3);
   assert.deepEqual(reports.map((item) => item.sensor_index), [1, 2]);
-  assert.deepEqual(reports[0], { sensor_index: 1, usable: 2, saturated: [120], no_response: [], saturates_from: 120 });
+  assert.deepEqual(reports[0], { sensor_index: 1, usable: 2, saturated: [120], no_response: [], saturates_from: 120, no_rfb: false });
   assert.deepEqual(reports[1].no_response, [43.3]);
   assert.equal(reports[1].usable, 1);
+});
+
+test("conductance profiles: unit fields and sensors without Rfb", () => {
+  const state = parseCalibrationState(status({
+    unit: "mV", active_unit: "uS", unit_matches: false, session_active: true, draft_unit: "uS",
+    draft_fit: {
+      cells_total: 3, cells_fitted: 1, cells_no_rfb: 1, complete: false, partial_save: true,
+      failures: { no_tare: 0, too_few_points: 1, singular: 0 }, failed: [],
+      point_levels: [10, 20, 30],
+      points: "uuu" + "rrr" + "uu-",
+    },
+  }));
+  assert.equal(state.unit, "mV");
+  assert.equal(state.active_unit, "uS");
+  assert.equal(state.unit_matches, false);
+  assert.equal(state.draft_unit, "uS");
+  assert.equal(state.draft_fit?.cells_no_rfb, 1);
+  assert.equal(sensorPointStatuses(state.draft_fit, 1).get(20), "no_rfb");
+  // The sensor without Rfb is not reported as one that still needs pressures.
+  assert.deepEqual(unfittedSensorReports(state.draft_fit, 3).map((item) => item.sensor_index), [2]);
+  // Firmware before units: both mV, matching.
+  const legacy = parseCalibrationState(status({}));
+  assert.equal(legacy.unit, "mV");
+  assert.equal(legacy.unit_matches, true);
+  assert.equal(legacy.draft_unit, null);
 });
 
 test("fitted sensors that clip somewhere are reported as saturating", () => {

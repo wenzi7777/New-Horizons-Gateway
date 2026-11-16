@@ -659,7 +659,9 @@ export type RecordingMeta = {
     firmwarePrerelease: boolean | null;
   };
   sensors: { count: number | null; rows: number | null; cols: number | null; rawAdcColumns: boolean | null };
-  calibration: { enabled: boolean | null; outputMode: string | null; tareComplete: boolean | null };
+  calibration: { enabled: boolean | null; outputMode: string | null; unit: string | null; tareComplete: boolean | null };
+  /** TIA-CTL v2.0.F only (null elsewhere): ADC mV ("raw") or conductance in µS ("conductance" / "auto"). */
+  range: { mode: string | null; outputUnit: string | null; auto: boolean | null } | null;
   stream: { targetFps: number | null };
   transport: { path: string | null; relay: string | null; relayId: string | null };
   statusReceivedAt: string | null;
@@ -719,8 +721,13 @@ export function parseRecordingMeta(value: unknown): RecordingMeta | null {
     calibration: {
       enabled: boolOf(calibration.enabled),
       outputMode: textOf(calibration.output_mode),
+      unit: textOf(calibration.unit),
       tareComplete: boolOf(calibration.tare_complete),
     },
+    range: (() => {
+      const range = root.range && typeof root.range === 'object' && !Array.isArray(root.range) ? (root.range as Record<string, unknown>) : null;
+      return range ? { mode: textOf(range.mode), outputUnit: textOf(range.output_unit), auto: boolOf(range.auto) } : null;
+    })(),
     stream: { targetFps: numberOf(stream.target_fps) },
     transport: { path: textOf(transport.path), relay: textOf(transport.relay), relayId: textOf(transport.relay_id) },
     statusReceivedAt: textOf(root.status_received_at),

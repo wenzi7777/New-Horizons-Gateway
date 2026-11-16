@@ -548,8 +548,7 @@ export class MockStudioApi implements StudioApi {
       case 'range_mode':
         return this.sendCommand(uid, {
           command: 'set_range',
-          mode: command.mode,
-          ...(command.refRfbOhm !== undefined ? { ref_rfb_ohm: command.refRfbOhm } : {}),
+          ...(command.mode !== undefined ? { mode: command.mode } : {}),
           ...(command.leakCompensation !== undefined ? { leak_comp: command.leakCompensation } : {}),
         });
       case 'vref_reset':

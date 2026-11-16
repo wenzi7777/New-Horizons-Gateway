@@ -206,8 +206,8 @@ export function confirmSpec(request: ConfirmRequest): {
 }
 
 /** Save asks first when the draft leaves sensors unfitted (partial save). */
-export function saveConfirmation(fit: { complete: boolean; cells_total: number; cells_fitted: number } | null): ConfirmRequest | null {
-  return fit && !fit.complete ? { kind: 'save_partial', unfitted: fit.cells_total - fit.cells_fitted } : null;
+export function saveConfirmation(fit: { complete: boolean; cells_total: number; cells_fitted: number; cells_no_rfb?: number } | null): ConfirmRequest | null {
+  return fit && !fit.complete ? { kind: 'save_partial', unfitted: fit.cells_total - fit.cells_fitted - (fit.cells_no_rfb ?? 0) } : null;
 }
 
 /** The three-step indicator: -1 idle, 0 baseline, 1 levels, 2 save (ready). */

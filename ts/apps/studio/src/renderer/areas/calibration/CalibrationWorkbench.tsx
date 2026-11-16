@@ -17,6 +17,7 @@ import {
   isFullCalibrationStatus,
   parseCalibrationState,
   saturatingSensorReports,
+  calibrationUnitLabel,
   sensorPointStatuses,
   unfittedSensorReports,
   zeroBlockedReason,
@@ -358,6 +359,13 @@ export function CalibrationWorkbench({ device }: { device: DeviceView }) {
       </div>
 
       {!connected ? <Notice kind="warning">{ct('calOffline')}</Notice> : null}
+      {!calibration.unit_matches ? (
+        <Notice kind="warning">
+          {ct('calUnitMismatch', { unit: calibrationUnitLabel(calibration.unit), active: calibrationUnitLabel(calibration.active_unit) })}
+        </Notice>
+      ) : calibration.active_unit === 'uS' ? (
+        <Notice>{ct('calUnitConductance')}</Notice>
+      ) : null}
 
       <Card title={ct('calZeroTitle')} copy={calibration.output_mode === 'calibrated' ? ct('calZeroCopyCalibrated') : ct('calZeroCopy')}>
         <div className="actions">
@@ -774,12 +782,12 @@ function FitProgress({ ct, fit, settings, labelOf, rows, cols, saved = false }: 
   const detailed = fit.points.length > 0;
   const needPoints = fit.failures.too_few_points + fit.failures.no_tare;
   const failedList = [...fit.failed].sort(order).map((item) => labelOf(item.sensor_index)).join(', ');
-  const more = fit.cells_total - fit.cells_fitted - fit.failed.length;
+  const more = fit.cells_total - fit.cells_no_rfb - fit.cells_fitted - fit.failed.length;
   return (
     <div className="cal-fit" aria-live="polite">
       <p className={fit.complete ? 'cal-done' : 'cal-hint'}>
         {fit.complete ? <CircleCheck size={15} aria-hidden="true" /> : null}
-        {ct(saved ? 'calFitSaved' : 'calFitProgress', { fitted: fit.cells_fitted, total: fit.cells_total })}
+        {ct(saved ? 'calFitSaved' : 'calFitProgress', { fitted: fit.cells_fitted, total: fit.cells_total - fit.cells_no_rfb })}
       </p>
       {detailed && reports.length > 0 ? (
         <>
@@ -800,7 +808,8 @@ function FitProgress({ ct, fit, settings, labelOf, rows, cols, saved = false }: 
           {ct('calFitSaturatingNote', { sensors: saturating.map((item) => `${labelOf(item.sensor_index)} (${formatNumber(item.saturates_from ?? 0)} kPa)`).join(', ') })}
         </p>
       ) : null}
-      {!saved && !fit.complete && fit.partial_save && fit.cells_fitted > 0 ? <p className="cal-hint">{ct('calFitPartialSaveNote', { count: fit.cells_total - fit.cells_fitted })}</p> : null}
+      {!saved && !fit.complete && fit.partial_save && fit.cells_fitted > 0 ? <p className="cal-hint">{ct('calFitPartialSaveNote', { count: fit.cells_total - fit.cells_no_rfb - fit.cells_fitted })}</p> : null}
+      {fit.cells_no_rfb > 0 ? <p className="cal-hint">{ct('calFitNoRfbNote', { count: fit.cells_no_rfb })}</p> : null}
     </div>
   );
 }

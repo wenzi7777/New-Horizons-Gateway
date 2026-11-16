@@ -68,19 +68,26 @@ export interface DeviceView {
 
 /** Where a Vref sits against the GPIO45 boot strap (see vrefZone in views.ts). */
 export type VrefZone = 'auto' | 'safe' | 'raised' | 'near' | 'risk' | 'unknown';
-export type RangeMode = 'raw' | 'virtual' | 'auto';
+/** raw = ADC mV; conductance = µS from the measured Rfb; auto = conductance with smart Vref (firmware v2.2+). */
+export type RangeMode = 'raw' | 'conductance' | 'auto';
 
 export interface VrefView {
   mv: number | null;
   zone: VrefZone;
   limitMv: number | null;
   mode: RangeMode;
-  refRfbOhm: number;
+  /** 'uS' in conductance / auto; the mV calibration is then not applied. */
+  outputUnit: 'mV' | 'uS';
+  /** Smart Vref's own ceiling (min of the limit and 750 mV). */
+  autoCeilingMv: number | null;
+  autoSteps: number | null;
   leakCompensation: boolean;
   /** Rows with a measured Rfb, of `rfbRows`; the range modes need at least one. */
   rfbMeasuredRows: number;
   rfbRows: number;
   rfbMedianOhm: number | null;
+  /** rfb_measure's finding per row ('ok', 'no_feedback', ...; 'unknown' = never measured). */
+  rfbStatus: string[];
   saturatedRows: number | null;
   calibrationOn: boolean;
 }
@@ -177,7 +184,7 @@ export type QuickCommand =
   | { kind: 'tare' }
   | { kind: 'tare_clear' }
   /** v2.0.F: switch the range mode, keeping the reference Rfb and leak setting unless given. */
-  | { kind: 'range_mode'; mode: RangeMode; refRfbOhm?: number; leakCompensation?: boolean }
+  | { kind: 'range_mode'; mode?: RangeMode; leakCompensation?: boolean }
   /** v2.0.F: Vref back to its safe 330 mV. */
   | { kind: 'vref_reset' }
   /** v2.0.F: measure each row's Rfb (about 1.5 s). */

@@ -8,6 +8,7 @@ import {
   APP_EVENT_FLAG_VALUE,
   BATTERY_BYTES_V5,
   EXT_APP_EVENT,
+  EXT_RANGE,
   FLAG_BATTERY,
   FLAG_EPOCH_VALID,
   FLAG_EXTENSIONS,
@@ -18,6 +19,10 @@ import {
   MAG_BYTES,
   PACKET_MAGIC,
   PACKET_VERSION_V5,
+  RANGE_FLAG_AUTO,
+  RANGE_TLV_LEN,
+  RANGE_UNIT_MV,
+  RANGE_UNIT_US,
 } from '../../../core/src/wire';
 import { utf8Decode, utf8Encode } from '../../../core/src/bytes';
 import { boardProfileForHardwareModel, normalizeHardwareModel } from './boardProfile';
@@ -105,9 +110,14 @@ export type ParsedPacket = {
   battery: ParsedBattery | null;
   extensions: { type: number; hex: string }[];
   app_events: AppEvent[];
+  /** How the levels were read (TIA-CTL v2.0.F); null = ADC mV, as every other board. */
+  range: FrameRange | null;
   flags: number;
   device_epoch_ms?: number;
 };
+
+/** The range TLV (spec/PROTOCOL.md 3.1), packet_parser.decode_range. */
+export type FrameRange = { unit: 'mV' | 'uS'; auto: boolean; vref_mv: number; saturated_rows: number };
 
 type Extension = { type: number; value: Uint8Array };
 
@@ -194,8 +204,27 @@ export function decodeAppEvent(value: Uint8Array): AppEvent | null {
   return event;
 }
 
+export function decodeRange(value: Uint8Array): FrameRange | null {
+  if (value.length !== RANGE_TLV_LEN) return null;
+  const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
+  const unitCode = value[0]!;
+  if (unitCode !== RANGE_UNIT_MV && unitCode !== RANGE_UNIT_US) return null;
+  return {
+    unit: unitCode === RANGE_UNIT_US ? 'uS' : 'mV',
+    auto: (value[1]! & RANGE_FLAG_AUTO) !== 0,
+    vref_mv: view.getUint16(2, true),
+    saturated_rows: view.getUint32(4, true),
+  };
+}
+
+function extensionIsKnown(item: Extension): boolean {
+  if (item.type === EXT_APP_EVENT) return decodeAppEvent(item.value) !== null;
+  if (item.type === EXT_RANGE) return decodeRange(item.value) !== null;
+  return false;
+}
+
 function extensionsAreKnown(extensions: Extension[]): boolean {
-  return extensions.length > 0 && extensions.every((item) => item.type === EXT_APP_EVENT && decodeAppEvent(item.value) !== null);
+  return extensions.length > 0 && extensions.every(extensionIsKnown);
 }
 
 function v5FixedTrailerLen(flags: number): number {
@@ -339,7 +368,12 @@ export function parseBinaryPacket(packet: Uint8Array, sensorCount: number | null
 
   const dn = deviceUid || packetDeviceUid;
   const appEvents: AppEvent[] = [];
+  let range: FrameRange | null = null;
   for (const item of extensions) {
+    if (item.type === EXT_RANGE) {
+      range ??= decodeRange(item.value);
+      continue;
+    }
     if (item.type !== EXT_APP_EVENT) continue;
     const event = decodeAppEvent(item.value);
     if (event !== null) appEvents.push(event);
@@ -364,6 +398,7 @@ export function parseBinaryPacket(packet: Uint8Array, sensorCount: number | null
     battery,
     extensions: extensions.map((item) => ({ type: item.type, hex: lowerHex(item.value) })),
     app_events: appEvents,
+    range,
     flags,
   };
   if (epochMs !== null) result.device_epoch_ms = epochMs;

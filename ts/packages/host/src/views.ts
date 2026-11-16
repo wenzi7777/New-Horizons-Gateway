@@ -131,7 +131,8 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
   if (vref.supported !== true) return null;
   const range = dict(status.range);
   const rawMode = str(range.mode);
-  const mode: RangeMode = rawMode === 'virtual' || rawMode === 'auto' ? rawMode : 'raw';
+  // Firmware before v2.2 reported 'virtual' / an mV 'auto': it reads as raw mV here.
+  const mode: RangeMode = (rawMode === 'conductance' || rawMode === 'auto') && str(range.output_unit) === 'uS' ? rawMode : 'raw';
   const table = Array.isArray(range.rfb_ohm) ? range.rfb_ohm.map((v) => num(v) ?? 0) : [];
   const measured = table.filter((v) => v > 0).sort((a, b) => a - b);
   const mv = vref.ok === false ? null : num(vref.mv);
@@ -140,11 +141,14 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
     zone: vrefZone(mv, mode),
     limitMv: num(vref.limit_mv),
     mode,
-    refRfbOhm: num(range.ref_rfb_ohm) ?? 20000,
+    outputUnit: mode === 'raw' ? 'mV' : 'uS',
+    autoCeilingMv: num(range.auto_ceiling_mv),
+    autoSteps: int(range.auto_steps),
     leakCompensation: range.leak_compensation !== false,
     rfbMeasuredRows: Math.max(measured.length, int(range.rfb_known_rows) ?? 0),
     rfbRows: table.length,
     rfbMedianOhm: measured[Math.floor(measured.length / 2)] ?? null,
+    rfbStatus: Array.isArray(range.rfb_status) ? range.rfb_status.map((v) => (typeof v === 'string' ? v : 'unknown')) : [],
     saturatedRows: int(range.saturated_rows),
     calibrationOn: vref.calibration_on === true,
   };

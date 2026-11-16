@@ -17,7 +17,7 @@ import {
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 
-import type { QuickCommand, VrefZone } from '../../host/contract';
+import type { QuickCommand, RangeMode, VrefZone } from '../../host/contract';
 import { errorText } from '../../i18n/strings';
 import { useConfirm, useToast, type ConfirmOptions } from '../components/feedback';
 import {
@@ -104,15 +104,12 @@ export function DeviceScreen({ uid }: { uid: string }) {
   const [nickname, setNickname] = useState(device?.nickname ?? '');
   const [nicknameDirty, setNicknameDirty] = useState(false);
   const [scanRate, setScanRate] = useState<60 | 90>(device && device.fps > 75 ? 90 : 60);
-  // The reading mode as two on/off drafts, sent together with Apply.
+  // The reading mode (ADC mV / conductance / conductance + smart Vref), sent with Apply.
   const vrefMode = device?.vref?.mode ?? 'raw';
-  const [convertDraft, setConvertDraft] = useState(vrefMode !== 'raw');
-  const [smartDraft, setSmartDraft] = useState(vrefMode === 'auto');
+  const [modeDraft, setModeDraft] = useState<RangeMode>(vrefMode);
   useEffect(() => {
-    setConvertDraft(vrefMode !== 'raw');
-    setSmartDraft(vrefMode === 'auto');
+    setModeDraft(vrefMode);
   }, [vrefMode]);
-  const modeDraft = !convertDraft ? 'raw' : smartDraft ? 'auto' : 'virtual';
 
   useEffect(() => {
     if (!nicknameDirty) setNickname(device?.nickname ?? '');
@@ -355,38 +352,31 @@ export function DeviceScreen({ uid }: { uid: string }) {
             <FactRow label={t('rangeSaturated')} value={device.vref.saturatedRows ?? '-'} />
             <Divider inset={0} />
             <View style={{ padding: 16, gap: 8 }}>
-              <Caption>{t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}</Caption>
+              <Caption>{t('rangeReadingTitle')}</Caption>
               <SegmentedControl
-                accessibilityLabel={t('vrefConvertSwitch', { ref: `${(device.vref.refRfbOhm / 1000).toFixed(2)} kΩ` })}
+                accessibilityLabel={t('rangeReadingTitle')}
                 options={[
-                  { value: 'on' as const, label: t('onOffOn') },
-                  { value: 'off' as const, label: t('onOffOff') },
+                  { value: 'raw' as const, label: t('rangeSeg_raw') },
+                  { value: 'conductance' as const, label: t('rangeSeg_conductance') },
+                  { value: 'auto' as const, label: t('rangeSeg_auto') },
                 ]}
-                value={convertDraft ? 'on' : 'off'}
+                value={modeDraft}
                 disabled={offline || busy === 'range_mode'}
                 onChange={(value) => {
-                  const on = value === 'on';
-                  if (on && device.vref && device.vref.rfbMeasuredRows === 0) {
+                  if (value !== 'raw' && device.vref && device.vref.rfbMeasuredRows === 0) {
                     toast.show(t('rangeNeedsRfb'), 'danger');
                     return;
                   }
-                  setConvertDraft(on);
-                  if (!on) setSmartDraft(false);
+                  setModeDraft(value);
                 }}
               />
-              <Caption>{convertDraft ? t('vrefConvertOnHint') : t('vrefConvertOffHint')}</Caption>
-              <Caption>{t('vrefSmartSwitch')}</Caption>
-              <SegmentedControl
-                accessibilityLabel={t('vrefSmartSwitch')}
-                options={[
-                  { value: 'on' as const, label: t('onOffOn') },
-                  { value: 'off' as const, label: t('onOffOff') },
-                ]}
-                value={smartDraft ? 'on' : 'off'}
-                disabled={offline || busy === 'range_mode' || !convertDraft}
-                onChange={(value) => setSmartDraft(value === 'on')}
-              />
-              <Caption>{t('vrefSmartHint')}</Caption>
+              <Caption>
+                {modeDraft === 'raw'
+                  ? t('rangeReadingRawHint')
+                  : modeDraft === 'conductance'
+                    ? t('rangeReadingConductanceHint')
+                    : t('rangeReadingAutoHint', { ceil: device.vref.autoCeilingMv ?? 700 })}
+              </Caption>
               <Button
                 label={t('onOffApply')}
                 variant="primary"
@@ -395,11 +385,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
                 onPress={() => void run('range_mode', { kind: 'range_mode', mode: modeDraft })}
               />
             </View>
-            {device.vref.mode === 'raw' && device.vref.mv === 330 ? (
-              <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
-                <Caption>{t('vrefLegacyMatch')}</Caption>
-              </View>
-            ) : null}
+
             <Divider inset={48} />
             <ActionRow
               label={t('rfbMeasure')}

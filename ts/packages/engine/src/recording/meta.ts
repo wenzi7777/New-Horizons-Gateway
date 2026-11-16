@@ -91,11 +91,13 @@ function rangeMeta(status: Dict): Dict | null {
   const range = asDict(status.range);
   return {
     mode: known(range.mode),
+    output_unit: known(range.output_unit),
+    auto: typeof range.auto === 'boolean' ? range.auto : null,
     vref_mv: known(vref.mv),
-    ref_rfb_ohm: known(range.ref_rfb_ohm),
     leak_compensation: typeof range.leak_compensation === 'boolean' ? range.leak_compensation : null,
     rfb_ohm: Array.isArray(range.rfb_ohm) ? deepCopy(range.rfb_ohm) : null,
     offset_mv: Array.isArray(range.offset_mv) ? deepCopy(range.offset_mv) : null,
+    rfb_status: Array.isArray(range.rfb_status) ? deepCopy(range.rfb_status) : null,
   };
 }
 
@@ -150,6 +152,8 @@ export function buildDeviceMeta(deviceUid: string, device: Dict, status: Dict, o
     calibration: {
       enabled: bool(calibration.enabled),
       output_mode: known(calibration.output_mode),
+      // The profile's unit: mV, or uS for one captured in conductance.
+      unit: known(calibration.unit),
       tare_complete: bool(calibration.tare_complete),
       // The settings, not the fitted levels/coefficients.
       fit_settings: copyDict(calibration.fit_settings),
@@ -260,6 +264,7 @@ export class RecordingMeta {
   static readonly TRACKED: ReadonlyArray<readonly [string, string]> = [
     ['calibration', 'enabled'],
     ['calibration', 'output_mode'],
+    ['calibration', 'unit'],
     ['stream', 'target_fps'],
     ['stream', 'stream_raw_adc'],
     ['transport', 'path'],
@@ -267,7 +272,8 @@ export class RecordingMeta {
     ['device', 'firmware_version'],
     ['range', 'mode'],
     ['range', 'vref_mv'],
-    ['range', 'ref_rfb_ohm'],
+    ['range', 'output_unit'],
+    ['range', 'auto'],
     ['range', 'leak_compensation'],
   ];
 

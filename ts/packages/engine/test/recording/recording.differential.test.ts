@@ -130,11 +130,14 @@ describe.skipIf(!hasPython)('recording, differential against the Desktop backend
     // Raw JSON text, so floats such as 20000.0 reach both sides as written.
     const v20 = (mode: string, mv: string) =>
       FULL_STATUS.slice(0, -1) +
-      `, "vref": {"supported": true, "ok": true, "mv": ${mv}}, "range": {"mode": "${mode}", "ref_rfb_ohm": 20000, "leak_compensation": true, "rfb_ohm": [20010.5, 20000.0], "offset_mv": [3.25, -1.0]}}`;
+      `, "vref": {"supported": true, "ok": true, "mv": ${mv}}, "range": {"mode": "${mode}", "output_unit": "${mode === 'raw' ? 'mV' : 'uS'}", "auto": ${mode === 'auto'}, "leak_compensation": true, "rfb_ohm": [20010.5, 0], "offset_mv": [3.25, 0.0], "rfb_status": ["ok", "no_feedback"]}}`;
     s.setKnowledge({ status: v20('raw', '330') }, true);
     for (let i = 4; i <= 6; i++) frame(i);
     s.setKnowledge({ status: v20('auto', '264.0') }, true);
-    for (let i = 7; i <= 8; i++) frame(i);
+    // Firmware v2.2+: every frame carries the range TLV (µS, auto, 412 mV, row 2 clipped),
+    // and the sample file gains range_unit / vref_mv / saturated_rows.
+    const rangeTlv = [0x02, 8, 1, 1, 0x9c, 0x01, 0x04, 0, 0, 0];
+    for (let i = 7; i <= 8; i++) s.advance(17).frame({ frameId: i, timestamp: (epoch += 17), flags: FLAG.EPOCH, matrix: floats(4), extraTlv: rangeTlv });
     s.advance(1).enable(false);
     compare(s.spec({ device: '{"device_name": "NHOS-3CDC7545CCD0"}' }));
   });

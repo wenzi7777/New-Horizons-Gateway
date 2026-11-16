@@ -276,6 +276,8 @@ export class DeviceRecorder {
     const mag = pick(payload.mag, imu.mag);
     const rawAdc = payload.raw_adc;
     const includeRaw = Array.isArray(rawAdc) && rawAdc.length === pressures.length;
+    // TIA-CTL v2.0.F says on every frame how it was read (packetParser.decodeRange).
+    const frameRange = isDict(payload.range) ? (payload.range as Dict) : null;
     const timestamp = csvTimestampMs(payload, nowUs);
     const timeRef = csvTimeRef(payload);
     const frameSeq = frameSeqOf(payload);
@@ -298,6 +300,8 @@ export class DeviceRecorder {
         // Appended, not inserted, so positional readers keep working.
         'frame_seq',
         'time_ref',
+        // v2.0.F only: this frame's unit (mV / uS), Vref and clipped rows.
+        ...(frameRange !== null ? ['range_unit', 'vref_mv', 'saturated_rows'] : []),
       ]);
     const row = csvRowText([
       csvInt(timestamp),
@@ -308,6 +312,9 @@ export class DeviceRecorder {
       ...acc,
       csvInt(frameSeq),
       timeRef,
+      ...(frameRange !== null
+        ? [String(frameRange.unit ?? ''), csvInt(Number(frameRange.vref_mv ?? 0)), csvInt(Number(frameRange.saturated_rows ?? 0))]
+        : []),
     ]);
     const deviceClock = timeRef === 'device';
     const ended = session.write(header, row, frameSeq, timestamp, deviceClock);

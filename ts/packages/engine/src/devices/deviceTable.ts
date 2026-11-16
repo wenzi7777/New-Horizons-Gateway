@@ -49,6 +49,7 @@ export const SETTING_REPLY_BLOCKS: readonly string[] = [
 
 export const CALIBRATION_STATUS_KEYS: readonly string[] = [
   'enabled', 'mode_active', 'session_active', 'complete', 'tare_complete', 'tare_enabled', 'output_mode',
+  'unit', 'active_unit', 'unit_matches', 'draft_unit',
   'tare', 'draft_tare', 'levels', 'draft_levels', 'fit', 'draft_fit', 'fit_settings', 'metadata',
 ];
 
