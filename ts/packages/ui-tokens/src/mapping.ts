@@ -64,9 +64,9 @@ export const mapping = {
     terminal: 'none.',
   },
   motion: {
-    tokens: ['easeOut', 'durFast', 'durMed'],
-    web: 'transition timing; off under prefers-reduced-motion.',
-    native: 'Easing.bezier(...cubicBezier(easeOut)), duration numeric(dur*); duration 0 when AccessibilityInfo.isReduceMotionEnabled().',
+    tokens: ['easeOut', 'easeInOut', 'easeIn', 'durFast', 'durMed'],
+    web: 'transition timing (easeOut: entrances and feedback; easeInOut: loops and moves; easeIn: exits); off under prefers-reduced-motion.',
+    native: 'Easing.bezier(...cubicBezier(ease*)), duration numeric(dur*); duration 0 when AccessibilityInfo.isReduceMotionEnabled().',
     terminal: 'no animation.',
   },
 } as const satisfies Record<string, CategoryMapping>;

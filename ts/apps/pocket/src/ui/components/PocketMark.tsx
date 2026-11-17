@@ -8,9 +8,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing } from 'react-native';
 import Svg, { ClipPath, Defs, G, Path, Rect } from 'react-native-svg';
-import { BRAND_ICON, UAIZU_LOGO, brandIconShapes, type BrandShape } from '@nhgw/ui-tokens';
+import { BRAND_ICON, UAIZU_LOGO, brandIconShapes, cubicBezier, light, type BrandShape } from '@nhgw/ui-tokens';
 
 const SHAPES = brandIconShapes('pocket');
+// The --ease-out token (the same in both themes); drawn outside useTheme so About can mount it anywhere.
+const RISE_EASING = Easing.bezier(...cubicBezier(light.easeOut));
 
 function Shape({ s }: { s: BrandShape }) {
   return s.stroke ? (
@@ -47,7 +49,7 @@ export function PocketMark({ size = 72, playKey }: { size?: number; playKey?: nu
         animation = Animated.timing(progress, {
           toValue: 1,
           duration: BRAND_ICON.durationMs,
-          easing: Easing.bezier(0.22, 1, 0.36, 1),
+          easing: RISE_EASING,
           useNativeDriver: false,
         });
         animation.start();

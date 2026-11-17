@@ -41,6 +41,8 @@ export const light = {
   shadowMd: "0 4px 16px rgba(0, 0, 0, 0.08)",
   blurChrome: "20px",
   easeOut: "cubic-bezier(0.22, 1, 0.36, 1)",
+  easeInOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  easeIn: "cubic-bezier(0.55, 0, 1, 0.45)",
   durFast: "120ms",
   durMed: "220ms",
 } as const;
@@ -87,6 +89,8 @@ export const dark = {
   shadowMd: "0 6px 20px rgba(0, 0, 0, 0.45)",
   blurChrome: "20px",
   easeOut: "cubic-bezier(0.22, 1, 0.36, 1)",
+  easeInOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  easeIn: "cubic-bezier(0.55, 0, 1, 0.45)",
   durFast: "120ms",
   durMed: "220ms",
 } as const satisfies ThemeTokens;
@@ -132,6 +136,8 @@ export const cssNames = {
   shadowMd: "--shadow-md",
   blurChrome: "--blur-chrome",
   easeOut: "--ease-out",
+  easeInOut: "--ease-in-out",
+  easeIn: "--ease-in",
   durFast: "--dur-fast",
   durMed: "--dur-med",
 } as const satisfies { readonly [K in TokenName]: `--${string}` };

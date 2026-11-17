@@ -158,13 +158,13 @@ export function StatusDot({ tone, size = 10, pulse = false }: { tone: Tone; size
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.35, duration: 700, easing: theme.easing, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 700, easing: theme.easing, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.35, duration: 700, easing: theme.easingInOut, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 700, easing: theme.easingInOut, useNativeDriver: true }),
       ]),
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse, theme.reduceMotion, theme.easing, opacity]);
+  }, [pulse, theme.reduceMotion, theme.easingInOut, opacity]);
   return (
     <Animated.View
       style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: toneColor(theme.colors, tone), opacity }}

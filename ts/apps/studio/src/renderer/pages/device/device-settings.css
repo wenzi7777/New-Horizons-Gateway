@@ -91,7 +91,7 @@
   background: var(--panel-solid);
   padding: 11px;
   cursor: pointer;
-  transition: transform 160ms ease-out, border-color 160ms ease-out, background 160ms ease-out, box-shadow 160ms ease-out;
+  transition: transform 160ms var(--ease-out), border-color 160ms var(--ease-out), background 160ms var(--ease-out), box-shadow 160ms var(--ease-out);
 }
 
 .action-button-choice:hover {
@@ -217,6 +217,8 @@
 /* ── IO Visualizer (same layout as the Desktop's BoardIoModal) ── */
 .modal-panel.io-modal { width: min(1100px, 100%); max-height: min(880px, calc(100vh - 40px)); overflow: auto; padding: 18px; }
 .io-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.io-modal-header > :first-child { flex: 1 1 auto; min-width: 0; }
+.io-modal-header > :not(:first-child) { flex: none; }
 .io-modal-header h3 { margin: 0 0 6px; }
 .io-modal-header p { margin: 0; color: var(--text-dim); }
 .io-board-diagram { display: grid; grid-template-columns: minmax(300px, 0.95fr) minmax(300px, 0.9fr); gap: 18px; align-items: start; }

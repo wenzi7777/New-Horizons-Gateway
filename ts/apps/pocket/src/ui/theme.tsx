@@ -11,7 +11,8 @@ import { AccessibilityInfo, Appearance, AppState, Easing, Platform } from 'react
 import { useSettings } from './store';
 import { recheckDelayMs, themeState, type ThemeState } from './themeState';
 
-type ThemeContextValue = ThemeState & { reduceMotion: boolean; easing: (t: number) => number };
+type EasingFn = (t: number) => number;
+type ThemeContextValue = ThemeState & { reduceMotion: boolean; easing: EasingFn; easingInOut: EasingFn; easingIn: EasingFn };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
@@ -56,7 +57,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [state.theme]);
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ ...state, reduceMotion, easing: Easing.bezier(...state.motion.easing) }),
+    () => ({
+      ...state,
+      reduceMotion,
+      easing: Easing.bezier(...state.motion.easing),
+      easingInOut: Easing.bezier(...state.motion.easingInOut),
+      easingIn: Easing.bezier(...state.motion.easingIn),
+    }),
     [state, reduceMotion],
   );
   return (

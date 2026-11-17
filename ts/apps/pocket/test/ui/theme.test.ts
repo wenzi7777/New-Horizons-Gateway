@@ -37,7 +37,13 @@ describe('theme wiring', () => {
       { offsetX: 0, offsetY: 1, blurRadius: 3, spreadDistance: 0, color: 'rgba(0, 0, 0, 0.06)' },
     ]);
     expect(nativeShadow(dark.shadowMd)).toEqual([{ offsetX: 0, offsetY: 6, blurRadius: 20, spreadDistance: 0, color: 'rgba(0, 0, 0, 0.45)' }]);
-    expect(s.motion).toEqual({ easing: [0.22, 1, 0.36, 1], fast: numeric(light.durFast), med: numeric(light.durMed) });
+    expect(s.motion).toEqual({
+      easing: [0.22, 1, 0.36, 1],
+      easingInOut: [0.65, 0, 0.35, 1],
+      easingIn: [0.55, 0, 1, 0.45],
+      fast: numeric(light.durFast),
+      med: numeric(light.durMed),
+    });
     expect(themeState('light', new Date(), true).motion.med).toBe(0);
   });
 });

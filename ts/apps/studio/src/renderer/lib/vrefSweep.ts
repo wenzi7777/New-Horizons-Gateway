@@ -89,6 +89,22 @@ export function rsSpreadFraction(summaries: SweepSummary[]): number | null {
   return mid > 0 ? (Math.max(...values) - Math.min(...values)) / mid : null;
 }
 
+/**
+ * Why a sweep has no Rs spread: `no_rfb` when no row has an Rfb (measured or
+ * soldered), `few_steps` when Rs came out at fewer than two steps -- the other
+ * steps had no cell far enough above Vref (pressure let go, or Vout not
+ * following Vref). null when the spread can be shown.
+ */
+export function sweepRsProblem(
+  summaries: SweepSummary[],
+  calibration: SweepCalibration = {},
+  fallbackRfbOhm?: number,
+): "no_rfb" | "few_steps" | null {
+  const rfbKnown = (calibration.rfb_ohm ?? []).some((value) => value > 0) || (fallbackRfbOhm ?? 0) > 0;
+  if (!rfbKnown) return "no_rfb";
+  return rsSpreadFraction(summaries) === null ? "few_steps" : null;
+}
+
 export function sweepCsv(steps: SweepStep[], rows: number, cols: number, calibration: SweepCalibration = {}): string {
   const header = ["vref_mv", "row", "col", "rfb_ohm", "offset_mv", "raw_mv"].join(",");
   const lines: string[] = [header];

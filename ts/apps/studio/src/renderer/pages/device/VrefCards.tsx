@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 
 import { Card, Disclosure, Field, Notice, NumberInput, OnOffRow, Select, Slider } from '../../components/ui';
 import { record } from '../../lib/deviceDetails';
-import { rsSpreadFraction, summarizeSweep, sweepCsv, type SweepCalibration, type SweepStep, type SweepSummary } from '../../lib/vrefSweep';
+import { rsSpreadFraction, summarizeSweep, sweepCsv, sweepRsProblem, type SweepCalibration, type SweepStep, type SweepSummary } from '../../lib/vrefSweep';
 import { useStudio } from '../../state/studio';
 import type { Send } from './DeviceHardware';
 import { useDeviceSettingsT } from './DeviceHardware';
@@ -198,6 +198,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
 
   const summary: SweepSummary[] = sweep ? summarizeSweep(sweep.steps, sweep.rows, sweep.cols, sweep.calibration, sweep.fallbackRfbOhm || undefined) : [];
   const spread = rsSpreadFraction(summary);
+  const rsProblem = sweep ? sweepRsProblem(summary, sweep.calibration, sweep.fallbackRfbOhm || undefined) : null;
   const running = (name: string) => busy === name;
   const rfbDisplay: RfbRow[] = rfbRows ?? rfbTable.map((value, row) => ({ row, off_mv: 0, on_mv: 0, rfb_ohm: value, offset_mv: rfbOffsets[row], status: rfbStatuses[row] || (value > 0 ? 'ok' : '') }));
 
@@ -450,7 +451,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
                   ))}
                 </tbody>
               </table>
-              <p className="field-note">{spread !== null ? `${ds('sweepSpread')}: ${(spread * 100).toFixed(1)}%` : ds('sweepNoRs')}</p>
+              <p className="field-note">{spread !== null ? `${ds('sweepSpread')}: ${(spread * 100).toFixed(1)}%` : ds(rsProblem === 'no_rfb' ? 'sweepNoRs' : 'sweepFewSteps')}</p>
             </>
           ) : null}
         </div>

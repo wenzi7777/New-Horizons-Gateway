@@ -49,6 +49,8 @@
 .apps-dialog { display: grid; gap: 12px; width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; }
 .apps-dialog.wide { width: min(720px, 100%); }
 .apps-dialog-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.apps-dialog-head > :first-child { flex: 1 1 auto; min-width: 0; }
+.apps-dialog-head > :not(:first-child) { flex: none; }
 .apps-dialog-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--text-dim); }
 .apps-dialog .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .apps-check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 13px; }
@@ -538,7 +540,7 @@ button.sdk-diagnostic:hover { background: var(--panel-soft); }
   opacity: 0.45;
 }
 .dapps-switch.pending i {
-  animation: apps-switch-pulse 0.9s ease-in-out infinite alternate;
+  animation: apps-switch-pulse 0.9s var(--ease-in-out) infinite alternate;
 }
 .dapps-switch:focus-visible {
   outline: 2px solid var(--accent);

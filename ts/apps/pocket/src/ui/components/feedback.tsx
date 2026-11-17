@@ -27,11 +27,11 @@ function ToastView({ item, onDone }: { item: ToastItem; onDone: () => void }) {
     const animation = Animated.sequence([
       Animated.timing(progress, { toValue: 1, duration: theme.motion.med, easing: theme.easing, useNativeDriver: true }),
       Animated.delay(item.tone === 'danger' ? 4200 : 2400),
-      Animated.timing(progress, { toValue: 0, duration: theme.motion.med, easing: theme.easing, useNativeDriver: true }),
+      Animated.timing(progress, { toValue: 0, duration: theme.motion.med, easing: theme.easingIn, useNativeDriver: true }),
     ]);
     animation.start(({ finished }) => finished && onDone());
     return () => animation.stop();
-  }, [item, onDone, progress, theme.motion.med, theme.easing]);
+  }, [item, onDone, progress, theme.motion.med, theme.easing, theme.easingIn]);
   const Icon = item.tone === 'success' ? CircleCheck : item.tone === 'danger' ? CircleAlert : Info;
   const color = item.tone === 'success' ? theme.colors.success : item.tone === 'danger' ? theme.colors.danger : theme.colors.accent;
   return (

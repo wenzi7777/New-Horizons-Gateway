@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { batteryRecognisedFromId, normalizeBatteryStatus } from '../../src/renderer/lib/batteryProfile';
-import { rsSpreadFraction, summarizeSweep, sweepCsv } from '../../src/renderer/lib/vrefSweep';
+import { rsSpreadFraction, summarizeSweep, sweepCsv, sweepRsProblem } from '../../src/renderer/lib/vrefSweep';
 
 // 2 rows x 2 cols; Rfb 20k, a cell of Rs = 10k reads Vref * (1 + 20k/10k) = 3 * Vref.
 function step(vref: number, rs: number, rfb = 20000) {
@@ -36,6 +36,15 @@ describe('vref sweep', () => {
     const [only] = summarizeSweep([{ vref_mv: 330, matrix_mv: [339 + 660, 339, 339, 339 + 660] }], 2, 2, { rfb_ohm: [20000, 20000], offset_mv: [9, 9] });
     expect(Math.round(only!.rsMedianOhm!)).toBe(10000);
     expect(only!.usedCells).toBe(2);
+  });
+  it('a missing spread says whether Rfb or the signal is missing', () => {
+    // Pressure let go after the first step: the others read Vref everywhere.
+    const idle = (vref: number) => ({ vref_mv: vref, matrix_mv: [vref, vref, vref, vref] });
+    const letGo = summarizeSweep([step(100, 10000), idle(200), idle(300)], 2, 2, measured);
+    expect(sweepRsProblem(letGo, measured)).toBe('few_steps');
+    const held = summarizeSweep([step(100, 10000), step(200, 10000)], 2, 2, {}, 20000);
+    expect(sweepRsProblem(held, {}, 20000)).toBeNull();
+    expect(sweepRsProblem(summarizeSweep([step(100, 10000)], 2, 2), {})).toBe('no_rfb');
   });
   it('the csv is one line per vref and cell, row-major', () => {
     const lines = sweepCsv([step(300, 10000)], 2, 2, measured).trim().split('\n');

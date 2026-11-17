@@ -15,6 +15,8 @@ import {
   type ThemeTokens,
 } from '@nhgw/ui-tokens';
 
+type Bezier = [number, number, number, number];
+
 /** RN's boxShadow object form (RN >= 0.76, New Architecture). */
 export type NativeShadow = { offsetX: number; offsetY: number; blurRadius: number; spreadDistance: number; color: string };
 
@@ -26,7 +28,8 @@ export type ThemeState = {
   shadow: { sm: NativeShadow[]; md: NativeShadow[] };
   /** Android elevation standing in for the shadows where boxShadow is not drawn. */
   elevation: { sm: number; md: number };
-  motion: { easing: [number, number, number, number]; fast: number; med: number };
+  /** Curves from the tokens: easing (ease-out) for entrances and feedback, easingInOut for loops and moves, easingIn for exits. */
+  motion: { easing: Bezier; easingInOut: Bezier; easingIn: Bezier; fast: number; med: number };
   /** When "auto" next flips, or null for a fixed mode. */
   nextChange: Date | null;
 };
@@ -58,6 +61,8 @@ export function themeState(mode: ThemeMode, now: Date, reduceMotion = false): Th
     elevation: { sm: 1, md: 4 },
     motion: {
       easing: cubicBezier(colors.easeOut),
+      easingInOut: cubicBezier(colors.easeInOut),
+      easingIn: cubicBezier(colors.easeIn),
       fast: reduceMotion ? 0 : numeric(colors.durFast),
       med: reduceMotion ? 0 : numeric(colors.durMed),
     },

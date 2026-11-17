@@ -1,5 +1,7 @@
 /* The profiles area (list, editor, stage). Tokens only. */
 .profiles-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.profiles-head > :first-child { flex: 1 1 auto; min-width: 0; }
+.profiles-head > :not(:first-child) { flex: none; }
 .profiles-head h1 { font-size: 20px; }
 .profiles-create { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .profiles-create .field { min-width: 220px; }
