@@ -158,9 +158,9 @@ function SyncAccountCard() {
     <Card>
       <FactRow label={t('syncAccount')} value={status.account || t('syncAccountToken')} />
       <Divider />
-      <FactRow label={t('serverUrlLabel')} value={status.baseUrl} mono />
+      <FactRow wrap label={t('serverUrlLabel')} value={status.baseUrl} mono />
       <Divider />
-      <FactRow label={t('syncQueue')} value={t('syncQueueValue', { waiting, failed: status.counts.failed, synced: status.counts.synced })} />
+      <FactRow wrap label={t('syncQueue')} value={t('syncQueueValue', { waiting, failed: status.counts.failed, synced: status.counts.synced })} />
       {status.connection && !status.connection.ok ? <Notice tone="warning" title={errorText(status.connection.error)} /> : null}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         <Button label={t('syncUploadNow')} icon={CloudUpload} variant="primary" compact busy={busy === 'upload'} disabled={busy !== '' || waiting + status.counts.failed === 0} onPress={() => void run('upload', () => sync.uploadNow())} />
@@ -510,7 +510,7 @@ export function SettingsScreen() {
       <Collapsible title={t('techDetails')}>
         <FactRow label={t('pocketIdLabel')} value={settings.pocketId} mono />
         <Divider />
-        <FactRow label={t('serverUrlLabel')} value={status.serverUrl || '-'} mono />
+        <FactRow wrap label={t('serverUrlLabel')} value={status.serverUrl || '-'} mono />
         <Divider />
         <FactRow label={t('findmeCount')} value={String(status.findmeRequests)} />
         <Divider />

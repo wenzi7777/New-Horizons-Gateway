@@ -268,16 +268,29 @@ export function ListRow({
   );
 }
 
-/** Label/value pair for detail facts. */
-export function FactRow({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+/**
+ * Label/value pair for detail facts. The value stays on one line unless
+ * `wrap` is set; then the row grows to show all of it.
+ */
+export function FactRow({ label, value, mono, wrap }: { label: string; value: ReactNode; mono?: boolean; wrap?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44, paddingHorizontal: 16 }}>
-      <Text style={{ color: colors.textDim, fontSize: 15 }}>{label}</Text>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: wrap ? 'flex-start' : 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        minHeight: 44,
+        paddingHorizontal: 16,
+        paddingVertical: wrap ? 11 : 0,
+      }}
+    >
+      <Text style={{ color: colors.textDim, fontSize: 15, flexShrink: 0, maxWidth: '50%' }}>{label}</Text>
       {typeof value === 'string' || typeof value === 'number' ? (
         <Text
           selectable
-          numberOfLines={1}
+          numberOfLines={wrap ? undefined : 1}
           style={{ color: colors.text, fontSize: 15, flexShrink: 1, textAlign: 'right', fontFamily: mono ? 'monospace' : undefined, fontVariant: ['tabular-nums'] }}
         >
           {value}

@@ -32,11 +32,12 @@ export function RelayBenchCard() {
       <Caption>{t('benchCopy')}</Caption>
       {result ? (
         <>
-          <FactRow label={t('benchDevices')} value={t('benchDevicesValue', { count: result.estimate.devices })} />
+          <FactRow wrap label={t('benchDevices')} value={t('benchDevicesValue', { count: result.estimate.devices })} />
           <Divider />
-          <FactRow label={t('benchMachine')} value={t('benchMachineValue', { fps: result.fps.toLocaleString(), count: result.estimate.devicesByMachine })} />
+          <FactRow wrap label={t('benchMachine')} value={t('benchMachineValue', { fps: result.fps.toLocaleString(), count: result.estimate.devicesByMachine })} />
           <Divider />
           <FactRow
+            wrap
             label={t('benchLink')}
             value={
               !result.link.ok
@@ -46,6 +47,7 @@ export function RelayBenchCard() {
                   : t('benchLinkValue', { rtt: Math.round(result.link.rttMs ?? 0), upload: kib(result.link.uploadBytesPerSecond), count: result.estimate.devicesByNetwork ?? 0 })
             }
           />
+          {result.link.ok && result.link.uploadBytesPerSecond === null ? <Caption>{t('benchLinkNeedsSignIn')}</Caption> : null}
           <Caption>
             {t(result.estimate.bottleneck === 'network' ? 'benchBottleneckNetwork' : result.estimate.bottleneck === 'machine' ? 'benchBottleneckMachine' : 'benchBottleneckUnknown', {
               perDevice: kib(result.estimate.bytesPerDevicePerSecond),
