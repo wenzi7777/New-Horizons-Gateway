@@ -1,51 +1,27 @@
 {
-  "version": "v2.12.3",
-  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.12.3/releases/notes/studio-v2.12.3.md",
-  "released_at": "2026-11-19T11:28:17.509Z",
+  "version": "v2.13.0",
+  "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.13.0/releases/notes/studio-v2.13.0.md",
+  "released_at": "2026-11-24T08:40:09.975Z",
   "assets": {
     "darwin-arm64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.3/NH-Studio-2.12.3-mac-arm64.dmg",
-      "sha256": "f3c6d9ec46b880d520bba14257ac9ff75d41e1dc68eaacd0133fb6f203cd24bb",
-      "size": 122781122,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/f3c6d9ec46b880d520bba14257ac9ff75d41e1dc68eaacd0133fb6f203cd24bb",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-19T11:05:06.503Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.13.0/NH-Studio-2.13.0-mac-arm64.dmg",
+      "sha256": "9973f87153c1bb93df943948588de8ba7b2f8af012d0cf8e4af05651f98cdf24",
+      "size": 122787883
     },
     "darwin-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.3/NH-Studio-2.12.3-mac-x64.dmg",
-      "sha256": "9dc59a35f6d695d4ae75c1925727c2a8c3b043b1157a2f5b68e7d634790942e9",
-      "size": 128483576,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/9dc59a35f6d695d4ae75c1925727c2a8c3b043b1157a2f5b68e7d634790942e9",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-19T11:07:27.417Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.13.0/NH-Studio-2.13.0-mac-x64.dmg",
+      "sha256": "9a9730cf8e2c1ab8eaec7b1ee856fa198c67e6c5c0a48d549044a75d72296649",
+      "size": 128500760
     },
     "win32-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.3/NH-Studio-2.12.3-win-x64.exe",
-      "sha256": "ff2b0ea3bc7087d48fe9d01571d2fdebf9a1133ebc219bab6257f6371b5c5a0b",
-      "size": 122995796,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/ff2b0ea3bc7087d48fe9d01571d2fdebf9a1133ebc219bab6257f6371b5c5a0b",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-19T11:10:17.494Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.13.0/NH-Studio-2.13.0-win-x64.exe",
+      "sha256": "7f670b470e0bbf5d427800fc4ffb24d07a0df3f9c115e91ad953605b33631230",
+      "size": 123013631
     },
     "linux-x64": {
-      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.12.3/NH-Studio-2.12.3-linux-x86_64.AppImage",
-      "sha256": "6dbe5cd2d45bde7d3a8be27f607417a6e27bd86c50c173aad0900c896dc42322",
-      "size": 127680441,
-      "virustotal": {
-        "url": "https://www.virustotal.com/gui/file/6dbe5cd2d45bde7d3a8be27f607417a6e27bd86c50c173aad0900c896dc42322",
-        "malicious": 0,
-        "suspicious": 0,
-        "scanned_at": "2026-11-19T11:02:46.083Z"
-      }
+      "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.13.0/NH-Studio-2.13.0-linux-x86_64.AppImage",
+      "sha256": "d3b5fe133f89fa9a60e5df370ac39902c2e2cd00b0517c745f2631c2f1a65389",
+      "size": 127705066
     }
   }
 }
