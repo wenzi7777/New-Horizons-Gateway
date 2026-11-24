@@ -5,13 +5,14 @@ import { Stack } from 'expo-router';
 import { Cpu } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Image, type ImageSourcePropType, Pressable, Text, View } from 'react-native';
-import { boardPinsFor, togglePin, type BoardPinSlot, type BoardPins } from '@nhgw/host';
+import { boardArtFor, boardPinsFor, togglePin, type BoardPinSlot, type BoardPins } from '@nhgw/host';
 
 import { errorText } from '../../i18n/strings';
 import { useConfirm, useToast } from '../components/feedback';
+import { PinMap } from '../components/PinMap';
 import { Body, Button, Caption, Card, Empty, Mono, Notice, Screen, SectionHeader } from '../components/primitives';
 import { useI18n } from '../i18n';
-import { useDevice, useStore } from '../store';
+import { useDevice, useSettings, useStore } from '../store';
 import { useTheme } from '../theme';
 
 const ARTWORK: Record<BoardPins['artwork'], ImageSourcePropType> = {
@@ -75,6 +76,10 @@ export function IoScreen({ uid }: { uid: string }) {
   const confirm = useConfirm();
   const { t, locale } = useI18n();
   const board = boardPinsFor(device?.hardwareModel);
+  const { uiStyle } = useSettings();
+  // Illustrated: the FPC contacts fanned out to tappable labels, in place of
+  // the artwork and the two pin lists.
+  const art = uiStyle === 'modern' ? boardArtFor(device?.hardwareModel) : null;
   const onDevice = device?.pins ?? null;
   const [analog, setAnalog] = useState<number[]>(() => (onDevice?.analog.length ? onDevice.analog : board.defaultAnalogPins));
   const [select, setSelect] = useState<number[]>(() => (onDevice?.select.length ? onDevice.select : board.defaultSelectPins));
@@ -138,8 +143,12 @@ export function IoScreen({ uid }: { uid: string }) {
       <Stack.Screen options={{ title: t('ioTitle') }} />
 
       <Card padded={false}>
-        <View style={{ paddingVertical: 8 }}>
-          <Image source={artwork} accessibilityLabel={board.hardwareModel} resizeMode="contain" style={{ width: '100%', height: ARTWORK_HEIGHT }} />
+        <View style={{ paddingVertical: 8, paddingHorizontal: art ? 6 : 0 }}>
+          {art ? (
+            <PinMap art={art} analogSlots={board.analogPinSlots} digitalSlots={board.digitalPinSlots} analogChosen={analog} selectChosen={select} onToggle={toggle} accessibilityLabel={board.hardwareModel} />
+          ) : (
+            <Image source={artwork} accessibilityLabel={board.hardwareModel} resizeMode="contain" style={{ width: '100%', height: ARTWORK_HEIGHT }} />
+          )}
         </View>
       </Card>
 
@@ -176,8 +185,12 @@ export function IoScreen({ uid }: { uid: string }) {
         </View>
       </Card>
 
-      <PinList heading={board.analogPinHeading} pins={board.analogPinSlots} chosen={analog} onToggle={toggle} />
-      <PinList heading={board.digitalPinHeading} pins={board.digitalPinSlots} chosen={select} onToggle={toggle} />
+      {art ? null : (
+        <>
+          <PinList heading={board.analogPinHeading} pins={board.analogPinSlots} chosen={analog} onToggle={toggle} />
+          <PinList heading={board.digitalPinHeading} pins={board.digitalPinSlots} chosen={select} onToggle={toggle} />
+        </>
+      )}
     </Screen>
   );
 }

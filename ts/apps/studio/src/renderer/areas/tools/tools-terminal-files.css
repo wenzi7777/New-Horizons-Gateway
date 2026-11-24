@@ -51,43 +51,579 @@
 .term-block code { color: var(--text-muted); font: 11px/1.3 var(--mono); overflow-wrap: anywhere; }
 .danger-zone .term-block strong { color: var(--danger); }
 
-/* ---- Device files ---- */
-.files-danger:not(:disabled) { color: var(--danger); }
-.files-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warning) 7%, var(--panel-solid)); font-size: 12px; }
-.files-banner.on { border-color: color-mix(in srgb, var(--success) 28%, transparent); background: color-mix(in srgb, var(--success) 7%, var(--panel-solid)); }
-.files-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); font-size: 12px; }
-.files-upload-name { font-family: var(--mono); color: var(--text); }
-.files-upload-path { display: flex; align-items: center; gap: 6px; color: var(--text-dim); }
-.files-upload-path input { width: 180px; font-family: var(--mono); }
+/* ---- Device files ----
+   The Desktop's Finder-style window (New-Horizons-Desktop styles.css:
+   .finder-*, .device-finder*, storage bar, .file-preview-content), copied as is. */
+.finder-window {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: min(720px, calc(100vh - 210px));
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-md);
+}
 
-.files-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr); gap: 12px; margin-top: 12px; }
-@media (max-width: 860px) { .files-body { grid-template-columns: 1fr; } }
-.files-list-pane { display: grid; align-content: start; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.files-list-head, .files-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 10px; }
-.files-list-head { border-bottom: 1px solid var(--line); background: var(--panel-soft); color: var(--text-muted); font-size: 11px; }
-.files-list { max-height: 380px; overflow: auto; }
-.files-list:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.files-row { cursor: default; font-size: 13px; }
-.files-row:hover { background: var(--panel-soft); }
-.files-row.selected { background: var(--accent-soft); }
-.files-name { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text); }
-.files-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.files-preview { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel-soft); }
-.files-preview-hero { display: grid; justify-items: center; gap: 8px; padding: 30px 10px; color: var(--text-muted); text-align: center; }
-.files-preview-head { display: flex; align-items: center; gap: 10px; color: var(--text-dim); }
-.files-preview-head div { display: grid; gap: 2px; min-width: 0; }
-.files-preview-head strong { color: var(--text); overflow-wrap: anywhere; }
-.files-preview-note { margin: 0 0 6px; font-size: 11px; }
-.files-preview-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.finder-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, color-mix(in srgb, #fbfbfd var(--tint), var(--panel-solid)), color-mix(in srgb, #f3f3f6 var(--tint), var(--panel-solid)));
+}
 
-.files-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-dim); }
-.files-storage { display: flex; align-items: center; gap: 8px; }
-.files-storage-track { display: flex; width: 160px; height: 8px; overflow: hidden; border-radius: var(--radius-pill); background: var(--panel-soft); border: 1px solid var(--line); }
-.files-storage-seg { height: 100%; background: var(--text-muted); }
-.files-storage-seg.user { background: var(--accent); }
-.files-storage-seg.logs { background: var(--warning); }
-.files-storage-seg.calibration { background: var(--success); }
-.files-storage-seg.apps, .files-storage-seg.app { background: var(--danger); }
-.files-status { min-width: 0; color: var(--text-dim); }
-.files-transfer { display: flex; align-items: center; gap: 8px; }
-.files-transfer .progress-track { width: 120px; }
+.finder-nav,
+.finder-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.finder-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder-tool {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.finder-tool:hover:not(:disabled) {
+  background: rgba(118, 118, 128, 0.14);
+  color: var(--text);
+}
+
+.finder-tool:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.finder-tool.danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.finder-tool:disabled {
+  opacity: 0.32;
+}
+
+.finder-body {
+  display: grid;
+  /* The sidebar column sizes to its longest device name (between the
+     sidebar's min/max width) so names show in full instead of truncating. */
+  grid-template-columns: auto minmax(0, 1fr) minmax(280px, 34%);
+  min-height: 0;
+}
+
+.finder-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 190px;
+  max-width: 320px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 8px;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+}
+
+.finder-sidebar h4 {
+  margin: 4px 8px 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.finder-sidebar-note {
+  margin: 4px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.finder-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+
+.finder-sidebar-item svg {
+  flex: none;
+  color: var(--accent);
+}
+
+/* Not connected now: its recordings are still listed, the icon is muted. */
+.finder-sidebar-item svg.finder-offline {
+  color: var(--text-muted);
+}
+
+.finder-sidebar-item span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A hidden bold copy reserves the selected (bold) width, so the auto-sized
+   column doesn't shift when the selection moves. */
+.finder-sidebar-item span::after {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+}
+
+.finder-sidebar-item:hover:not(.selected) {
+  background: rgba(118, 118, 128, 0.1);
+}
+
+.finder-sidebar-item.selected {
+  background: rgba(118, 118, 128, 0.2);
+  font-weight: 600;
+}
+
+.finder-list-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Name takes what is left; the other columns are sized like Finder's. */
+.finder-list-head,
+.finder-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 150px 74px 108px;
+  align-items: center;
+}
+
+.finder-list-head {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-solid);
+}
+
+.finder-col {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.finder-col:first-child {
+  border-left: 0;
+  padding-left: 14px;
+}
+
+.finder-col.active {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.finder-col:hover {
+  background: rgba(118, 118, 128, 0.08);
+}
+
+.finder-col-size {
+  justify-content: flex-end;
+}
+
+.finder-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px;
+  outline: none;
+}
+
+.finder-row {
+  min-height: 26px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: default;
+  user-select: none;
+}
+
+/* Zebra stripes, as in Finder's list view. */
+.finder-row:nth-child(even of .finder-row) {
+  background: rgba(118, 118, 128, 0.06);
+}
+
+.finder-row.selected {
+  background: rgba(118, 118, 128, 0.22);
+}
+
+.finder-list:focus-visible .finder-row.selected,
+.finder-list:focus .finder-row.selected {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.finder-list:focus .finder-row.selected .finder-muted,
+.finder-list:focus .finder-row.selected .finder-icon {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.finder-cell {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 8px;
+}
+
+.finder-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finder-muted {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.finder-size {
+  text-align: right;
+}
+
+.finder-icon {
+  flex: none;
+}
+
+.finder-empty {
+  margin: 0;
+  padding: 18px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.finder-notice {
+  margin: 6px 4px;
+}
+
+.finder-preview {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.finder-preview-hero {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 8px 0 4px;
+  text-align: center;
+}
+
+.finder-preview-hero strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.finder-preview-hero span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.finder-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, #f6f6f8 var(--tint), var(--panel-solid));
+  font-size: 12px;
+}
+
+.finder-status {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* Device Files: the CSV Export window, with a scope list, a two-column file
+   list and a log preview. */
+.device-finder .finder-body {
+  grid-template-columns: auto minmax(0, 1fr) minmax(320px, 42%);
+}
+
+.device-finder .finder-body.no-preview {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.device-finder .finder-list-head,
+.device-finder .finder-row {
+  grid-template-columns: minmax(160px, 1fr) 96px;
+}
+
+.device-finder .finder-sidebar-item {
+  justify-content: flex-start;
+}
+
+.device-finder-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.device-finder .finder-tool.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.device-finder-list {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.device-finder-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--warning) 10%, var(--panel-solid));
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.device-finder-banner.on {
+  background: var(--accent-soft);
+}
+
+.device-finder-banner strong {
+  color: var(--text);
+}
+
+.device-finder-upload {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.device-finder-upload-name {
+  font-weight: 600;
+}
+
+.device-finder-upload label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.device-finder-upload input {
+  width: 180px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel-solid);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* Name, then small actions; the preview text takes the rest of the pane. */
+.device-finder .finder-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.device-finder-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-dim);
+}
+
+.device-finder-preview-head div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.device-finder-preview-head strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.device-finder-preview-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.device-finder-preview-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.device-finder .file-preview-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.device-finder .finder-preview .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.device-finder-storage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.device-finder-storage .storage-bar-track {
+  width: 140px;
+  height: 6px;
+  margin: 0;
+}
+
+.device-finder-storage .finder-tool {
+  width: 22px;
+  height: 22px;
+}
+
+.device-finder-transfer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.device-finder-transfer-bar {
+  width: 120px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.device-finder-transfer-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-fast) linear;
+}
+
+@media (max-width: 900px) {
+  .device-finder .finder-body,
+  .device-finder .finder-body.no-preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .device-finder .finder-sidebar {
+    flex-direction: row;
+    max-width: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+.storage-bar-track {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-solid);
+}
+
+.storage-segment {
+  display: block;
+  height: 100%;
+}
+
+.storage-segment.user { background: #2e6f57; }
+.storage-segment.logs { background: #5b7fa5; }
+.storage-segment.calibration { background: #b18435; }
+.storage-segment.offline { background: #7b4fa3; }
+.storage-segment.tmp { background: #8a6fae; }
+.storage-segment.other { background: #9a9f94; }
+
+.file-preview-content {
+  margin: 0;
+  min-height: 320px;
+  max-height: 68vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}

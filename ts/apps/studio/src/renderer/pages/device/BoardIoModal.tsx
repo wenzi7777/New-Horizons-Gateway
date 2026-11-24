@@ -4,10 +4,13 @@
 // set_matrix_layout, or copied as a terminal command.
 
 import { useEffect, useState } from 'react';
+import { boardArtFor } from '@nhgw/host';
 
 import { copyText } from '../../areas/apps/lib/clipboard';
 import { DEFAULT_BOARD_PROFILE, displayHardwareModel, type BoardPinSlot, type BoardProfile } from '../../lib/boardProfile';
 import { useAreaT } from '../../areas/i18n';
+import { PinMap } from '../../components/callout/PinMap';
+import { useStudio } from '../../state/studio';
 import { DEVICE_SETTINGS_STRINGS } from './settingsStrings';
 
 function togglePin(values: number[], value: number): number[] {
@@ -41,6 +44,10 @@ export function BoardIoModal({
   const boardLabel = displayHardwareModel(profile.hardwareModel);
   const subtitle = profile.supportsIoVisualizer && profile.hardwareModel === DEFAULT_BOARD_PROFILE.hardwareModel ? ds('ioOrientation') : boardLabel;
   const incomplete = !analog.length || !select.length;
+  const { uiStyle } = useStudio();
+  // Illustrated: the board's FPC contacts fanned out to clickable labels, in
+  // place of the artwork and the pin table.
+  const art = uiStyle === 'modern' && profile.supportsIoVisualizer ? boardArtFor(profile.hardwareModel) : null;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -95,16 +102,28 @@ export function BoardIoModal({
             {ds('ioConfigClose')}
           </button>
         </div>
-        <div className="io-board-diagram">
-          <div className="io-board-image">
-            {profile.overviewAsset ? (
-              <img src={profile.overviewAsset} alt={`${boardLabel} overview`} />
-            ) : (
-              <div className="io-board-placeholder">
-                <strong>{boardLabel}</strong>
-              </div>
-            )}
-          </div>
+        <div className={art ? 'io-board-diagram is-illustrated' : 'io-board-diagram'}>
+          {art ? (
+            <PinMap
+              art={art}
+              analogSlots={profile.analogPinSlots}
+              digitalSlots={profile.digitalPinSlots}
+              analogChosen={analog}
+              selectChosen={select}
+              onToggle={toggle}
+              ariaLabel={ds('ioConfigTitle')}
+            />
+          ) : (
+            <div className="io-board-image">
+              {profile.overviewAsset ? (
+                <img src={profile.overviewAsset} alt={`${boardLabel} overview`} />
+              ) : (
+                <div className="io-board-placeholder">
+                  <strong>{boardLabel}</strong>
+                </div>
+              )}
+            </div>
+          )}
           <div className="io-config-panel">
             <div className="io-command-copy">
               <code>{command}</code>
@@ -169,7 +188,7 @@ export function BoardIoModal({
                 <strong>{select.join(',') || '-'}</strong>
               </div>
             </div>
-            {profile.supportsIoVisualizer ? (
+            {profile.supportsIoVisualizer && !art ? (
               <div className="io-pin-table">
                 <div>
                   <h4 title={profile.analogPinOrder.join(', ')}>{profile.analogPinHeading}</h4>

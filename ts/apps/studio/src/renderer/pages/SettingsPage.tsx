@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, ExternalLink, FileArchive, FolderOpen, Moon, RefreshCw, RotateCcw, Sun, SunMoon, Trash2 } from 'lucide-react';
 import { LAB_NAME, LAB_URL, UNIVERSITY_URL, type ThemeMode } from '@nhgw/ui-tokens';
+import type { UiStyle } from '@nhgw/host';
 
 import type { AppInfo, AppPrefs, ConnectionInfo, PruneResult, UpdateState } from '../../shared/areas/app';
 import type { ServerTarget, StudioSettings } from '../../shared/contract';
@@ -11,7 +12,7 @@ import { appApi } from '../areas/app/api';
 import { useAreaT } from '../areas/i18n';
 import SyncSettingsSection from '../areas/sync/SettingsSection';
 import { AnimatedBrandMark, UAizuLogo } from '../components/BrandArt';
-import { Card, Disclosure, Facts, Field, Notice, Segmented, StatusDot, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, StatusDot, SwitchRow, useConfirm, NumberInput, Select, TextInput } from '../components/ui';
 import { formatBytes, formatDateTime, formatTime, isValidServerUrl, isValidStudioId } from '../lib/format';
 import { LANGUAGE_NAMES, LOCALE_SETTINGS, type LocaleSetting } from '../lib/locale';
 import type { Route } from '../lib/navigation';
@@ -19,6 +20,7 @@ import { useStudio } from '../state/studio';
 import { nextSection, SECTION_LABELS, sectionOf, SETTINGS_SECTIONS, type SettingsSection } from './settings/sections';
 import { SETTINGS_STRINGS, type SettingsKey } from './settings/strings';
 import './settings/settings.css';
+import { ChoiceSegment } from '../components/callout/ChoiceSegment';
 
 const DOWNLOAD_PAGE = 'https://wenzi7777.github.io/New-Horizons-Gateway/';
 const GITHUB = 'https://github.com/wenzi7777/New-Horizons-Gateway';
@@ -125,7 +127,7 @@ function GeneralSection({ st }: { st: ST }) {
       <Card title={st('appearanceTitle')}>
         <div className="field">
           <span className="field-label">{t('themeLabel')}</span>
-          <Segmented<ThemeMode>
+          <ChoiceSegment<ThemeMode>
             label={t('themeLabel')}
             value={theme.mode}
             options={[
@@ -136,6 +138,19 @@ function GeneralSection({ st }: { st: ST }) {
             onChange={(mode) => void updateSettings({ theme: mode })}
           />
           {theme.mode === 'auto' && nextAt ? <p className="field-note">{theme.theme === 'light' ? t('themeNextDark', { time: nextAt }) : t('themeNextLight', { time: nextAt })}</p> : null}
+        </div>
+        <div className="field">
+          <span className="field-label">{st('uiStyleLabel')}</span>
+          <ChoiceSegment<UiStyle>
+            label={st('uiStyleLabel')}
+            value={settings.uiStyle}
+            options={[
+              { value: 'modern', label: st('uiStyleModern') },
+              { value: 'classic', label: st('uiStyleClassic') },
+            ]}
+            onChange={(uiStyle) => void updateSettings({ uiStyle })}
+          />
+          <p className="field-note">{st('uiStyleHint')}</p>
         </div>
         <Field label={t('language')}>
           {(id) => (
@@ -194,7 +209,7 @@ function ConnectionSection({ st }: { st: ST }) {
         <SwitchRow checked={settings.relayEnabled} onChange={(relayEnabled) => void exec(t('relayTitle'), () => updateSettings({ relayEnabled }), { success: false })} title={t('relayTitle')} copy={t('relayCopy')} />
         <div className="field">
           <span className="field-label">{t('targetLabel')}</span>
-          <Segmented<ServerTarget>
+          <ChoiceSegment<ServerTarget>
             label={t('targetLabel')}
             value={settings.serverTarget}
             options={[
@@ -268,7 +283,7 @@ function DevicesSection({ st }: { st: ST }) {
     <div className="stack">
       {confirmUi}
       <Card title={t('sectionDevicePolicy')}>
-        <Segmented<StudioSettings['offerPolicy']>
+        <ChoiceSegment<StudioSettings['offerPolicy']>
           label={t('sectionDevicePolicy')}
           value={settings.offerPolicy}
           options={[
@@ -507,7 +522,7 @@ function UpdatesSection({ st }: { st: ST }) {
         <Notice>{st('unsignedNote')}</Notice>
       </Card>
       <Card title={st('channel')} copy={st('channelCopy')}>
-        <Segmented<'stable' | 'beta'>
+        <ChoiceSegment<'stable' | 'beta'>
           label={st('channel')}
           value={prefs.updateChannel}
           disabled={busy}

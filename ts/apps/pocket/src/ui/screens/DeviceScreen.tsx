@@ -16,10 +16,13 @@ import {
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { boardArtFor } from '@nhgw/host';
 
 import type { QuickCommand, RangeMode, VrefZone } from '../../host/contract';
 import { errorText } from '../../i18n/strings';
 import { useConfirm, useToast, type ConfirmOptions } from '../components/feedback';
+import { DeviceFlows } from '../components/DeviceFlows';
+import { DeviceHero } from '../components/DeviceHero';
 import { RfbBoardMap } from '../components/RfbBoardMap';
 import {
   ActionRow,
@@ -36,7 +39,6 @@ import {
   Notice,
   Screen,
   SectionHeader,
-  SegmentedControl,
   StatusDot,
   TextField,
   type Tone,
@@ -44,9 +46,10 @@ import {
 import { batteryLabel, modeLabel } from '../deviceText';
 import { formatDateTime, formatDuration } from '../format';
 import { useI18n } from '../i18n';
-import { useDevice, useNow, usePocketSync, useRecordings, useStore } from '../store';
+import { useDevice, useNow, usePocketSync, useRecordings, useSettings, useStore } from '../store';
 import { syncErrorCode } from '../../host/sync';
 import { useTheme } from '../theme';
+import { ChoiceSegment } from '../components/ChoiceSegment';
 
 type CommandKey = QuickCommand['kind'] | 'release' | 'recording';
 
@@ -99,6 +102,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
   const toast = useToast();
   const confirm = useConfirm();
   const device = useDevice(uid);
+  const { uiStyle } = useSettings();
   const elapsed = useRecordingElapsed(uid);
   const recording = useRecordingToggle(uid);
   const [busy, setBusy] = useState<CommandKey | null>(null);
@@ -202,7 +206,14 @@ export function DeviceScreen({ uid }: { uid: string }) {
           {recState.enabled ? <Badge label={t('recBadge')} tone="danger" solid /> : null}
         </View>
         {offline && device.lastSeenMs ? <Caption>{t('lastSeen', { time: formatDateTime(device.lastSeenMs, locale) })}</Caption> : null}
+        {uiStyle === 'modern' && boardArtFor(device.hardwareModel) ? <DeviceHero device={device} /> : null}
       </Card>
+
+      {uiStyle === 'modern' && boardArtFor(device.hardwareModel) ? (
+        <Card>
+          <DeviceFlows device={device} />
+        </Card>
+      ) : null}
 
       {offline ? (
         <Notice tone="warning" icon={WifiOff}>
@@ -319,7 +330,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
         <Divider inset={0} />
         <View style={{ padding: 16, gap: 8 }}>
           <Caption>{t('actionScanRate')}</Caption>
-          <SegmentedControl
+          <ChoiceSegment
             accessibilityLabel={t('actionScanRate')}
             options={[
               { value: 60 as const, label: '60 fps' },
@@ -358,7 +369,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
             <Divider inset={0} />
             <View style={{ padding: 16, gap: 8 }}>
               <Caption>{t('rangeReadingTitle')}</Caption>
-              <SegmentedControl
+              <ChoiceSegment
                 accessibilityLabel={t('rangeReadingTitle')}
                 options={[
                   { value: 'raw' as const, label: t('rangeSeg_raw') },

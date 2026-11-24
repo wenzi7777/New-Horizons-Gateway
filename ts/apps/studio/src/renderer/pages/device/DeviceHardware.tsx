@@ -20,6 +20,7 @@ import { useStudio } from '../../state/studio';
 import { BoardIoModal } from './BoardIoModal';
 import { DEVICE_SETTINGS_STRINGS } from './settingsStrings';
 import './device-settings.css';
+import { ConnectionFlowView } from './FlowViews';
 
 export type Send = (label: string, payload: Payload, options?: { success?: string | false }) => Promise<{ ok: boolean; data: unknown }>;
 type Ask = ReturnType<typeof useConfirm>[1];
@@ -474,6 +475,7 @@ export function ConnectionCard({ device, status, record: rec, disabled, busy, se
   if (hubRelayed) {
     return (
       <Card title={ds('hubLinkTitle')} copy={ds('hubLinkCopy')}>
+        <ConnectionFlowView device={device} status={status} record={rec} />
         <Facts
           items={[
             [ds('hubLinkHub'), str(rec.gateway_id)],
@@ -494,6 +496,7 @@ export function ConnectionCard({ device, status, record: rec, disabled, busy, se
         </button>
       }
     >
+      <ConnectionFlowView device={device} status={status} record={rec} />
       <Facts
         items={[
           [ds('gatewayId'), str(findme.gateway_id)],

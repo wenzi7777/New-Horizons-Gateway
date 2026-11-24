@@ -63,7 +63,7 @@ describe('views', () => {
       mode: 'normal',
       hardwareModel: 'TIA-CTL v1.5.F 2026.7',
       firmwareVersion: 'v1.19.0',
-      battery: { percent: 81, charging: true },
+      battery: { percent: 81, charging: true, chargeState: 'charging' },
       fps: 61,
       matrix: { rows: 2, cols: 3 },
       recording: { enabled: true, finishing: false, error: '' },
@@ -195,6 +195,7 @@ describe('views', () => {
       offerPolicy: 'managed',
       syncPolicy: 'manual',
       theme: 'auto',
+      uiStyle: 'modern',
       locale: 'system',
     });
     const patch = configPatchFromSettings({ relayEnabled: false, serverTarget: 'manual', manualUrl: ' ws://10.0.0.1:5051/x ', locale: 'ja' });

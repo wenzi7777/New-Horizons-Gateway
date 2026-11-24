@@ -61,6 +61,15 @@ export function isRendererUrl(url: string, devServerUrl: string | null): boolean
   }
 }
 
+/**
+ * The one web permission the renderer gets: writing text to the clipboard
+ * (navigator.clipboard.writeText, e.g. Apps > Generate code > Copy prompt),
+ * and only for Studio's own pages. Everything else stays denied.
+ */
+export function permissionAllowed(permission: string, url: string, devServerUrl: string | null): boolean {
+  return permission === 'clipboard-sanitized-write' && isRendererUrl(url, devServerUrl);
+}
+
 /** http(s) URLs may open in the user's browser; nothing else leaves the app. */
 export function isExternalWebUrl(url: string): boolean {
   try {

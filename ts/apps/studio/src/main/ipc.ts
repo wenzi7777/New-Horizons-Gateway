@@ -112,6 +112,7 @@ const SETTINGS_KEYS: Record<keyof StudioSettings, 'string' | 'boolean'> = {
   syncPolicy: 'string',
   theme: 'string',
   locale: 'string',
+  uiStyle: 'string',
   dataFolder: 'string',
 };
 

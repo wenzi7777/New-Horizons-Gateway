@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { Activity, Circle, RefreshCw, RotateCcw, Square, Unlink } from 'lucide-react';
+import { boardArtFor } from '@nhgw/host';
 
 import type { DeviceView } from '../../../shared/contract';
 import { Heatmap } from '../../components/Heatmap';
@@ -13,9 +14,11 @@ import type { Route } from '../../lib/navigation';
 import { DEFAULT_RANGE } from '../../lib/pressureColor';
 import { useLiveFrame, useStudio } from '../../state/studio';
 import { batteryText, modeLabel } from '../DevicesPage';
+import { DeviceHero } from './DeviceHero';
 
 export function DeviceOverview({ device, navigate }: { device: DeviceView; navigate: (route: Route) => void }) {
-  const { t, exec, api } = useStudio();
+  const { t, exec, api, uiStyle } = useStudio();
+  const illustrated = uiStyle === 'modern' && boardArtFor(device.hardwareModel) !== null;
   const [dialog, ask] = useConfirm();
   const frame = useLiveFrame(device.online && device.matrix ? device.uid : null);
   const stats = frame ? frameStats(frame.values) : null;
@@ -69,6 +72,12 @@ export function DeviceOverview({ device, navigate }: { device: DeviceView; navig
     <div className="stack">
       {!device.online ? <Notice kind="warning">{t('deviceOfflineNotice')}</Notice> : null}
       {rec.error ? <Notice kind="error">{t('recordingError', { error: rec.error })}</Notice> : null}
+
+      {illustrated ? (
+        <Card title={t('cardStatus')} copy={`${device.hardwareModel} · ${device.uid}`} className="device-hero">
+          <DeviceHero device={device} navigate={navigate} />
+        </Card>
+      ) : null}
 
       <div className="overview-grid">
         <Card
@@ -144,20 +153,22 @@ export function DeviceOverview({ device, navigate }: { device: DeviceView; navig
         </div>
       </div>
 
-      <Card title={t('cardStatus')}>
-        <Facts
-          items={[
-            [t('infoMode'), modeLabel(t, device.mode)],
-            [t('infoBattery'), batteryText(t, device) || '-'],
-            [t('infoFps'), device.online ? t('fpsValue', { fps: device.fps }) : '-'],
-            [t('infoMatrix'), device.matrix ? t('matrixValue', { rows: device.matrix.rows, cols: device.matrix.cols }) : '-'],
-            [t('infoModel'), device.hardwareModel],
-            [t('infoFirmware'), device.firmwareVersion],
-            [t('infoUid'), <span className="mono">{device.uid}</span>],
-            [t('infoLastSeen'), device.lastSeenMs ? formatAgo(device.lastSeenMs, Date.now()) : '-'],
-          ]}
-        />
-      </Card>
+      {illustrated ? null : (
+        <Card title={t('cardStatus')}>
+          <Facts
+            items={[
+              [t('infoMode'), modeLabel(t, device.mode)],
+              [t('infoBattery'), batteryText(t, device) || '-'],
+              [t('infoFps'), device.online ? t('fpsValue', { fps: device.fps }) : '-'],
+              [t('infoMatrix'), device.matrix ? t('matrixValue', { rows: device.matrix.rows, cols: device.matrix.cols }) : '-'],
+              [t('infoModel'), device.hardwareModel],
+              [t('infoFirmware'), device.firmwareVersion],
+              [t('infoUid'), <span className="mono">{device.uid}</span>],
+              [t('infoLastSeen'), device.lastSeenMs ? formatAgo(device.lastSeenMs, Date.now()) : '-'],
+            ]}
+          />
+        </Card>
+      )}
 
       <Card title={t('nameAndGroup')}>
         <form

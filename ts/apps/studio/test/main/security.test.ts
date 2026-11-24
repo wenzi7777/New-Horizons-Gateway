@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { contentSecurityPolicy, isExternalWebUrl, isRendererUrl, resolveAppRequest, serveAppRequest } from '../../src/main/security';
+import { contentSecurityPolicy, isExternalWebUrl, isRendererUrl, permissionAllowed, resolveAppRequest, serveAppRequest } from '../../src/main/security';
 
 const root = mkdtempSync(join(tmpdir(), 'nh-studio-renderer-'));
 mkdirSync(join(root, 'assets'));
@@ -35,6 +35,14 @@ describe('renderer security', () => {
     expect(isRendererUrl('http://localhost:5174/x', 'http://localhost:5173/')).toBe(false);
     expect(isExternalWebUrl('https://a.example')).toBe(true);
     expect(isExternalWebUrl('file:///etc/passwd')).toBe(false);
+  });
+
+  it('grants only clipboard writes, and only to the renderer', () => {
+    expect(permissionAllowed('clipboard-sanitized-write', 'app://studio/index.html#/apps', null)).toBe(true);
+    expect(permissionAllowed('clipboard-sanitized-write', 'http://localhost:5173/', 'http://localhost:5173/')).toBe(true);
+    expect(permissionAllowed('clipboard-sanitized-write', 'https://evil.example/', null)).toBe(false);
+    expect(permissionAllowed('clipboard-read', 'app://studio/index.html', null)).toBe(false);
+    expect(permissionAllowed('media', 'app://studio/index.html', null)).toBe(false);
   });
 
   it('serves app:// from the renderer folder only, with the CSP', async () => {

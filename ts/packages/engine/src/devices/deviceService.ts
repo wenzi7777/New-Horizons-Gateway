@@ -44,6 +44,10 @@ import { type Dict, dictOr, has, isDict, randomHex32, setDefault, strOr, truthy 
 export const COMMAND_TTL_MS = 15_000;
 /** How often a streaming device's presence is recorded as a status (ARDUINO_STREAM_STATUS_INTERVAL_SEC). */
 export const STREAM_STATUS_INTERVAL_MS = 5_000;
+/** A device that (re)connects is asked for a full status, again this often until one arrives... */
+export const CONNECT_STATUS_RETRY_MS = 15_000;
+/** ...at most this many times. */
+export const CONNECT_STATUS_TRIES = 5;
 /** The Backend kept partial chunked results 30 s (its result_chunks.py); the Gateway 10 s. */
 export const RESULT_CHUNK_TTL_MS = 30_000;
 export const PROTOCOL_NAME = 'NHO/Arduino/1';
@@ -178,6 +182,8 @@ export class DeviceService {
   private readonly onDevicePacketHook: DeviceServiceOptions['onDevicePacket'];
   private readonly timePush = new TimePushThrottle();
   private readonly streamStatusAt = new Map<string, number>();
+  /** Attached devices that (re)connected and still owe a full status: tries so far and when the last went out. */
+  private readonly statusOwed = new Map<string, { tries: number; atMono: number | null }>();
   private transport: CommandTransport | null = null;
   private runtime: GatewayRuntime | null = null;
   private lastPeriodicAt: number | null = null;
@@ -460,6 +466,9 @@ export class DeviceService {
       this.maybePushTime(this.table.resolveKnownDeviceUid(uid), data);
     } else if (messageType === 'result') {
       this.table.recordResult(uid, data);
+      if (strOr(data.command ?? data.cmd) === 'status' && DeviceTable.isStatusSnapshotResult(data)) {
+        this.statusOwed.delete(this.table.resolveKnownDeviceUid(uid));
+      }
     }
   }
 
@@ -476,6 +485,8 @@ export class DeviceService {
 
   /** A binary datagram the runtime saw from a (non-denied) device. */
   private onDevicePacket(uid: string, packet: Uint8Array, from: Address, info: DevicePacketInfo): void {
+    const known = this.table.resolveKnownDeviceUid(uid);
+    const wasConnected = known ? this.table.devices.get(known)?.gateway_connected === true : false;
     if (info.kind === 'heartbeat') {
       if (info.attached) this.recordHeartbeat(uid, from);
     } else if (info.forwarded) {
@@ -485,7 +496,39 @@ export class DeviceService {
     } else if (info.attached && info.kind === 'stream') {
       this.recordStreamPresence(uid, from);
     }
+    if (info.attached && (info.kind === 'heartbeat' || info.kind === 'stream')) this.askStatusOnConnect(uid, wasConnected);
     this.onDevicePacketHook?.(uid, packet, from, info);
+  }
+
+  /**
+   * A device attached here that just (re)connected owes a full status: the
+   * settings pages and the overview read it, and until now it came only when
+   * someone pressed Refresh (the Desktop asks per settings section instead).
+   * Asked quietly at once, then every CONNECT_STATUS_RETRY_MS (UDP loses
+   * datagrams; a booting device can't answer yet) until a status result
+   * arrives, at most CONNECT_STATUS_TRIES times.
+   */
+  private askStatusOnConnect(uidIn: string, wasConnected: boolean): void {
+    const uid = this.table.resolveKnownDeviceUid(uidIn);
+    if (!uid) return;
+    if (!wasConnected && this.table.devices.get(uid)?.gateway_connected === true) this.statusOwed.set(uid, { tries: 0, atMono: null });
+    const owed = this.statusOwed.get(uid);
+    if (!owed) return;
+    const now = this.clock.monotonicMs();
+    if (owed.atMono !== null && now - owed.atMono < CONNECT_STATUS_RETRY_MS) return;
+    if (owed.tries >= CONNECT_STATUS_TRIES) {
+      this.statusOwed.delete(uid);
+      return;
+    }
+    owed.tries += 1;
+    owed.atMono = now;
+    try {
+      this.publishCommand(uid, { command: 'status', quiet: true, request_id: `connect-status-${this.newRequestId()}` });
+    } catch {
+      // No session yet or booting: not a try; the next packet a second on tries again.
+      owed.tries -= 1;
+      owed.atMono = now - CONNECT_STATUS_RETRY_MS + 1_000;
+    }
   }
 
   /**

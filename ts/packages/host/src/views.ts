@@ -56,9 +56,12 @@ export function batteryOf(entry: Record<string, unknown>): BatteryView | null {
   const chargeState = str(dict(status.power).charge_state) || str(battery.charge_state);
   if (soc === null && !chargeState && Object.keys(battery).length === 0 && Object.keys(latest).length === 0) return null;
   const syncing = str(battery.gauge_sync_state) === 'syncing';
+  const usbPower = dict(status.power).charger_present;
   return {
     percent: soc === null || syncing ? null : Math.max(0, Math.min(100, Math.round(soc))),
     charging: chargeState === 'charging' && !syncing,
+    ...(typeof usbPower === 'boolean' ? { usbPower } : {}),
+    ...(chargeState ? { chargeState } : {}),
   };
 }
 
@@ -293,6 +296,7 @@ export const APP_KEYS = {
   syncPolicy: 'pocket_sync_policy',
   theme: 'pocket_theme',
   locale: 'pocket_locale',
+  uiStyle: 'pocket_ui_style',
 } as const;
 
 /** The app's short name, the default display name on the server. */
@@ -315,6 +319,7 @@ export function hostDefaultConfig(relayId: string, displayName = 'NH Pocket'): R
     [APP_KEYS.syncPolicy]: 'manual',
     [APP_KEYS.theme]: 'auto',
     [APP_KEYS.locale]: 'system',
+    [APP_KEYS.uiStyle]: 'modern',
   };
 }
 
@@ -342,6 +347,7 @@ export function settingsFromConfig(config: GatewayConfig): HostSettings {
     syncPolicy: oneOf(config[APP_KEYS.syncPolicy], ['manual', 'auto', 'wifi_only'] as const, 'manual'),
     theme: oneOf(config[APP_KEYS.theme], ['auto', 'light', 'dark'] as const, 'auto'),
     locale: oneOf(config[APP_KEYS.locale], ['system', 'en', 'ja', 'zh-CN'] as const, 'system'),
+    uiStyle: oneOf(config[APP_KEYS.uiStyle], ['modern', 'classic'] as const, 'modern'),
   };
 }
 
@@ -357,5 +363,6 @@ export function configPatchFromSettings(patch: Partial<HostSettings>, defaultNam
   if (patch.syncPolicy !== undefined) out[APP_KEYS.syncPolicy] = patch.syncPolicy;
   if (patch.theme !== undefined) out[APP_KEYS.theme] = patch.theme;
   if (patch.locale !== undefined) out[APP_KEYS.locale] = patch.locale;
+  if (patch.uiStyle !== undefined) out[APP_KEYS.uiStyle] = patch.uiStyle;
   return out;
 }

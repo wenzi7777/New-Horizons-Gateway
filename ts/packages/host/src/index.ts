@@ -13,6 +13,8 @@ export { LatestThrottle, LIVE_FRAME_INTERVAL_MS, realTimers, type TimerPort } fr
 export * from './views';
 export * from './boardPins';
 export * from './rfbLayout';
+export * from './boardArt';
+export * from './flowPath';
 export * from './profiles';
 export * as apps from './apps';
 export * from './sync';

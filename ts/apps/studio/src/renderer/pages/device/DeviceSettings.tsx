@@ -1,5 +1,6 @@
-// Device Settings: scanning, signal and stream, power and battery, clock,
-// maintenance mode, firmware update and the device log. Current values come
+// Device Settings: connection, hardware (pins, power and battery, Vref, Action
+// Button, lights), streaming, clock, update, maintenance, apps, diagnostics,
+// the device log and experimental signal options. Current values come
 // from StudioSnapshot.deviceDetails[uid].status (lib/deviceDetails.ts); every
 // change is sent with the Desktop's exact payload (lib/commands.ts).
 
@@ -7,7 +8,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 import type { DeviceView } from '../../../shared/contract';
-import { Card, Disclosure, Facts, Field, Notice, Segmented, OnOffRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
+import { Card, Disclosure, Facts, Field, Notice, OnOffRow, useConfirm, NumberInput, Select, TextInput } from '../../components/ui';
 import {
   BATTERY_PRESETS,
   batteryCapacityChoiceFor,
@@ -58,6 +59,9 @@ import { useStudio } from '../../state/studio';
 import { DeviceAppsSection } from '../../areas/apps/components/deviceApps/DeviceAppsSection';
 import { VrefCards } from './VrefCards';
 import { ActionButtonCard, BatteryLedCard, ConnectionCard, LightsCard, PinsCard, RamCard, RestartCard, useDeviceSettingsT } from './DeviceHardware';
+import { PowerFlowView } from './FlowViews';
+import { DeviceHealthCard } from './DeviceHealthCard';
+import { ChoiceSegment } from '../../components/callout/ChoiceSegment';
 
 /** A draft that follows the device's value until the user edits it. */
 function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
@@ -82,10 +86,19 @@ function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
   ];
 }
 
-// The Desktop's device settings sections (pages/DeviceSettingsPage.tsx), in
-// its order. Streaming carries the clock; Hardware carries the Action Button.
-export const DEVICE_SETTINGS_SECTIONS = ['overview', 'hardware', 'runtime', 'update', 'apps', 'diagnostics'] as const;
+// Grouped like the Desktop's device settings (pages/DeviceSettingsPage.tsx):
+// Connection (its relay link; the device overview is the Overview tab),
+// Hardware, Streaming (scan, IMU, stream buffer), Clock, Update, Maintenance
+// (maintenance mode, restart), Apps, Diagnostics (health, scan health, RAM,
+// raw status), Files (device log) and Experimental (filter, raw ADC).
+export const DEVICE_SETTINGS_SECTIONS = ['connection', 'hardware', 'runtime', 'clock', 'update', 'maintenance', 'apps', 'diagnostics', 'files', 'experimental'] as const;
 export type DeviceSettingsSectionId = (typeof DEVICE_SETTINGS_SECTIONS)[number];
+
+/** A section id from a link; 'overview' was the Connection section's old name. */
+function sectionOf(id: string | undefined): DeviceSettingsSectionId {
+  if (id === 'overview') return 'connection';
+  return DEVICE_SETTINGS_SECTIONS.includes(id as DeviceSettingsSectionId) ? (id as DeviceSettingsSectionId) : 'hardware';
+}
 
 export function DeviceSettings({ device, initialSection }: { device: DeviceView; initialSection?: string }) {
   const { t, exec, api, snapshot } = useStudio();
@@ -96,9 +109,7 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
   const status = record(detail?.status ?? rec.last_status);
   const [busy, setBusy] = useState('');
   const [dialog, ask] = useConfirm();
-  const [active, setActive] = useState<DeviceSettingsSectionId>(() =>
-    DEVICE_SETTINGS_SECTIONS.includes(initialSection as DeviceSettingsSectionId) ? (initialSection as DeviceSettingsSectionId) : 'hardware',
-  );
+  const [active, setActive] = useState<DeviceSettingsSectionId>(() => sectionOf(initialSection));
   const disabled = !device.online || busy !== '';
 
   /** Send one payload through the engine; logged, toasted, returns ok. */
@@ -114,16 +125,11 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
   const cardProps = { device, status, disabled, busy, send };
 
   const body: Record<DeviceSettingsSectionId, ReactNode> = {
-    overview: (
-      <>
-        <ConnectionCard {...cardProps} record={rec} />
-        <RestartCard disabled={!device.online || busy !== ''} busy={busy} send={send} ask={ask} />
-      </>
-    ),
+    connection: <ConnectionCard {...cardProps} record={rec} />,
     hardware: (
       <>
         <PinsCard {...cardProps} />
-        <PowerSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+        <PowerSection device={device} status={status} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
         <BatteryLedCard {...cardProps} />
         <VrefCards status={status} disabled={disabled} busy={busy} send={send} />
         <ActionButtonCard {...cardProps} />
@@ -133,13 +139,15 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
     runtime: (
       <>
         <ScanSection view={view} disabled={disabled} busy={busy} send={send} />
-        <ClockSection device={device} disabled={disabled} busy={busy} send={send} />
+        <StreamSection view={view} disabled={disabled} busy={busy} send={send} />
       </>
     ),
-    update: (
+    clock: <ClockSection device={device} disabled={disabled} busy={busy} send={send} />,
+    update: <UpdateSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />,
+    maintenance: (
       <>
-        <UpdateSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
         <MaintenanceSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
+        <RestartCard disabled={disabled} busy={busy} send={send} ask={ask} />
       </>
     ),
     // The device's apps (the Desktop's settings → Apps): its own command pipe,
@@ -147,15 +155,17 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
     apps: <DeviceAppsSection device={device} />,
     diagnostics: (
       <>
-        <SignalSection view={view} disabled={disabled} busy={busy} send={send} />
+        <DeviceHealthCard device={device} disabled={disabled} busy={busy} send={send} />
+        <ScanHealthCard view={view} disabled={disabled} busy={busy} send={send} />
         <RamCard status={status} disabled={disabled} busy={busy} send={send} />
-        <LogsSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
         <Disclosure summary={t('techDetails')}>
           <p className="field-note">{t('rawStatus')}</p>
           <pre className="json-view">{JSON.stringify(detail?.status ?? null, null, 2)}</pre>
         </Disclosure>
       </>
     ),
+    files: <LogsSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />,
+    experimental: <ExperimentalSection view={view} disabled={disabled} busy={busy} send={send} />,
   };
 
   return (
@@ -199,95 +209,97 @@ function ScanSection({ view, disabled, busy, send }: SectionProps) {
   const preset = timing.send_every_n_frames === 1 && (timing.target_fps === 60 || timing.target_fps === 90) && scanPresetTiming(timing.target_fps).settle_us === timing.settle_us ? timing.target_fps : null;
   const [custom, setCustom] = useState(preset === null);
   const invalid = scanTimingValidationError(timing);
-  const health = view.scanHealth;
   const choice: number | 'custom' = custom ? 'custom' : (preset ?? 'custom');
   return (
-    <>
-      <Card title={t('secScan')} copy={t('scanCopy')}>
-        <Segmented<number | 'custom'>
-          label={t('secScan')}
-          value={choice}
-          options={[
-            { value: 60, label: t('scanStandard') },
-            { value: 90, label: t('scanExtended') },
-            { value: 'custom', label: t('scanCustom') },
-          ]}
-          onChange={(value) => {
-            if (value === 'custom') {
-              setCustom(true);
-              return;
-            }
-            setCustom(false);
-            setTiming(scanPresetTiming(value));
-          }}
-        />
-        {choice === 'custom' ? (
-          <div className="field-grid three">
-            <Field label={t('targetFps')}>
-              {(id) => <NumberInput id={id} min={1} max={200} value={timing.target_fps} onChange={(e) => setTiming({ ...timing, target_fps: Number(e.target.value) })} />}
-            </Field>
-            <Field label={t('settleUs')}>
-              {(id) => <NumberInput id={id} min={0} max={1000} value={timing.settle_us} onChange={(e) => setTiming({ ...timing, settle_us: Number(e.target.value) })} />}
-            </Field>
-            <Field label={t('sendEvery')}>
-              {(id) => <NumberInput id={id} min={1} max={60} value={timing.send_every_n_frames} onChange={(e) => setTiming({ ...timing, send_every_n_frames: Number(e.target.value) })} />}
-            </Field>
-          </div>
-        ) : null}
-        {invalid ? <span className="field-error" role="alert">{t('invalidScanTiming')}</span> : null}
-        <p className="field-note">
-          {t('effectiveSend', { fps: effectiveSendFps(timing) })} ·{' '}
-          {t('onDevice', { value: `${view.scanTiming.target_fps} fps / ${view.scanTiming.settle_us} µs / ${view.scanTiming.send_every_n_frames}` })}
-        </p>
-        <div className="form-footer">
-          {dirty ? <span className="dirty-indicator">{t('unsavedChanges')}</span> : null}
-          {dirty ? (
-            <button className="button ghost" type="button" onClick={reset}>
-              {t('revert')}
-            </button>
-          ) : null}
-          <button
-            className="button primary"
-            type="button"
-            disabled={disabled || !dirty || invalid !== null}
-            onClick={() => void send(t('applyScanTiming'), scanTimingCommand(timing)).then((o) => o.ok && reset())}
-          >
-            {busy === 'set_scan_timing' ? t('running') : t('applyScanTiming')}
-          </button>
+    <Card title={t('secScan')} copy={t('scanCopy')}>
+      <ChoiceSegment<number | 'custom'>
+        label={t('secScan')}
+        value={choice}
+        options={[
+          { value: 60, label: t('scanStandard') },
+          { value: 90, label: t('scanExtended') },
+          { value: 'custom', label: t('scanCustom') },
+        ]}
+        onChange={(value) => {
+          if (value === 'custom') {
+            setCustom(true);
+            return;
+          }
+          setCustom(false);
+          setTiming(scanPresetTiming(value));
+        }}
+      />
+      {choice === 'custom' ? (
+        <div className="field-grid three">
+          <Field label={t('targetFps')}>
+            {(id) => <NumberInput id={id} min={1} max={200} value={timing.target_fps} onChange={(e) => setTiming({ ...timing, target_fps: Number(e.target.value) })} />}
+          </Field>
+          <Field label={t('settleUs')}>
+            {(id) => <NumberInput id={id} min={0} max={1000} value={timing.settle_us} onChange={(e) => setTiming({ ...timing, settle_us: Number(e.target.value) })} />}
+          </Field>
+          <Field label={t('sendEvery')}>
+            {(id) => <NumberInput id={id} min={1} max={60} value={timing.send_every_n_frames} onChange={(e) => setTiming({ ...timing, send_every_n_frames: Number(e.target.value) })} />}
+          </Field>
         </div>
-      </Card>
-      <Card
-        title={t('scanHealthTitle')}
-        actions={
-          <button className="button tiny" type="button" disabled={disabled} onClick={() => void send(t('scanHealthTitle'), scanHealthCommand(), { success: false })}>
-            <RefreshCw size={13} aria-hidden="true" />
-            {busy === 'scan_health' ? t('running') : t('actionStatus')}
+      ) : null}
+      {invalid ? <span className="field-error" role="alert">{t('invalidScanTiming')}</span> : null}
+      <p className="field-note">
+        {t('effectiveSend', { fps: effectiveSendFps(timing) })} ·{' '}
+        {t('onDevice', { value: `${view.scanTiming.target_fps} fps / ${view.scanTiming.settle_us} µs / ${view.scanTiming.send_every_n_frames}` })}
+      </p>
+      <div className="form-footer">
+        {dirty ? <span className="dirty-indicator">{t('unsavedChanges')}</span> : null}
+        {dirty ? (
+          <button className="button ghost" type="button" onClick={reset}>
+            {t('revert')}
           </button>
-        }
-      >
-        {scanRateLow(health) ? <Notice kind="warning">{t('scanRateLowWarn')}</Notice> : null}
-        <Facts
-          items={[
-            [t('scanActual'), health.actualFps !== null ? `${health.actualFps} / ${health.targetFps ?? '-'} fps` : t('notReported')],
-            [t('scanBudget'), formatMicros(health.budgetUs)],
-            [t('scanLast'), formatMicros(health.lastScanUs)],
-            [t('scanOverruns'), health.overrunFrames ?? t('notReported')],
-            [t('scanQueueDropped'), health.queueDropped ?? t('notReported')],
-          ]}
-        />
-      </Card>
-    </>
+        ) : null}
+        <button
+          className="button primary"
+          type="button"
+          disabled={disabled || !dirty || invalid !== null}
+          onClick={() => void send(t('applyScanTiming'), scanTimingCommand(timing)).then((o) => o.ok && reset())}
+        >
+          {busy === 'set_scan_timing' ? t('running') : t('applyScanTiming')}
+        </button>
+      </div>
+    </Card>
   );
 }
 
-// ---- Signal and stream -----------------------------------------------------------
+function ScanHealthCard({ view, disabled, busy, send }: SectionProps) {
+  const { t } = useStudio();
+  const health = view.scanHealth;
+  return (
+    <Card
+      title={t('scanHealthTitle')}
+      actions={
+        <button className="button tiny" type="button" disabled={disabled} onClick={() => void send(t('scanHealthTitle'), scanHealthCommand(), { success: false })}>
+          <RefreshCw size={13} aria-hidden="true" />
+          {busy === 'scan_health' ? t('running') : t('actionStatus')}
+        </button>
+      }
+    >
+      {scanRateLow(health) ? <Notice kind="warning">{t('scanRateLowWarn')}</Notice> : null}
+      <Facts
+        items={[
+          [t('scanActual'), health.actualFps !== null ? `${health.actualFps} / ${health.targetFps ?? '-'} fps` : t('notReported')],
+          [t('scanBudget'), formatMicros(health.budgetUs)],
+          [t('scanLast'), formatMicros(health.lastScanUs)],
+          [t('scanOverruns'), health.overrunFrames ?? t('notReported')],
+          [t('scanQueueDropped'), health.queueDropped ?? t('notReported')],
+        ]}
+      />
+    </Card>
+  );
+}
 
-function SignalSection({ view, disabled, busy, send }: SectionProps) {
+// ---- Experimental: filter and raw ADC ----------------------------------------------
+
+function ExperimentalSection({ view, disabled, busy, send }: SectionProps) {
   const { t } = useStudio();
   const [filter, setFilter, filterDirty, resetFilter] = useDraft(view.filter);
   const [rawAdc, setRawAdc, rawDirty, resetRaw] = useDraft(view.rawAdc);
-  const [imu, setImu, imuDirty, resetImu] = useDraft(view.imu.enabled);
-  const [buffer, setBuffer, bufferDirty, resetBuffer] = useDraft({ enabled: view.streamBuffer.enabled, mode: view.streamBuffer.mode });
   const alphaOk = filterAlphaValid(filter.alpha);
   return (
     <>
@@ -327,17 +339,27 @@ function SignalSection({ view, disabled, busy, send }: SectionProps) {
         </p>
         <SaveRow dirty={filterDirty} onRevert={resetFilter} disabled={disabled || !filterDirty || !alphaOk} running={busy === 'set_filter'} onSave={() => void send(t('filterTitle'), filterCommand(filter.enabled, filter.median, filter.alpha)).then((o) => o.ok && resetFilter())} />
       </Card>
-      <div className="card-grid">
-        <Card title={t('imuTitle')} copy={t('imuCopy')}>
-          <OnOffRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}`} />
-          {view.imu.lastError ? <Notice kind="error">{view.imu.lastError}</Notice> : null}
-          <SaveRow dirty={imuDirty} onRevert={resetImu} disabled={disabled || !imuDirty} running={busy === 'set_imu'} onSave={() => void send(t('imuTitle'), imuCommand(imu)).then((o) => o.ok && resetImu())} />
-        </Card>
-        <Card title={t('rawAdcTitle')} copy={t('rawAdcCopy')}>
-          <OnOffRow checked={rawAdc} onChange={setRawAdc} title={t('enabledLabel')} copy={t('onDevice', { value: onOff(t, view.rawAdc) })} />
-          <SaveRow dirty={rawDirty} onRevert={resetRaw} disabled={disabled || !rawDirty} running={busy === 'set_raw_adc'} onSave={() => void send(t('rawAdcTitle'), rawAdcCommand(rawAdc)).then((o) => o.ok && resetRaw())} />
-        </Card>
-      </div>
+      <Card title={t('rawAdcTitle')} copy={t('rawAdcCopy')}>
+        <OnOffRow checked={rawAdc} onChange={setRawAdc} title={t('enabledLabel')} copy={t('onDevice', { value: onOff(t, view.rawAdc) })} />
+        <SaveRow dirty={rawDirty} onRevert={resetRaw} disabled={disabled || !rawDirty} running={busy === 'set_raw_adc'} onSave={() => void send(t('rawAdcTitle'), rawAdcCommand(rawAdc)).then((o) => o.ok && resetRaw())} />
+      </Card>
+    </>
+  );
+}
+
+// ---- Streaming: IMU and stream buffer ------------------------------------------------
+
+function StreamSection({ view, disabled, busy, send }: SectionProps) {
+  const { t } = useStudio();
+  const [imu, setImu, imuDirty, resetImu] = useDraft(view.imu.enabled);
+  const [buffer, setBuffer, bufferDirty, resetBuffer] = useDraft({ enabled: view.streamBuffer.enabled, mode: view.streamBuffer.mode });
+  return (
+    <>
+      <Card title={t('imuTitle')} copy={t('imuCopy')}>
+        <OnOffRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}`} />
+        {view.imu.lastError ? <Notice kind="error">{view.imu.lastError}</Notice> : null}
+        <SaveRow dirty={imuDirty} onRevert={resetImu} disabled={disabled || !imuDirty} running={busy === 'set_imu'} onSave={() => void send(t('imuTitle'), imuCommand(imu)).then((o) => o.ok && resetImu())} />
+      </Card>
       <Card title={t('streamBufferTitle')} copy={t('streamBufferCopy')}>
         <OnOffRow
           checked={buffer.enabled}
@@ -345,7 +367,7 @@ function SignalSection({ view, disabled, busy, send }: SectionProps) {
           title={t('enabledLabel')}
           copy={view.streamBuffer.depthFrames !== null ? `${view.streamBuffer.mode} · ${view.streamBuffer.depthFrames}` : view.streamBuffer.mode}
         />
-        <Segmented
+        <ChoiceSegment
           label={t('streamBufferTitle')}
           value={buffer.mode}
           disabled={!buffer.enabled}
@@ -380,7 +402,7 @@ function SaveRow({ dirty, disabled, running, onSave, onRevert, label }: { dirty:
 
 // ---- Power and battery --------------------------------------------------------------
 
-function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps & { device: DeviceView; ask: Ask }) {
+function PowerSection({ device, status, view, disabled, busy, send, ask }: SectionProps & { device: DeviceView; status: Record<string, unknown>; ask: Ask }) {
   const { t } = useStudio();
   const battery = view.battery;
   const [profile, setProfile, profileDirty, resetProfile] = useDraft(view.chargeProfile);
@@ -409,6 +431,7 @@ function PowerSection({ device, view, disabled, busy, send, ask }: SectionProps 
   return (
     <>
       <Card title={t('infoBattery')}>
+        <PowerFlowView device={device} status={status} />
         <Facts
           items={[
             [t('batteryLevel'), battery.syncState === 'syncing' ? t('batterySyncing') : battery.socPercent === null ? t('batteryUnknown') : `${Math.round(battery.socPercent)}%`],
@@ -738,7 +761,7 @@ function UpdateSection({ device, view, disabled, busy, send, ask }: SectionProps
           <span className="field-label" id="channel-label">
             {t('updateChannel')}
           </span>
-          <Segmented<UpdateChannel>
+          <ChoiceSegment<UpdateChannel>
             label={t('updateChannel')}
             value={view.ota.channel}
             disabled={disabled}
@@ -798,7 +821,7 @@ function LogsSection({ device, view, disabled, busy, send, ask }: SectionProps &
         </Field>
         <div className="field">
           <span className="field-label">{t('logSize')}</span>
-          <Segmented
+          <ChoiceSegment
             label={t('logSize')}
             value={log.mode}
             options={[

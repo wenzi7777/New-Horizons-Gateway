@@ -12,6 +12,7 @@ import { useStudio } from '../../state/studio';
 import type { Send } from './DeviceHardware';
 import { useDeviceSettingsT } from './DeviceHardware';
 import { RfbBoardMap } from './RfbBoardMap';
+import { ChoiceSegment } from '../../components/callout/ChoiceSegment';
 
 type RfbRow = { row: number; off_mv: number; on_mv: number; rfb_ohm: number; offset_mv?: number; method?: string; status: string };
 type SweepResult = { rows: number; cols: number; steps: SweepStep[]; calibration: SweepCalibration; fallbackRfbOhm: number };
@@ -265,13 +266,22 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
             }
           >
             {(id) => (
-              <Select id={id} value={modeDraft} disabled={working} onChange={(e) => setModeDraft(e.target.value as RangeMode)}>
-                {RANGE_MODES.map((mode) => (
-                  <option key={mode} value={mode} disabled={mode !== 'raw' && !rfbValid}>
-                    {ds(`rangeModeShort_${mode}`)}
-                  </option>
-                ))}
-              </Select>
+              <ChoiceSegment<RangeMode>
+                label={ds('rangeMode')}
+                value={modeDraft}
+                disabled={working}
+                options={RANGE_MODES.map((mode) => ({ value: mode, label: ds(`rangeModeShort_${mode}`), disabled: mode !== 'raw' && !rfbValid }))}
+                onChange={setModeDraft}
+                classic={
+                  <Select id={id} value={modeDraft} disabled={working} onChange={(e) => setModeDraft(e.target.value as RangeMode)}>
+                    {RANGE_MODES.map((mode) => (
+                      <option key={mode} value={mode} disabled={mode !== 'raw' && !rfbValid}>
+                        {ds(`rangeModeShort_${mode}`)}
+                      </option>
+                    ))}
+                  </Select>
+                }
+              />
             )}
           </Field>
           <div className="vref-check">

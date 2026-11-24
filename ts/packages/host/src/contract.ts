@@ -30,11 +30,19 @@ export interface HostSettings {
   theme: ThemeMode;
   /** 'system' follows the OS language. */
   locale: Locale | 'system';
+  /** 'modern': the board illustration with callouts (default); 'classic': the plain cards. */
+  uiStyle: UiStyle;
 }
+
+export type UiStyle = 'modern' | 'classic';
 
 export interface BatteryView {
   percent: number | null;
   charging: boolean;
+  /** status.power.charger_present: USB-C power seen; absent when the device doesn't report it. */
+  usbPower?: boolean;
+  /** status.power.charge_state as sent (charging / charge_done / not_charging). */
+  chargeState?: string;
 }
 
 export interface DeviceView {

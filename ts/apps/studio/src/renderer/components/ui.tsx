@@ -3,7 +3,7 @@
 // confirm dialogs, toasts, the battery indicator and the brand mark.
 
 import { useCallback, useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
-import { AlertTriangle, BatteryCharging, Check, ChevronDown, ChevronUp, CircleAlert, Info, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, CircleAlert, Info, X } from 'lucide-react';
 
 import { Select } from './Select';
 export { Select, type SelectChangeEvent } from './Select';
@@ -188,16 +188,44 @@ export function Notice({ kind = 'info', children }: { kind?: 'info' | 'warning' 
   );
 }
 
+/** The charging bolt, nearly the battery's full height (viewBox 0 0 28 22); same as the Desktop's BatteryStatusIndicator. */
+const BATTERY_BOLT_PATH = 'M14.2 2.6 7.4 12.3h4.5l-1.6 7.1 6.9-10h-4.6Z';
+
+/**
+ * The battery drawn the Desktop's way (BatteryStatusIndicator): outline, fill
+ * to the charge and, while charging, a bolt inside it -- solid in the
+ * battery's colour, ringed in the background so it shows over the fill and
+ * the empty part alike. Colour comes from `color`; size from the CSS width.
+ */
+export function BatteryGlyph({ percent, charging, className = '' }: { percent: number | null; charging: boolean; className?: string }) {
+  const maskId = useId();
+  const fillWidth = percent === null ? 0 : (16 * Math.max(0, Math.min(100, percent))) / 100;
+  return (
+    <svg className={`battery-glyph${charging ? ' is-charging' : ''} ${className}`.trim()} viewBox="0 0 28 22" aria-hidden="true" focusable="false">
+      {charging ? (
+        // A gap cut around the bolt, so it stands clear on any background.
+        <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="28" height="22">
+          <rect x="0" y="0" width="28" height="22" fill="#fff" />
+          <path d={BATTERY_BOLT_PATH} fill="#000" stroke="#000" strokeWidth="3" strokeLinejoin="round" />
+        </mask>
+      ) : null}
+      <g mask={charging ? `url(#${CSS.escape(maskId)})` : undefined}>
+        <rect className="battery-glyph-outline" x="2" y="3" width="20" height="16" rx="3" />
+        <rect className="battery-glyph-terminal" x="23" y="8" width="3" height="6" rx="1" />
+        {fillWidth > 0 ? <rect className="battery-glyph-fill" x="4" y="5" width={fillWidth} height="12" rx="1" /> : null}
+      </g>
+      {charging ? <path className="battery-glyph-bolt" d={BATTERY_BOLT_PATH} /> : null}
+    </svg>
+  );
+}
+
 export function BatteryIndicator({ percent, charging, label }: { percent: number | null; charging: boolean; label: string }) {
   if (percent === null) return null;
   const fill = Math.max(0, Math.min(100, percent));
   const low = fill <= 15 && !charging;
   return (
     <span className={`battery${low ? ' low' : ''}${charging ? ' charging' : ''}`} role="img" aria-label={label} title={label}>
-      <span className="battery-body" aria-hidden="true">
-        <span className="battery-fill" style={{ width: `${fill}%` }} />
-      </span>
-      {charging ? <BatteryCharging size={13} aria-hidden="true" /> : null}
+      <BatteryGlyph percent={fill} charging={charging} />
       <span className="battery-text" aria-hidden="true">{Math.round(fill)}%</span>
     </span>
   );

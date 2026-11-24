@@ -476,9 +476,12 @@ button.device-row:hover { border-color: color-mix(in srgb, var(--accent) 40%, va
 .empty-state h2 { color: var(--text-dim); }
 
 .battery { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
-.battery-body { position: relative; width: 20px; height: 10px; padding: 1px; border: 1px solid currentColor; border-radius: 3px; }
-.battery-body::after { content: ''; position: absolute; right: -3px; top: 2.5px; width: 2px; height: 3px; border-radius: 0 1px 1px 0; background: currentColor; }
-.battery-fill { display: block; height: 100%; border-radius: 1px; background: currentColor; }
+.battery .battery-glyph { width: 24px; }
+.battery-glyph { display: block; flex: none; width: 28px; height: auto; overflow: visible; }
+.battery-glyph-outline { fill: color-mix(in srgb, var(--panel-solid) 36%, transparent); stroke: currentColor; stroke-width: 1.6; }
+.battery-glyph-terminal, .battery-glyph-fill { fill: currentColor; }
+.battery-glyph.is-charging .battery-glyph-fill { opacity: 0.55; }
+.battery-glyph-bolt { fill: currentColor; }
 .battery.low { color: var(--danger); }
 .battery.charging { color: var(--success); }
 

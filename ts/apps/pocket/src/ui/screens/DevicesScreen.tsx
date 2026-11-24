@@ -1,9 +1,5 @@
 import { useRouter } from 'expo-router';
 import {
-  BatteryCharging,
-  BatteryFull,
-  BatteryLow,
-  BatteryMedium,
   Link2,
   Plus,
   Radar,
@@ -20,14 +16,14 @@ import { errorText } from '../../i18n/strings';
 import { useI18n } from '../i18n';
 import { useDevices, useNearby, useStore } from '../store';
 import { useTheme } from '../theme';
+import { BatteryGlyph } from '../components/BatteryGlyph';
 
 function BatteryIcon({ device }: { device: DeviceView }) {
   const { colors } = useTheme();
   const b = device.battery;
   if (!b || b.percent === null) return null;
-  const Icon = b.charging ? BatteryCharging : b.percent >= 70 ? BatteryFull : b.percent >= 25 ? BatteryMedium : BatteryLow;
   const color = b.charging ? colors.success : b.percent < 15 ? colors.danger : colors.textDim;
-  return <Icon size={16} color={color} />;
+  return <BatteryGlyph percent={b.percent} charging={b.charging} color={color} width={22} />;
 }
 
 function DeviceSubtitle({ device }: { device: DeviceView }) {

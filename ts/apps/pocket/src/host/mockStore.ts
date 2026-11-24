@@ -79,6 +79,7 @@ export class MockPocketStore implements PocketStore {
     syncPolicy: 'manual',
     theme: 'auto',
     locale: 'system',
+    uiStyle: 'modern',
   };
   private statusValue: HostStatus;
   private deviceList: MockDevice[];

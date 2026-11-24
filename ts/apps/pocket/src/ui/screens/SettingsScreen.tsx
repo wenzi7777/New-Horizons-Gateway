@@ -23,7 +23,6 @@ import {
   Notice,
   Screen,
   SectionHeader,
-  SegmentedControl,
   StatusDot,
   SwitchRow,
   TextField,
@@ -33,9 +32,10 @@ import { formatBytes, formatTime, isValidPocketId, isValidServerUrl } from '../f
 import { useI18n } from '../i18n';
 import { syncErrorCode } from '../../host/sync';
 import { setOnboardingDone } from '../../host/firstRun';
-import { syncBaseUrl } from '@nhgw/host';
+import { syncBaseUrl, type UiStyle } from '@nhgw/host';
 import { usePocketSync, usePocketUpdater, useSettings, useStatus, useStore } from '../store';
 import { useTheme } from '../theme';
+import { ChoiceSegment } from '../components/ChoiceSegment';
 
 const SYNC_ERROR_KEYS: Record<string, 'syncErrCredentials' | 'syncErrMissing' | 'syncErrNetwork' | 'syncErrNotAdmin' | 'syncErrNoServer' | 'syncErrUnsupported'> = {
   invalid_credentials: 'syncErrCredentials',
@@ -73,7 +73,7 @@ function UpdateCard() {
     <Card>
       <FactRow label={t('updateCurrent')} value={state.currentVersion} mono />
       <Divider />
-      <SegmentedControl<'stable' | 'beta'>
+      <ChoiceSegment<'stable' | 'beta'>
         accessibilityLabel={t('pocketUpdateChannel')}
         options={[
           { value: 'stable', label: t('updateStable') },
@@ -272,7 +272,7 @@ function ConnectionCard() {
       <Divider />
       <View style={{ padding: 16, gap: 10 }}>
         <Caption>{t('targetLabel')}</Caption>
-        <SegmentedControl<ServerTarget>
+        <ChoiceSegment<ServerTarget>
           accessibilityLabel={t('targetLabel')}
           options={[
             { value: 'production', label: t('targetProduction') },
@@ -396,7 +396,7 @@ function AppearanceCard() {
       : null;
   return (
     <Card>
-      <SegmentedControl<ThemeMode>
+      <ChoiceSegment<ThemeMode>
         accessibilityLabel={t('themeLabel')}
         options={[
           { value: 'auto', label: t('themeAuto') },
@@ -407,6 +407,26 @@ function AppearanceCard() {
         onChange={(v) => save({ theme: v })}
       />
       {next ? <Caption>{next}</Caption> : null}
+    </Card>
+  );
+}
+
+function UiStyleCard() {
+  const { t } = useI18n();
+  const settings = useSettings();
+  const save = useSave();
+  return (
+    <Card>
+      <ChoiceSegment<UiStyle>
+        accessibilityLabel={t('uiStyleLabel')}
+        options={[
+          { value: 'modern', label: t('uiStyleModern') },
+          { value: 'classic', label: t('uiStyleClassic') },
+        ]}
+        value={settings.uiStyle}
+        onChange={(v) => save({ uiStyle: v })}
+      />
+      <Caption>{t('uiStyleHint')}</Caption>
     </Card>
   );
 }
@@ -470,7 +490,7 @@ export function SettingsScreen() {
 
       <SectionHeader title={t('sectionDevicePolicy')} />
       <Card>
-        <SegmentedControl<PocketSettings['offerPolicy']>
+        <ChoiceSegment<PocketSettings['offerPolicy']>
           accessibilityLabel={t('sectionDevicePolicy')}
           options={[
             { value: 'managed', label: t('policyManaged') },
@@ -484,7 +504,7 @@ export function SettingsScreen() {
 
       <SectionHeader title={t('sectionSync')} />
       <Card>
-        <SegmentedControl<SyncPolicy>
+        <ChoiceSegment<SyncPolicy>
           accessibilityLabel={t('sectionSync')}
           options={[
             { value: 'manual', label: t('syncManual') },
@@ -503,6 +523,7 @@ export function SettingsScreen() {
 
       <SectionHeader title={t('themeLabel')} />
       <AppearanceCard />
+      <UiStyleCard />
 
       <SectionHeader title={t('language')} />
       <LanguageCard />

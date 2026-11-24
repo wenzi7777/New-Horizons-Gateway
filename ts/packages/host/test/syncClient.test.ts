@@ -163,7 +163,7 @@ class FakeHost implements SyncHost {
   nicknames: Record<string, string> = {};
   groups: Record<string, string> = {};
   settings(): HostSettings {
-    return { pocketId: 'studio-abcd1234', displayName: 'NH Studio', serverTarget: 'local', manualUrl: '', relayEnabled: true, offerPolicy: 'managed', syncPolicy: this.policy, theme: 'auto', locale: 'en' };
+    return { pocketId: 'studio-abcd1234', displayName: 'NH Studio', serverTarget: 'local', manualUrl: '', relayEnabled: true, offerPolicy: 'managed', syncPolicy: this.policy, theme: 'auto', locale: 'en', uiStyle: 'modern' };
   }
   recordings() {
     return this.list.map((r) => ({ ...r, syncState: r.inProgress ? 'local' : (this.states.get(r.id) ?? 'local') }));

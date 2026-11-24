@@ -94,9 +94,10 @@ export const V15F_DIGITAL_PIN_SLOTS: BoardPinSlot[] = [
   { label: '5V' },
   { label: '3V3' },
   { label: 'GND' },
-  { label: 'GND' },
+  // FPC2 contacts 17 / 16 / 15 (slots run from contact 20 down): SCL, SDA, not connected.
   { label: 'SCL', gpio: 42 },
   { label: 'SDA', gpio: 40 },
+  { label: 'NC' },
   { label: 'D13', gpio: 45, role: 'select' },
   { label: 'D12', gpio: 39, role: 'select' },
   { label: 'D11', gpio: 38, role: 'select' },

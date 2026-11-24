@@ -4,6 +4,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Locale } from '@nhgw/ui-tokens';
+import type { UiStyle } from '@nhgw/host';
 
 import type { CommandOutcome, StudioApi, StudioSettings, StudioSnapshot } from '../../shared/contract';
 import type { ApiSource } from '../api';
@@ -33,6 +34,8 @@ type StudioContextValue = {
   t: T;
   errorText: (code: string) => string;
   theme: ThemeSnapshot;
+  /** 'modern' draws the board illustration with callouts; 'classic' keeps the plain cards. */
+  uiStyle: UiStyle;
   updateSettings: (patch: Partial<StudioSettings>) => Promise<void>;
   toasts: Toast[];
   toast: (kind: Toast['kind'], text: string) => void;
@@ -120,6 +123,12 @@ export function StudioProvider({ api, source, platform, children }: { api: Studi
     };
   }, [mode]);
 
+  // ---- UI style (<html data-ui>, so CSS can tell the two apart) --------------
+  const uiStyle: UiStyle = snapshot?.settings.uiStyle === 'classic' ? 'classic' : 'modern';
+  useEffect(() => {
+    document.documentElement.dataset.ui = uiStyle;
+  }, [uiStyle]);
+
   // ---- Toasts and the operation log ------------------------------------------
   const dismissToast = useCallback((id: number) => setToasts((list) => list.filter((x) => x.id !== id)), []);
   const toast = useCallback(
@@ -174,6 +183,7 @@ export function StudioProvider({ api, source, platform, children }: { api: Studi
       t,
       errorText: errText,
       theme,
+      uiStyle,
       updateSettings,
       toasts,
       toast,
@@ -183,7 +193,7 @@ export function StudioProvider({ api, source, platform, children }: { api: Studi
       exec,
       platform,
     }),
-    [api, source, snapshot, locale, t, errText, theme, updateSettings, toasts, toast, dismissToast, opLog, exec, platform],
+    [api, source, snapshot, locale, t, errText, theme, uiStyle, updateSettings, toasts, toast, dismissToast, opLog, exec, platform],
   );
 
   return <StudioContext.Provider value={value}>{children}</StudioContext.Provider>;

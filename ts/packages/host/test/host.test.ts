@@ -419,7 +419,9 @@ describe('AppHost (studio)', () => {
     await expect(host.sendCommand(UID, { command: '' })).resolves.toMatchObject({ ok: false });
     const pending = host.sendCommand(UID, { command: 'status' });
     const sent = native.sent.map((item) => JSON.parse(utf8Decode(base64ToBytes(item.data))) as Record<string, any>);
-    const command = sent.find((item) => item.payload?.command === 'status')!;
+    // The last one: the first is the status asked on connect (askStatusOnConnect).
+    const command = sent.filter((item) => item.payload?.command === 'status').at(-1)!;
+    expect(sent.filter((item) => item.payload?.command === 'status')).toHaveLength(2);
     native.receive(13250, new TextEncoder().encode(JSON.stringify({ type: 'result', device_uid: UID, request_id: command.request_id, payload: { cmd: 'status', ok: true, data: { mode: 'normal' } } })));
     expect(await pending).toEqual({ ok: true, message: 'ok', data: { mode: 'normal' } });
 

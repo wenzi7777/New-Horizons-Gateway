@@ -191,6 +191,7 @@ export class MockStudioApi implements StudioApi {
     syncPolicy: 'manual',
     theme: 'auto',
     locale: 'system',
+    uiStyle: 'modern',
     dataFolder: '/Users/lab/Documents/NH Studio',
   };
   private status: HostStatus;

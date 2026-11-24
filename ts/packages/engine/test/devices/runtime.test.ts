@@ -187,3 +187,49 @@ describe('nearby, adopt and release', () => {
     expect(h.upstream().deviceMessages.at(-1)![1]).toMatchObject({ message: 'device_not_connected_to_gateway' });
   });
 });
+
+describe('status on connect', () => {
+  const statusAsks = (h: Awaited<ReturnType<typeof setup>>) =>
+    h.stream.sent
+      .map((item) => (JSON.parse(new TextDecoder().decode(item.data)) as { payload?: Record<string, unknown> }).payload)
+      .filter((payload) => payload?.command === 'status');
+
+  it('asks a device that attaches for a quiet full status, once it answers no more', async () => {
+    const h = await setup();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    expect(statusAsks(h)).toHaveLength(1);
+    expect(statusAsks(h)[0]).toMatchObject({ command: 'status', quiet: true });
+    // More packets within the retry window: no second ask.
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    expect(statusAsks(h)).toHaveLength(1);
+    const requestId = String(statusAsks(h)[0]!.request_id);
+    h.deviceSays('result', { cmd: 'status', ok: true, data: { mode: 'normal', system: { firmware_version: 'v2.3.1' } } }, { request_id: requestId });
+    h.clock.advance(20);
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    expect(statusAsks(h)).toHaveLength(1);
+    expect(h.service.getDevice(UID)!.last_status).toMatchObject({ system: { firmware_version: 'v2.3.1' } });
+  });
+
+  it('asks again while no status comes back, then gives up', async () => {
+    const h = await setup();
+    for (let i = 0; i < 10; i++) {
+      h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+      h.clock.advance(16);
+    }
+    expect(statusAsks(h)).toHaveLength(5);
+  });
+
+  it('asks again after the device went offline and came back', async () => {
+    const h = await setup();
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    const first = String(statusAsks(h)[0]!.request_id);
+    h.deviceSays('result', { cmd: 'status', ok: true, data: { mode: 'normal' } }, { request_id: first });
+    for (let i = 0; i < 3; i++) {
+      h.clock.advance(10);
+      h.service.tick();
+    }
+    expect(h.service.getDevice(UID)!.gateway_connected).toBe(false);
+    h.runtime.onUdpPacket(heartbeatPacket(), DEVICE_ADDR);
+    expect(statusAsks(h)).toHaveLength(2);
+  });
+});

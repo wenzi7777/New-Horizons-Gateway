@@ -36,7 +36,7 @@ import { QuitRequested, StartupSequence, waitFor, type StepBody, type StepResult
 import { WINDOW_CH } from './ipcChannels';
 import { registerStudioIpc, type DesktopPorts, type IpcEventLike } from './ipc';
 import { HostLogger, NodeWsConnector } from './nodeAdapters';
-import { APP_ENTRY, APP_SCHEME, SPLASH_ENTRY, contentSecurityPolicy, isExternalWebUrl, isRendererUrl, serveAppRequest } from './security';
+import { APP_ENTRY, APP_SCHEME, SPLASH_ENTRY, contentSecurityPolicy, isExternalWebUrl, isRendererUrl, permissionAllowed, serveAppRequest } from './security';
 import { StudioController } from './studioController';
 
 const PRODUCT_NAME = 'NH Studio';
@@ -368,15 +368,20 @@ function main(): void {
       copyright: `${FULL_NAME} · University of Aizu`,
     });
 
-    // The renderer: its files only, with the CSP on every response; no permissions.
+    // The renderer: its files only, with the CSP on every response; no permissions
+    // but clipboard writes from its own pages (permissionAllowed).
     protocol.handle(APP_SCHEME, (request) => serveAppRequest(rendererDir, request.url, csp));
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
       const headers = { ...details.responseHeaders };
       if (isRendererUrl(details.url, DEV_SERVER_URL)) headers['Content-Security-Policy'] = [csp];
       callback({ responseHeaders: headers });
     });
-    session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-    session.defaultSession.setPermissionCheckHandler(() => false);
+    session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+      callback(permissionAllowed(permission, details.requestingUrl ?? contents.getURL(), DEV_SERVER_URL)),
+    );
+    session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+      permissionAllowed(permission, details.requestingUrl ?? contents?.getURL() ?? '', DEV_SERVER_URL),
+    );
     app.on('web-contents-created', (_event, contents) => lockDown(contents));
 
     const platform: HostPlatform = process.platform === 'darwin' || process.platform === 'win32' ? process.platform : 'linux';
