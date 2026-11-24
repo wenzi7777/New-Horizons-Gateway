@@ -226,12 +226,13 @@
 .io-board-placeholder {
   display: block;
   width: 100%;
-  max-height: min(720px, calc(100vh - 190px));
+  max-height: min(460px, calc(100vh - 260px));
   object-fit: contain;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, #f7f7ec 8%, var(--panel-solid));
 }
+.io-board-image img { width: auto; max-width: 100%; margin: 0 auto; }
 .io-board-placeholder { display: grid; place-items: center; min-height: 320px; }
 .io-config-panel { display: grid; gap: 14px; min-width: 0; }
 .io-command-copy { display: grid; gap: 9px; }
@@ -278,3 +279,28 @@
 @media (max-width: 900px) {
   .io-board-diagram, .io-pin-table { grid-template-columns: 1fr; }
 }
+
+/* ── v2.0.F Rfb on the back of the board (same as the Desktop's .rfb-map) ── */
+.rfb-map { display: grid; gap: 8px; margin: 12px 0; max-width: 460px; }
+.rfb-map figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.rfb-map figcaption span { color: var(--text-muted); font-size: 12px; }
+.rfb-map > svg { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-soft); }
+.rfb-board { fill: color-mix(in srgb, #2e6f57 12%, var(--panel-solid)); stroke: color-mix(in srgb, #2e6f57 60%, var(--line)); stroke-width: 0.25; }
+.rfb-board-cut { stroke: var(--text-muted); stroke-width: 0.12; stroke-dasharray: 0.5 0.4; opacity: 0.6; }
+.rfb-ref { fill: none; stroke: var(--text-muted); stroke-width: 0.12; stroke-dasharray: 0.4 0.3; opacity: 0.55; }
+.rfb-ref-label { fill: var(--text-muted); font-size: 0.85px; letter-spacing: 0.05px; opacity: 0.8; }
+.rfb-hit { fill: transparent; }
+.rfb-pad { fill: color-mix(in srgb, #c9a95a 70%, var(--panel-solid)); stroke: color-mix(in srgb, #8a7034 60%, transparent); stroke-width: 0.06; }
+.rfb-body { stroke-width: 0.1; }
+.rfb-label { fill: var(--text); font-size: 0.95px; font-family: var(--font-mono, ui-monospace, monospace); }
+.rfb-soldered .rfb-body { fill: var(--success); stroke: color-mix(in srgb, var(--success) 70%, #000); }
+.rfb-empty .rfb-label { fill: var(--text-muted); }
+.rfb-fault .rfb-body { fill: color-mix(in srgb, var(--danger) 25%, transparent); stroke: var(--danger); }
+.rfb-fault .rfb-label { fill: var(--danger); font-weight: 700; }
+.rfb-unknown .rfb-body { fill: none; stroke: var(--text-muted); stroke-dasharray: 0.25 0.18; }
+.rfb-unknown .rfb-label { fill: var(--text-muted); }
+.rfb-unused { opacity: 0.3; }
+.rfb-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; color: var(--text-muted); font-size: 12px; }
+.rfb-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.rfb-legend svg { width: 22px; height: 12px; }
+.rfb-legend li.rfb-unused { opacity: 0.55; }

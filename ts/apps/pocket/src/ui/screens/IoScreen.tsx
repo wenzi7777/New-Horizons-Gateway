@@ -23,12 +23,9 @@ const ARTWORK: Record<BoardPins['artwork'], ImageSourcePropType> = {
   gcu_v23d: require('../../../assets/boards/VDCTLV23DGCULTSOVERVIEW.png'),
 };
 
-function aspectOf(source: ImageSourcePropType): number {
-  const resolved = Image.resolveAssetSource(source);
-  const width = resolved?.width ?? 0;
-  const height = resolved?.height ?? 0;
-  return width > 0 && height > 0 ? width / height : 0.7;
-}
+// The artwork is an A4 page; at full width it would fill a phone screen, so it
+// gets a fixed height and is fitted inside it.
+const ARTWORK_HEIGHT = 280;
 
 function PinList({ heading, pins, chosen, onToggle }: { heading: string; pins: BoardPinSlot[]; chosen: number[]; onToggle: (pin: BoardPinSlot) => void }) {
   const { colors } = useTheme();
@@ -141,7 +138,9 @@ export function IoScreen({ uid }: { uid: string }) {
       <Stack.Screen options={{ title: t('ioTitle') }} />
 
       <Card padded={false}>
-        <Image source={artwork} accessibilityLabel={board.hardwareModel} resizeMode="contain" style={{ width: '100%', aspectRatio: aspectOf(artwork) }} />
+        <View style={{ paddingVertical: 8 }}>
+          <Image source={artwork} accessibilityLabel={board.hardwareModel} resizeMode="contain" style={{ width: '100%', height: ARTWORK_HEIGHT }} />
+        </View>
       </Card>
 
       <Card>

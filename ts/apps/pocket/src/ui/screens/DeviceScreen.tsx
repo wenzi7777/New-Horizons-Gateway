@@ -20,6 +20,7 @@ import { View } from 'react-native';
 import type { QuickCommand, RangeMode, VrefZone } from '../../host/contract';
 import { errorText } from '../../i18n/strings';
 import { useConfirm, useToast, type ConfirmOptions } from '../components/feedback';
+import { RfbBoardMap } from '../components/RfbBoardMap';
 import {
   ActionRow,
   Badge,
@@ -348,6 +349,10 @@ export function DeviceScreen({ uid }: { uid: string }) {
                   : t('rfbNotMeasured')
               }
             />
+            <View style={{ paddingHorizontal: 16, paddingVertical: 12, gap: 6 }}>
+              <Caption>{t('rfbMapTitle')}</Caption>
+              <RfbBoardMap board={device.vref.rfbBoard} onDetail={(text) => toast.show(text)} />
+            </View>
             <Divider />
             <FactRow label={t('rangeSaturated')} value={device.vref.saturatedRows ?? '-'} />
             <Divider inset={0} />

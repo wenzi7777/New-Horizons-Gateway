@@ -17,6 +17,7 @@ import type {
   RecordingTimeline,
 } from './contract';
 import { dict, num, str } from './plainJson';
+import { rfbBoard } from './rfbLayout';
 
 export type NetworkInterfaceInfoLike = { name: string; address: string };
 
@@ -135,6 +136,7 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
   const mode: RangeMode = (rawMode === 'conductance' || rawMode === 'auto') && str(range.output_unit) === 'uS' ? rawMode : 'raw';
   const table = Array.isArray(range.rfb_ohm) ? range.rfb_ohm.map((v) => num(v) ?? 0) : [];
   const measured = table.filter((v) => v > 0).sort((a, b) => a - b);
+  const rfbStatus = Array.isArray(range.rfb_status) ? range.rfb_status.map((v) => (typeof v === 'string' ? v : 'unknown')) : [];
   const mv = vref.ok === false ? null : num(vref.mv);
   return {
     mv,
@@ -148,7 +150,8 @@ export function vrefOf(status: Record<string, unknown>): VrefView | null {
     rfbMeasuredRows: Math.max(measured.length, int(range.rfb_known_rows) ?? 0),
     rfbRows: table.length,
     rfbMedianOhm: measured[Math.floor(measured.length / 2)] ?? null,
-    rfbStatus: Array.isArray(range.rfb_status) ? range.rfb_status.map((v) => (typeof v === 'string' ? v : 'unknown')) : [],
+    rfbStatus,
+    rfbBoard: rfbBoard(pinsOf(status)?.analog ?? null, table, rfbStatus),
     saturatedRows: int(range.saturated_rows),
     calibrationOn: vref.calibration_on === true,
   };

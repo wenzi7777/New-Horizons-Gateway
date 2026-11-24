@@ -101,9 +101,12 @@ describe('views', () => {
       rfbRows: 4,
       rfbMedianOhm: 20010,
       rfbStatus: ['ok', 'no_feedback', 'ok', 'ok'],
+      rfbBoard: expect.any(Array),
       saturatedRows: 1,
       calibrationOn: false,
     });
+    // No layout in the status: rows are GPIO 1, 2, ... so Rfb1 is the empty one.
+    expect(vrefOf(status)?.rfbBoard.slice(0, 5).map((item) => item.state)).toEqual(['soldered', 'empty', 'soldered', 'soldered', 'unknown']);
     // Firmware before v2.2 (virtual, or auto in mV): read as raw mV.
     expect(vrefOf({ ...status, range: { mode: 'virtual' } })?.mode).toBe('raw');
     expect(vrefOf({ ...status, range: { mode: 'auto', ref_rfb_ohm: 20000 } })?.mode).toBe('raw');

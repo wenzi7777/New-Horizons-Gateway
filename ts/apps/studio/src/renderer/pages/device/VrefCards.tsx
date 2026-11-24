@@ -3,6 +3,7 @@
 // components/VrefPanel.tsx, v1.7.0). The firmware owns every rule (ceiling,
 // safe value, what needs a measured Rfb); this only asks and shows the answer.
 import { useEffect, useState } from 'react';
+import { pinsOf, rfbBoard } from '@nhgw/host';
 
 import { Card, Disclosure, Field, Notice, NumberInput, OnOffRow, Select, Slider } from '../../components/ui';
 import { record } from '../../lib/deviceDetails';
@@ -10,6 +11,7 @@ import { rsSpreadFraction, summarizeSweep, sweepCsv, sweepRsProblem, type SweepC
 import { useStudio } from '../../state/studio';
 import type { Send } from './DeviceHardware';
 import { useDeviceSettingsT } from './DeviceHardware';
+import { RfbBoardMap } from './RfbBoardMap';
 
 type RfbRow = { row: number; off_mv: number; on_mv: number; rfb_ohm: number; offset_mv?: number; method?: string; status: string };
 type SweepResult = { rows: number; cols: number; steps: SweepStep[]; calibration: SweepCalibration; fallbackRfbOhm: number };
@@ -203,6 +205,12 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
   const rfbDisplay: RfbRow[] = rfbRows ?? rfbTable.map((value, row) => ({ row, off_mv: 0, on_mv: 0, rfb_ohm: value, offset_mv: rfbOffsets[row], status: rfbStatuses[row] || (value > 0 ? 'ok' : '') }));
 
   // The status tiles.
+  // Rfb0-13 on the back of the board; rows follow the matrix layout.
+  const board = rfbBoard(
+    pinsOf(status)?.analog ?? null,
+    rfbDisplay.map((row) => row.rfb_ohm),
+    rfbDisplay.map((row) => row.status),
+  );
   const measuredRfb = rfbDisplay.map((row) => row.rfb_ohm).filter((value) => value > 0).sort((a, b) => a - b);
   const rfbMedian = measuredRfb[Math.floor(measuredRfb.length / 2)] ?? null;
   const zone = vrefZone(currentMv, modeNow);
@@ -356,6 +364,7 @@ export function VrefCards({ status, disabled, busy, send }: { status: Record<str
               {running('rfb_measure') ? t('running') : ds('rfbMeasure')}
             </button>
           </div>
+          <RfbBoardMap board={board} ds={ds} />
           {rfbValid || rfbRows ? (
             <table className="vref-table">
               <thead>

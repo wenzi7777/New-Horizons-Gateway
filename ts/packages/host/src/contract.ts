@@ -6,6 +6,7 @@
 // handing them out.
 
 import type { Locale, ThemeMode } from '@nhgw/ui-tokens';
+import type { RfbBoardState } from './rfbLayout';
 
 export type ConnectionState = 'offline' | 'connecting' | 'online';
 export type ServerTarget = 'production' | 'local' | 'manual';
@@ -94,6 +95,8 @@ export interface VrefView {
   rfbMedianOhm: number | null;
   /** rfb_measure's finding per row ('ok', 'no_feedback', ...; 'unknown' = never measured). */
   rfbStatus: string[];
+  /** Rfb0-13 on the back of the board: soldered or not (rfbLayout.ts). */
+  rfbBoard: RfbBoardState[];
   saturatedRows: number | null;
   calibrationOn: boolean;
 }
