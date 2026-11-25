@@ -1,27 +1,51 @@
 {
   "version": "v2.15.0",
   "notes_url": "https://raw.githubusercontent.com/wenzi7777/New-Horizons-Gateway/studio-v2.15.0/releases/notes/studio-v2.15.0.md",
-  "released_at": "2026-11-25T10:09:51.060Z",
+  "released_at": "2026-11-25T10:44:04.623Z",
   "assets": {
     "darwin-arm64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.15.0/NH-Studio-2.15.0-mac-arm64.dmg",
       "sha256": "4a9fc800ae76b73828451602e8a12f1f19ee4a68454887ae7a97f3b30bb21553",
-      "size": 122809812
+      "size": 122809812,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/4a9fc800ae76b73828451602e8a12f1f19ee4a68454887ae7a97f3b30bb21553",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-25T10:14:47.896Z"
+      }
     },
     "darwin-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.15.0/NH-Studio-2.15.0-mac-x64.dmg",
       "sha256": "10bf4a24ed0d48c822d6966ea9c3965db090eecc6903b0fc78790024db4fed02",
-      "size": 128534798
+      "size": 128534798,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/10bf4a24ed0d48c822d6966ea9c3965db090eecc6903b0fc78790024db4fed02",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-25T10:19:09.844Z"
+      }
     },
     "win32-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.15.0/NH-Studio-2.15.0-win-x64.exe",
       "sha256": "ce2d5ff3df32db3849b387b2121cde1c0fdb1d16838e05f19704c6f069ac4a1a",
-      "size": 123035034
+      "size": 123035034,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/ce2d5ff3df32db3849b387b2121cde1c0fdb1d16838e05f19704c6f069ac4a1a",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-25T10:22:00.477Z"
+      }
     },
     "linux-x64": {
       "url": "https://github.com/wenzi7777/New-Horizons-Gateway/releases/download/studio-v2.15.0/NH-Studio-2.15.0-linux-x86_64.AppImage",
       "sha256": "f8ac99e247a942110cc0626edbb68b3e4e233dd39b3e989a4c8a2c64043596ab",
-      "size": 127725494
+      "size": 127725494,
+      "virustotal": {
+        "url": "https://www.virustotal.com/gui/file/f8ac99e247a942110cc0626edbb68b3e4e233dd39b3e989a4c8a2c64043596ab",
+        "malicious": 0,
+        "suspicious": 0,
+        "scanned_at": "2026-11-25T10:12:27.260Z"
+      }
     }
   }
 }
