@@ -13,6 +13,7 @@ import { PinMap } from '../components/PinMap';
 import { Body, Button, Caption, Card, Empty, Mono, Notice, Screen, SectionHeader } from '../components/primitives';
 import { useI18n } from '../i18n';
 import { useSettings, useStore, useStoreSelector } from '../store';
+import { useAfterTransition } from '../useAfterTransition';
 import { useTheme } from '../theme';
 
 const ARTWORK: Record<BoardPins['artwork'], ImageSourcePropType> = {
@@ -90,6 +91,8 @@ export function IoScreen({ uid }: { uid: string }) {
   const [analog, setAnalog] = useState<number[]>(() => (onDevice?.analog.length ? onDevice.analog : board.defaultAnalogPins));
   const [select, setSelect] = useState<number[]>(() => (onDevice?.select.length ? onDevice.select : board.defaultSelectPins));
   const [dirty, setDirty] = useState(false);
+  // The pin map mounts after the push animation (see useAfterTransition).
+  const shown = useAfterTransition();
   const [busy, setBusy] = useState(false);
 
   // Follow the device until the user starts picking.
@@ -150,7 +153,9 @@ export function IoScreen({ uid }: { uid: string }) {
 
       <Card padded={false}>
         <View style={{ paddingVertical: 8, paddingHorizontal: art ? 6 : 0 }}>
-          {art ? (
+          {art && !shown ? (
+            <View style={{ height: ARTWORK_HEIGHT }} />
+          ) : art ? (
             <PinMap art={art} analogSlots={board.analogPinSlots} digitalSlots={board.digitalPinSlots} analogChosen={analog} selectChosen={select} onToggle={toggle} accessibilityLabel={board.hardwareModel} />
           ) : (
             <Image source={artwork} accessibilityLabel={board.hardwareModel} resizeMode="contain" style={{ width: '100%', height: ARTWORK_HEIGHT }} />

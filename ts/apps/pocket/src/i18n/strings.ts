@@ -14,6 +14,7 @@ const en = {
   tabSettings: 'Settings',
   ok: 'OK',
   retry: 'Retry',
+  appError: 'Something went wrong on this screen.',
 
   // Devices
   myDevices: 'My devices',
@@ -459,6 +460,7 @@ const ja = {
   tabSettings: '設定',
   ok: 'OK',
   retry: '再試行',
+  appError: 'この画面でエラーが発生しました。',
 
   myDevices: 'マイデバイス',
   noDevices: 'デバイスはまだありません。下の「近くのデバイス」から追加してください。',
@@ -895,6 +897,7 @@ const zhCN = {
   tabSettings: '设置',
   ok: '确定',
   retry: '重试',
+  appError: '此画面发生错误。',
 
   myDevices: '我的设备',
   noDevices: '还没有设备。请从下方“附近的设备”中添加。',

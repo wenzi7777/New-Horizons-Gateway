@@ -1,8 +1,8 @@
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import { nativeChromeColor } from '@nhgw/ui-tokens';
 
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 import { onboardingDone, subscribeOnboarding } from '../host/firstRun';
 import { AppProviders } from '../ui/AppProviders';
@@ -50,6 +50,35 @@ function Root() {
     <View style={{ flex: 1 }}>
       <RootStack />
       {guide ? <OnboardingScreen onDone={() => setGuide(false)} /> : null}
+    </View>
+  );
+}
+
+/**
+ * A render error anywhere below (expo-router's per-route boundary): a
+ * message and Retry instead of the app closing.
+ */
+export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
+  return (
+    <AppProviders>
+      <RootError retry={retry} />
+    </AppProviders>
+  );
+}
+
+function RootError({ retry }: { retry: () => Promise<void> }) {
+  const theme = useTheme();
+  const { t } = useI18n();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, backgroundColor: theme.colors.bg }}>
+      <Text style={{ color: theme.colors.text, fontSize: 17, textAlign: 'center' }}>{t('appError')}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void retry()}
+        style={({ pressed }) => ({ paddingHorizontal: 20, paddingVertical: 10, borderRadius: theme.radius.md, backgroundColor: theme.colors.accent, opacity: pressed ? 0.7 : 1 })}
+      >
+        <Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>{t('retry')}</Text>
+      </Pressable>
     </View>
   );
 }

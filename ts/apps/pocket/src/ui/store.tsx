@@ -109,6 +109,11 @@ export function useDevice(uid: string | undefined) {
   return useStoreSelector((store) => store.devices().find((d) => d.uid === uid) ?? null);
 }
 
+/** One device's scan rate, read on its own: it changes several times a second. */
+export function useDeviceFps(uid: string | undefined): number {
+  return useStoreSelector((store) => store.devices().find((d) => d.uid === uid)?.fps ?? 0);
+}
+
 export function useNearby() {
   return useStoreSelector(selectNearby);
 }

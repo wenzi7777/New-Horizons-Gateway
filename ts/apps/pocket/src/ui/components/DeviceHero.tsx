@@ -2,17 +2,20 @@
 // live values pointing at the parts they come from. Null on boards without a
 // drawing (GCU LTS): the screen keeps its plain status card then.
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { boardArtFor } from '@nhgw/host';
 
 import type { DeviceView } from '../../host/contract';
 import { modeLabel } from '../deviceText';
 import { formatDateTime } from '../format';
 import { useI18n } from '../i18n';
+import { useDeviceFps } from '../store';
 import { CalloutDiagram, type CalloutItem } from './CalloutDiagram';
 
-export function DeviceHero({ device }: { device: DeviceView }) {
+/** Memoized: redrawn when a shown field changes; the fps line is read here on its own. */
+export const DeviceHero = memo(function DeviceHero({ device }: { device: Omit<DeviceView, 'fps'> }) {
   const { t, locale } = useI18n();
+  const fps = useDeviceFps(device.uid);
   const router = useRouter();
   const art = boardArtFor(device.hardwareModel);
 
@@ -71,13 +74,13 @@ export function DeviceHero({ device }: { device: DeviceView }) {
       branches: ['digitalFpc'],
       title: t('calloutMatrix'),
       value: rows !== undefined && cols !== undefined ? t('pinsValue', { rows, cols }) : '-',
-      detail: device.online ? t('fpsValue', { fps: device.fps }) : undefined,
+      detail: device.online ? t('fpsValue', { fps }) : undefined,
       tone: device.online ? 'ok' : 'muted',
       onPress: () => router.push({ pathname: '/pins/[uid]', params: { uid: device.uid } }),
     });
     return out;
-  }, [device, t, locale, router]);
+  }, [device, fps, t, locale, router]);
 
   if (!art) return null;
   return <CalloutDiagram art={art} items={items} accessibilityLabel={t('heroLabel')} />;
-}
+});

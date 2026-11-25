@@ -158,12 +158,17 @@ export const BoardDrawingNative = memo(function BoardDrawingNative({ art, highli
   );
 });
 
-export function CalloutDiagram({ art, items, maxBoardHeight = 260, accessibilityLabel }: { art: BoardArt; items: readonly CalloutItem[]; maxBoardHeight?: number; accessibilityLabel: string }) {
+export const CalloutDiagram = memo(function CalloutDiagram({ art, items, maxBoardHeight = 260, accessibilityLabel }: { art: BoardArt; items: readonly CalloutItem[]; maxBoardHeight?: number; accessibilityLabel: string }) {
   const { colors } = useTheme();
   const [width, setWidth] = useState(0);
   const [pressed, setPressed] = useState<string | null>(null);
   const labelWidth = Math.max(96, Math.round(width * 0.29));
-  const layout = useMemo(() => (width > 0 ? calloutLayout(art, items, { width, labelWidth, labelHeight: 54, maxBoardHeight, gap: 8, padding: 4 }) : null), [art, items, width, labelWidth, maxBoardHeight]);
+  // The layout depends only on which parts are called out, not on the values
+  // shown (a ticking fps must not lay the diagram out again).
+  const specsKey = items.map((item) => `${item.id}:${item.target}:${(item.branches ?? []).join('+')}:${item.side ?? ''}`).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const specs = useMemo(() => items, [specsKey]);
+  const layout = useMemo(() => (width > 0 ? calloutLayout(art, specs, { width, labelWidth, labelHeight: 54, maxBoardHeight, gap: 8, padding: 4 }) : null), [art, specs, width, labelWidth, maxBoardHeight]);
   const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items]);
   const highlight = useMemo(() => {
     const item = pressed ? byId.get(pressed) : undefined;
@@ -225,4 +230,4 @@ export function CalloutDiagram({ art, items, maxBoardHeight = 260, accessibility
       ) : null}
     </View>
   );
-}
+});

@@ -15,6 +15,7 @@ import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from 'r
 
 import { getLiveViews } from '../../host';
 import type { LiveViewState } from '../../host/liveViews';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Heatmap, HeatmapLegend } from '../components/Heatmap';
 import { ImuPanels, type ImuPanelLabels } from '../components/ImuPanels';
 import { Caption, Card, Empty, Screen, SegmentedControl } from '../components/primitives';
@@ -26,6 +27,7 @@ import { useFeed, useFeedFrame, useLiveFeed, noteRender, renderFps, type LiveFee
 import { RANGE_PRESETS, type PressureRange } from '../pressureColor';
 import { sameData } from '../shareData';
 import { useStoreSelector } from '../store';
+import { useAfterTransition } from '../useAfterTransition';
 import { useTheme } from '../theme';
 import { useRecordingElapsed, useRecordingToggle } from './DeviceScreen';
 
@@ -219,16 +221,18 @@ const LiveMap = memo(function LiveMap({
   return (
     <>
       {mode === '3d' ? (
-        <Surface3D
-          values={surface?.values ?? null}
-          rows={surface?.rows ?? rows}
-          cols={surface?.cols ?? cols}
-          range={range}
-          height={viewHeight}
-          active={active}
-          label={label}
-          onUnavailable={onNo3d}
-        />
+        <ErrorBoundary onError={onNo3d}>
+          <Surface3D
+            values={surface?.values ?? null}
+            rows={surface?.rows ?? rows}
+            cols={surface?.cols ?? cols}
+            range={range}
+            height={viewHeight}
+            active={active}
+            label={label}
+            onUnavailable={onNo3d}
+          />
+        </ErrorBoundary>
       ) : (
         <Heatmap
           values={shownProfile ? (frame?.values ?? null) : (grid?.values ?? null)}
@@ -336,6 +340,8 @@ export function LiveScreen({ uid }: { uid: string }) {
       : null;
   });
   const feed = useLiveFeed(uid, focused);
+  // The map and the IMU panels mount after the push animation (see useAfterTransition).
+  const shown = useAfterTransition();
   // The screen re-renders for a new matrix shape only; the parts below read the frames.
   const shape = useFeed(feed, STATS_HZ, frameShape, sameData);
   const [rangeIndex, setRangeIndex] = useState(0);
@@ -452,21 +458,25 @@ export function LiveScreen({ uid }: { uid: string }) {
       <Card>
         {streamRows > 0 && streamCols > 0 ? (
           <>
-            <LiveMap
-              feed={feed}
-              mode={mode}
-              transform={transform}
-              streamRows={streamRows}
-              streamCols={streamCols}
-              shownProfile={shownProfile}
-              pinLabels={pinLabels}
-              range={range}
-              viewHeight={viewHeight}
-              mapHeight={mapHeight}
-              active={focused}
-              label={label}
-              onNo3d={onNo3d}
-            />
+            {shown ? (
+              <LiveMap
+                feed={feed}
+                mode={mode}
+                transform={transform}
+                streamRows={streamRows}
+                streamCols={streamCols}
+                shownProfile={shownProfile}
+                pinLabels={pinLabels}
+                range={range}
+                viewHeight={viewHeight}
+                mapHeight={mapHeight}
+                active={focused}
+                label={label}
+                onNo3d={onNo3d}
+              />
+            ) : (
+              <View style={{ height: mode === '3d' ? viewHeight : Math.min(mapHeight, 320) }} />
+            )}
             {no3d && view.mode === '3d' ? <Caption style={{ textAlign: 'center' }}>{t('live3dUnavailable')}</Caption> : null}
             <HeatmapLegend range={range} />
           </>
@@ -477,7 +487,7 @@ export function LiveScreen({ uid }: { uid: string }) {
 
       <LiveStats feed={feed} transform={transform} streamRows={streamRows} streamCols={streamCols} shownProfile={shownProfile} />
 
-      <LiveImu feed={feed} labels={imuLabels} />
+      {shown ? <LiveImu feed={feed} labels={imuLabels} /> : null}
 
       <Card>
         <Caption>{t('liveRange')}</Caption>

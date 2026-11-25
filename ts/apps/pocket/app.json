@@ -33,7 +33,8 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "extraProguardRules": "# expo-gl: GLView extends TextureView (not ExpoView), so expo-modules-core's\n# keep rule misses the (Context, AppContext) constructor the view manager\n# calls by reflection; R8 stripped it and switching to 3D crashed. The JNI\n# side (EXGL) is looked up by name too.\n-keep class expo.modules.gl.** { *; }\n"
           }
         }
       ],

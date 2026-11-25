@@ -1,6 +1,7 @@
 // The "Illustrated" device page's power and data paths (@nhgw/host powerFlow /
 // connectionFlow). A phone only relays its own devices over Wi-Fi, so the
 // relay box is this phone and its server link is the app's own.
+import { memo } from 'react';
 import { View } from 'react-native';
 import { connectionFlow, powerFlow, type DeviceView } from '@nhgw/host';
 
@@ -9,7 +10,7 @@ import { useSettings, useStatus } from '../store';
 import { FlowPath } from './FlowPath';
 import { Caption } from './primitives';
 
-export function DeviceFlows({ device }: { device: DeviceView }) {
+export const DeviceFlows = memo(function DeviceFlows({ device }: { device: Omit<DeviceView, 'fps'> }) {
   const { t } = useI18n();
   const status = useStatus();
   const settings = useSettings();
@@ -49,4 +50,4 @@ export function DeviceFlows({ device }: { device: DeviceView }) {
       />
     </View>
   );
-}
+});

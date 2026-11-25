@@ -46,7 +46,8 @@ import {
 import { batteryLabel, modeLabel } from '../deviceText';
 import { formatDateTime, formatDuration } from '../format';
 import { useI18n } from '../i18n';
-import { useDevice, useNow, usePocketSync, useRecordings, useSettings, useStore } from '../store';
+import { useDeviceFps, useNow, usePocketSync, useRecordings, useSettings, useStore, useStoreSelector } from '../store';
+import { useAfterTransition } from '../useAfterTransition';
 import { syncErrorCode } from '../../host/sync';
 import { useTheme } from '../theme';
 import { ChoiceSegment } from '../components/ChoiceSegment';
@@ -69,6 +70,27 @@ export function useRecordingElapsed(uid: string | undefined): number | null {
   const active = recordings.find((r) => r.uid === uid && r.inProgress);
   return active ? Math.max(0, now - active.startedAtMs) : null;
 }
+
+/** "59 fps" next to the status; the only part of the header that ticks. */
+function FpsCaption({ uid }: { uid: string }) {
+  const { t } = useI18n();
+  const fps = useDeviceFps(uid);
+  return fps > 0 ? <Caption>{t('fpsValue', { fps })}</Caption> : null;
+}
+
+function FpsFact({ uid }: { uid: string }) {
+  const { t } = useI18n();
+  return <FactRow label={t('liveFps')} value={String(useDeviceFps(uid))} />;
+}
+
+/** The running recording's elapsed time, ticking once a second (mounted only while recording). */
+function ElapsedCaption({ uid }: { uid: string }) {
+  const elapsed = useRecordingElapsed(uid);
+  return elapsed !== null ? <Caption style={{ fontVariant: ['tabular-nums'] }}>{formatDuration(elapsed)}</Caption> : null;
+}
+
+/** Where the board drawing goes until the push animation ends (CalloutDiagram's default height). */
+const HERO_PLACEHOLDER = 260;
 
 /** Start/stop a device's recording with toasts; shared by the device and live screens. */
 export function useRecordingToggle(uid: string | undefined) {
@@ -101,14 +123,21 @@ export function DeviceScreen({ uid }: { uid: string }) {
   const store = useStore();
   const toast = useToast();
   const confirm = useConfirm();
-  const device = useDevice(uid);
+  // Everything but fps (and lastSeenMs while online): the fps ticks several
+  // times a second and is read by the small parts that show it.
+  const device = useStoreSelector((s) => {
+    const d = s.devices().find((entry) => entry.uid === uid);
+    if (!d) return null;
+    const { fps: _fps, ...rest } = d;
+    return rest;
+  });
   const { uiStyle } = useSettings();
-  const elapsed = useRecordingElapsed(uid);
   const recording = useRecordingToggle(uid);
+  const shown = useAfterTransition();
   const [busy, setBusy] = useState<CommandKey | null>(null);
   const [nickname, setNickname] = useState(device?.nickname ?? '');
   const [nicknameDirty, setNicknameDirty] = useState(false);
-  const [scanRate, setScanRate] = useState<60 | 90>(device && device.fps > 75 ? 90 : 60);
+  const [scanRate, setScanRate] = useState<60 | 90>(() => ((store.devices().find((d) => d.uid === uid)?.fps ?? 0) > 75 ? 90 : 60));
   // The reading mode (ADC mV / conductance / conductance + smart Vref), sent with Apply.
   const vrefMode = device?.vref?.mode ?? 'raw';
   const [modeDraft, setModeDraft] = useState<RangeMode>(vrefMode);
@@ -191,6 +220,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
   };
 
   const battery = batteryLabel(t, device);
+  const illustrated = uiStyle === 'modern' && Boolean(boardArtFor(device.hardwareModel));
   const recState = device.recording;
 
   return (
@@ -201,19 +231,15 @@ export function DeviceScreen({ uid }: { uid: string }) {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <StatusDot tone={offline ? 'muted' : 'success'} />
           <Body style={{ fontWeight: '600' }}>{offline ? t('deviceOffline') : t('deviceOnline')}</Body>
-          {device.online && device.fps > 0 ? <Caption>{t('fpsValue', { fps: device.fps })}</Caption> : null}
+          {device.online ? <FpsCaption uid={uid} /> : null}
           {maintenance ? <Badge label={t('modeMaintenance')} tone="warning" icon={Wrench} /> : null}
           {recState.enabled ? <Badge label={t('recBadge')} tone="danger" solid /> : null}
         </View>
         {offline && device.lastSeenMs ? <Caption>{t('lastSeen', { time: formatDateTime(device.lastSeenMs, locale) })}</Caption> : null}
-        {uiStyle === 'modern' && boardArtFor(device.hardwareModel) ? <DeviceHero device={device} /> : null}
+        {illustrated ? (shown ? <DeviceHero device={device} /> : <View style={{ height: HERO_PLACEHOLDER }} />) : null}
       </Card>
 
-      {uiStyle === 'modern' && boardArtFor(device.hardwareModel) ? (
-        <Card>
-          <DeviceFlows device={device} />
-        </Card>
-      ) : null}
+      {illustrated ? <Card>{shown ? <DeviceFlows device={device} /> : <View style={{ height: 72 }} />}</Card> : null}
 
       {offline ? (
         <Notice tone="warning" icon={WifiOff}>
@@ -246,7 +272,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
             <Body style={{ fontWeight: '600' }}>
               {recState.finishing ? t('recordingFinishing') : recState.enabled ? t('recordingActive') : t('recordingIdle')}
             </Body>
-            {elapsed !== null ? <Caption style={{ fontVariant: ['tabular-nums'] }}>{formatDuration(elapsed)}</Caption> : null}
+            {recState.enabled ? <ElapsedCaption uid={uid} /> : null}
           </View>
           {recState.enabled ? (
             <Button
@@ -463,7 +489,7 @@ export function DeviceScreen({ uid }: { uid: string }) {
         <Divider />
         <FactRow label={t('infoGroup')} value={device.group || '-'} />
         <Divider />
-        <FactRow label={t('liveFps')} value={String(device.fps)} />
+        <FpsFact uid={uid} />
       </Collapsible>
 
       <Card padded={false}>

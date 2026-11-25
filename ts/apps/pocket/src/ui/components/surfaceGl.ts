@@ -14,7 +14,12 @@ export type Mat4 = Float32Array;
 export type Orbit = { theta: number; phi: number; distance: number };
 
 export const SURFACE_TARGET: Vec3 = [0, 0.15, 0];
-export const SURFACE_START: Orbit = { theta: 0, phi: 0.67, distance: 2.4 };
+// The Desktop's starting view (VisualizationPage resetSurfaceCamera: camera at
+// (0.8, 0.75, 1.15) x the surface size): turned about 35 deg to the side and
+// looking down about 28 deg, so the surface opens at an angle rather than
+// face-on. The host geometry spans +-1, twice the Desktop's unit, hence the
+// distance.
+export const SURFACE_START: Orbit = { theta: 0.608, phi: 1.079, distance: 3.0 };
 export const SURFACE_FOV_DEG = 42;
 /** three.js GridHelper(2.4, 12), just under the surface. */
 export const GRID_SIZE = 2.4;
