@@ -230,7 +230,18 @@ export function liveFrame(uid: string, data: Record<string, unknown>, shape: { r
     cols: fits ? shape.cols : values.length,
     timestampMs: num(data.timestamp_ms) ?? num(data.device_epoch_ms) ?? 0,
     fps: int(data.device_udp_fps) ?? 0,
+    ...imuField('gyro', data),
+    ...imuField('acc', data),
+    ...imuField('mag', data),
   };
+}
+
+/** `gyro` / `acc` / `mag` from the frame (top level or under `imu`), as { [key]: [x, y, z] } or {}. */
+function imuField(key: 'gyro' | 'acc' | 'mag', data: Record<string, unknown>): { gyro?: number[]; acc?: number[]; mag?: number[] } {
+  const raw = data[key] ?? dict(data.imu)[key];
+  if (!Array.isArray(raw) || raw.length < 3) return {};
+  const vector = raw.slice(0, 3).map((v) => num(v) ?? 0);
+  return { [key]: vector };
 }
 
 /**

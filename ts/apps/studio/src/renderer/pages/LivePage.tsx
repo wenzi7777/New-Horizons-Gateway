@@ -5,14 +5,15 @@
 // presets and "Show COP" apply to every card.
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { matrixPinLabels } from '@nhgw/host';
+import { ImuHistory, matrixPinLabels, profilePoints } from '@nhgw/host';
 import { Circle, Square, X } from 'lucide-react';
 
 import type { DeviceView } from '../../shared/contract';
 import { ColourScale, Heatmap } from '../components/Heatmap';
+import { ImuPanels } from '../components/ImuPanels';
 import { Field, Notice, Segmented, StatusDot, Checkbox, NumberInput, Select, Slider } from '../components/ui';
 import { useAreaT } from '../areas/i18n';
-import { computeCop, interpolateGrid, mirrorValues } from '../lib/visualization';
+import { computeCop, computePointsCop, interpolateGrid, mirrorProfileSensors, transformGrid, transformPinLabels } from '../lib/visualization';
 import { LIVE_STRINGS } from './liveStrings';
 import './live.css';
 import { formatValue } from '../lib/format';
@@ -126,7 +127,7 @@ export default function LivePage({ route, navigate }: Props) {
   );
 }
 
-type CardView = { mode: '3d' | '2d'; rowMirror: boolean; colMirror: boolean; dotSize: number };
+type CardView = { mode: '3d' | '2d'; rowMirror: boolean; colMirror: boolean; transpose: boolean; dotSize: number };
 
 function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: { device: DeviceView; range: PressureRange; showCop: boolean; no3d: boolean; onRemove: () => void; onUnavailable3d: () => void }) {
   const { t, exec, api } = useStudio();
@@ -134,7 +135,7 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
   const frame = useLiveFrame(device.online && device.matrix ? device.uid : null);
   const rec = device.recording;
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<CardView>({ mode: '2d', rowMirror: false, colMirror: false, dotSize: 1 });
+  const [view, setView] = useState<CardView>({ mode: '2d', rowMirror: false, colMirror: false, transpose: false, dotSize: 1 });
   const mode = no3d ? '2d' : view.mode;
   const label = t('heatmapLabel', { device: device.displayName });
   // A device's sensor-layout profile (Profiles page) places its sensors in 2D;
@@ -142,22 +143,38 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
   const profile = useDeviceProfile(device.uid);
   const profileList = useProfileList();
   const profiles = useProfilesClient();
-  const rows = device.matrix?.rows ?? frame?.rows ?? 0;
-  const cols = device.matrix?.cols ?? frame?.cols ?? 0;
-  const values = useMemo(() => (frame ? mirrorValues(frame.values, rows, cols, view.rowMirror, view.colMirror) : null), [frame, rows, cols, view.rowMirror, view.colMirror]);
-  // A.. / D.. names for the drawn rows and columns (mirroring moves them too).
+  const streamRows = device.matrix?.rows ?? frame?.rows ?? 0;
+  const streamCols = device.matrix?.cols ?? frame?.cols ?? 0;
+  // A profile places its sensors over its own picture: the mirrors flip those
+  // positions (values stay with their sensor) and Transpose does not apply.
+  const usesProfile = Boolean(profile && profilePoints(profile, null, frame?.values.length ?? Infinity).length);
+  const transform = useMemo(
+    () => ({ rowMirror: view.rowMirror, colMirror: view.colMirror, transpose: view.transpose && !usesProfile }),
+    [view.rowMirror, view.colMirror, view.transpose, usesProfile],
+  );
+  // Transpose first, then the mirrors on what is drawn (@nhgw/host transformGrid).
+  const grid = useMemo(
+    () => (frame ? transformGrid(frame.values, streamRows, streamCols, transform) : null),
+    [frame, streamRows, streamCols, transform],
+  );
+  const rows = transform.transpose ? streamCols : streamRows;
+  const cols = transform.transpose ? streamRows : streamCols;
+  const values = usesProfile ? (frame?.values ?? null) : (grid?.values ?? null);
+  // A.. / D.. names for the drawn rows and columns (the transform moves them too).
   const pinLabels = useMemo(() => {
-    const labels = matrixPinLabels(device.hardwareModel, device.pins, rows, cols);
-    if (!labels) return null;
-    return {
-      rows: view.rowMirror ? [...labels.rows].reverse() : labels.rows,
-      cols: view.colMirror ? [...labels.cols].reverse() : labels.cols,
-    };
-  }, [device.hardwareModel, device.pins, rows, cols, view.rowMirror, view.colMirror]);
-  const surface = useMemo(() => (values && mode === '3d' ? interpolateGrid(values, rows, cols) : null), [values, mode, rows, cols]);
-  const cop = useMemo(() => computeCop(values ?? [], rows, cols), [values, rows, cols]);
+    const labels = matrixPinLabels(device.hardwareModel, device.pins, streamRows, streamCols);
+    return labels ? transformPinLabels(labels, transform) : null;
+  }, [device.hardwareModel, device.pins, streamRows, streamCols, transform]);
+  const shownProfile = useMemo(
+    () => (profile ? { ...mirrorProfileSensors(profile, view.rowMirror, view.colMirror), display: { ...(profile.display ?? {}), dotSize: view.dotSize } } : null),
+    [profile, view.rowMirror, view.colMirror, view.dotSize],
+  );
+  const surface = useMemo(() => (grid && mode === '3d' ? interpolateGrid(grid.values, rows, cols) : null), [grid, mode, rows, cols]);
+  const cop = useMemo(
+    () => (usesProfile && shownProfile ? computePointsCop(profilePoints(shownProfile, values, values?.length ?? 0), rows, cols) : computeCop(values ?? [], rows, cols)),
+    [usesProfile, shownProfile, values, rows, cols],
+  );
   const maxPressure = values && values.length ? Math.max(...values) : 0;
-  const shownProfile = useMemo(() => (profile ? { ...profile, display: { ...(profile.display ?? {}), dotSize: view.dotSize } } : null), [profile, view.dotSize]);
   // Samples and render FPS, counted here like the Desktop's card.
   const samples = useRef(0);
   const renders = useRef<number[]>([]);
@@ -168,6 +185,22 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
     renders.current = [...renders.current.filter((at) => now - at < 1000), now];
   }, [frame]);
   const renderFps = renders.current.length;
+  // Ten seconds of IMU / magnetometer for the IMU panels (pushed once per frame).
+  const imu = useRef(new ImuHistory());
+  const imuFrame = useRef<typeof frame>(null);
+  if (frame && frame !== imuFrame.current) {
+    imuFrame.current = frame;
+    imu.current.push(Date.now(), frame);
+  }
+  const imuLabels = {
+    acc: lt('imuAcc'),
+    gyro: lt('imuGyro'),
+    mag: lt('imuMag'),
+    noMag: lt('imuNoMag'),
+    heading: lt('imuHeading'),
+    tilt: lt('imuTilt'),
+    magnitude: lt('imuMagnitude'),
+  };
   const badge = !device.online ? 'offline' : frame ? 'live' : 'waiting';
   const badgeLabel = badge === 'live' ? lt('live') : badge === 'waiting' ? lt('waitingForData') : lt('offline');
   const update = (patch: Partial<CardView>) => setView((v) => ({ ...v, ...patch }));
@@ -235,6 +268,10 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
           <Checkbox checked={view.colMirror} onChange={(e) => update({ colMirror: e.target.checked })} />
           <span>{lt('colMirror')}</span>
         </label>
+        <label className="viz-switch" title={usesProfile ? lt('transposeProfileHint') : undefined}>
+          <Checkbox checked={transform.transpose} disabled={usesProfile} onChange={(e) => update({ transpose: e.target.checked })} />
+          <span>{lt('transpose')}</span>
+        </label>
         <span className="viz-card-shape" title={lt('matrixShape')}>
           {rows} × {cols}
         </span>
@@ -279,6 +316,8 @@ function LivePanel({ device, range, showCop, no3d, onRemove, onUnavailable3d }: 
           </div>
         ) : null}
       </dl>
+
+      <ImuPanels history={imu.current} now={Date.now()} labels={imuLabels} />
 
       {!device.matrix ? (
         <p className="empty">{t('liveNoMatrix')}</p>

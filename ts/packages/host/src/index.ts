@@ -11,6 +11,8 @@ export { RecordingCatalog, recordingDirectory, recordingIdOf } from './recording
 export { decideRecovery, FAILED_SUFFIX, parseSidecar, recoverCaptures, RECOVERY_CHUNK_BYTES } from './recovery';
 export { LatestThrottle, LIVE_FRAME_INTERVAL_MS, realTimers, type TimerPort } from './throttle';
 export * from './views';
+export * from './visualization';
+export * from './imu';
 export * from './boardPins';
 export * from './rfbLayout';
 export * from './boardArt';

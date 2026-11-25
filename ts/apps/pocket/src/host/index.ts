@@ -2,10 +2,11 @@
 // and expo-sharing. Screens import this (or src/host/mockStore.ts).
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import { AppHost, type HostNative } from '@nhgw/host';
+import { AppHost, type HostFiles, type HostNative } from '@nhgw/host';
 
 import NhGatewayNative from '../../modules/nh-gateway-native/src/NhGatewayNativeModule';
 import type { PocketStore } from './contract';
+import { createLiveViews, demoProfileText, memoryFiles, type LiveViews } from './liveViews';
 import { secureCredentials } from './secureCredentials';
 import { createPocketSync, networkReader, type PocketSync } from './sync';
 
@@ -41,4 +42,16 @@ export function getPocketSync(): PocketSync | null {
   const model = String((Platform.constants as { Model?: unknown } | undefined)?.Model ?? '').trim();
   syncInstance = createPocketSync(instance, NhGatewayNative as unknown as HostNative, model || 'Android', networkReader(NhGatewayNative), secureCredentials);
   return syncInstance;
+}
+
+let liveViewsInstance: LiveViews | null = null;
+
+/** The live screen's per-device views and the synced profiles (a demo folder without the native module). */
+export function getLiveViews(): LiveViews {
+  if (liveViewsInstance !== null) return liveViewsInstance;
+  liveViewsInstance =
+    NhGatewayNative !== null
+      ? createLiveViews(NhGatewayNative as unknown as HostFiles)
+      : createLiveViews(memoryFiles({ 'profiles/demo-ring.json': demoProfileText() }));
+  return liveViewsInstance;
 }

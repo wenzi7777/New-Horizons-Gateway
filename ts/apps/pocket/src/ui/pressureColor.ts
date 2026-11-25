@@ -28,14 +28,25 @@ export function cssColorForValue(value: number, range: PressureRange): string {
   return `hsl(${h}deg ${s}% ${l}%)`;
 }
 
-export function hslToHex(h: number, s: number, l: number): string {
+/** HSL to sRGB 0..1 channels (three.js vertex colours), as NH Studio. */
+export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const sat = s / 100;
   const light = l / 100;
   const k = (n: number) => (n + h / 30) % 12;
   const a = sat * Math.min(light, 1 - light);
   const channel = (n: number) => light - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [channel(0), channel(8), channel(4)];
+}
+
+export function hslToHex(h: number, s: number, l: number): string {
   const hex = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0');
-  return `#${hex(channel(0))}${hex(channel(8))}${hex(channel(4))}`;
+  const [r, g, b] = hslToRgb(h, s, l);
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+export function rgbForValue(value: number, range: PressureRange): [number, number, number] {
+  const { h, s, l } = hslForValue(value, range);
+  return hslToRgb(h, s, l);
 }
 
 export function colorForValue(value: number, range: PressureRange): string {

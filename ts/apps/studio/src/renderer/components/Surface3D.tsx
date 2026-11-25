@@ -7,6 +7,8 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+import { surfaceGeometry as sharedSurfaceGeometry } from '@nhgw/host';
+
 import { rgbForValue, valueRatio, type PressureRange } from '../lib/pressureColor';
 
 export type Surface3DProps = {
@@ -18,37 +20,9 @@ export type Surface3DProps = {
   onUnavailable: () => void;
 };
 
-/** Positions (x, height, z) and colours for a rows×cols surface, plus its triangle indices. */
+/** Positions (x, height, z) and colours for a rows×cols surface, plus its triangle indices (shared with NH Pocket). */
 export function surfaceGeometry(values: readonly number[], rows: number, cols: number, range: PressureRange) {
-  const scale = Math.max(rows, cols, 1);
-  const width = cols / scale;
-  const depth = rows / scale;
-  const positions = new Float32Array(rows * cols * 3);
-  const colors = new Float32Array(rows * cols * 3);
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const i = r * cols + c;
-      const value = values[i] ?? range.min;
-      positions[i * 3] = (cols === 1 ? 0 : c / (cols - 1) - 0.5) * width * 2;
-      positions[i * 3 + 1] = valueRatio(value, range) * 0.6;
-      positions[i * 3 + 2] = (rows === 1 ? 0 : r / (rows - 1) - 0.5) * depth * 2;
-      const [red, green, blue] = rgbForValue(value, range);
-      colors[i * 3] = red;
-      colors[i * 3 + 1] = green;
-      colors[i * 3 + 2] = blue;
-    }
-  }
-  const indices: number[] = [];
-  for (let r = 0; r < rows - 1; r++) {
-    for (let c = 0; c < cols - 1; c++) {
-      const a = r * cols + c;
-      const b = a + 1;
-      const d = a + cols;
-      const e = d + 1;
-      indices.push(a, d, b, b, d, e);
-    }
-  }
-  return { positions, colors, indices };
+  return sharedSurfaceGeometry(values, rows, cols, (v) => valueRatio(v, range), (v) => rgbForValue(v, range), range.min);
 }
 
 function token(name: string, fallback: string): string {

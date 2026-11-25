@@ -126,6 +126,11 @@ export interface LiveFrame {
   cols: number;
   timestampMs: number;
   fps: number;
+  /** IMU readings (x, y, z) when the frame carried them. */
+  gyro?: number[];
+  acc?: number[];
+  /** Magnetometer (x, y, z in µT) when the board has one and it reported. */
+  mag?: number[];
 }
 
 export interface RecordingSummary {

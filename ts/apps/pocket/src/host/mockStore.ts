@@ -331,7 +331,20 @@ export class MockPocketStore implements PocketStore {
     const device = this.deviceList.find((d) => d.uid === uid);
     if (!device || !device.online || !device.matrix || device.mode === 'maintenance') return;
     const values = generateFrame(uid, device.matrix.rows, device.matrix.cols, Date.now(), device.tare);
-    const frame: LiveFrame = { uid, values, rows: device.matrix.rows, cols: device.matrix.cols, timestampMs: Date.now(), fps: device.fps };
+    const t = Date.now() / 1000;
+    const frame: LiveFrame = {
+      uid,
+      values,
+      rows: device.matrix.rows,
+      cols: device.matrix.cols,
+      timestampMs: Date.now(),
+      fps: device.fps,
+      // A slow wobble, so the IMU readouts move in review.
+      gyro: [Math.sin(t) * 12, Math.cos(t * 0.7) * 8, Math.sin(t * 0.3) * 3],
+      acc: [Math.sin(t * 0.5) * 0.05, 0.98, Math.cos(t * 0.5) * 0.05],
+      // Earth's field (~45 µT, dipping) turning slowly, so the heading dial moves.
+      mag: [Math.cos(t * 0.2) * 25, Math.sin(t * 0.2) * 25, -38],
+    };
     for (const listener of [...(this.liveListeners.get(uid) ?? [])]) listener(frame);
   }
 
