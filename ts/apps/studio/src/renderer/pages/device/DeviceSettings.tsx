@@ -62,6 +62,8 @@ import { ActionButtonCard, BatteryLedCard, ConnectionCard, LightsCard, PinsCard,
 import { PowerFlowView } from './FlowViews';
 import { DeviceHealthCard } from './DeviceHealthCard';
 import { ChoiceSegment } from '../../components/callout/ChoiceSegment';
+import { magnetometerHint } from '@nhgw/host';
+import { MagnetometerCard } from './mag/MagnetometerCard';
 
 /** A draft that follows the device's value until the user edits it. */
 function useDraft<V>(value: V): [V, (next: V) => void, boolean, () => void] {
@@ -123,6 +125,8 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
     }
   };
   const cardProps = { device, status, disabled, busy, send };
+  const magHint = magnetometerHint(status.magnetometer, Date.now());
+  const magAttention = magHint !== null && magHint.state !== 'ok';
 
   const body: Record<DeviceSettingsSectionId, ReactNode> = {
     connection: <ConnectionCard {...cardProps} record={rec} />,
@@ -140,12 +144,14 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
       <>
         <ScanSection view={view} disabled={disabled} busy={busy} send={send} />
         <StreamSection view={view} disabled={disabled} busy={busy} send={send} />
+        <MagnetometerCard variant="runtime" uid={device.uid} hardwareModel={device.hardwareModel} status={status} disabled={disabled} busy={busy} send={send} />
       </>
     ),
     clock: <ClockSection device={device} disabled={disabled} busy={busy} send={send} />,
     update: <UpdateSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />,
     maintenance: (
       <>
+        <MagnetometerCard variant="maintenance" uid={device.uid} hardwareModel={device.hardwareModel} status={status} disabled={disabled} busy={busy} send={send} />
         <MaintenanceSection device={device} view={view} disabled={disabled} busy={busy} send={send} ask={ask} />
         <RestartCard disabled={disabled} busy={busy} send={send} ask={ask} />
       </>
@@ -174,6 +180,7 @@ export function DeviceSettings({ device, initialSection }: { device: DeviceView;
         {DEVICE_SETTINGS_SECTIONS.map((id) => (
           <button key={id} type="button" className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} onClick={() => setActive(id)}>
             {ds(`settingsSection_${id}`)}
+            {id === 'maintenance' && magAttention ? <span className="settings-nav-dot" aria-hidden="true" /> : null}
           </button>
         ))}
         <button className="button tiny ghost chip-refresh" type="button" disabled={disabled} onClick={() => void send(t('actionStatus'), statusCommand(), { success: t('statusRefreshed') })}>
@@ -356,7 +363,7 @@ function StreamSection({ view, disabled, busy, send }: SectionProps) {
   return (
     <>
       <Card title={t('imuTitle')} copy={t('imuCopy')}>
-        <OnOffRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}`} />
+        <OnOffRow checked={imu} onChange={setImu} title={t('enabledLabel')} copy={`${view.imu.state}${view.imu.sampleRateHz ? ` · ${view.imu.sampleRateHz} Hz` : ''}${view.imu.odrHz ? ` · ODR ${view.imu.odrHz} Hz` : ''}`} />
         {view.imu.lastError ? <Notice kind="error">{view.imu.lastError}</Notice> : null}
         <SaveRow dirty={imuDirty} onRevert={resetImu} disabled={disabled || !imuDirty} running={busy === 'set_imu'} onSave={() => void send(t('imuTitle'), imuCommand(imu)).then((o) => o.ok && resetImu())} />
       </Card>

@@ -1,0 +1,317 @@
+/* Magnetometer and its calibration wizard: the Desktop's styles
+   (New-Horizons-Desktop src/styles.css, "magnetometer calibration"). */
+
+.device-settings-nav button { position: relative; }
+
+.device-settings-nav button .settings-nav-dot {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: var(--warning);
+}
+
+.mag-hint-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(178, 80, 0, 0.25);
+  background: rgba(178, 80, 0, 0.08);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mag-hint-badge.soon {
+  border-color: rgba(176, 130, 0, 0.3);
+  background: rgba(176, 130, 0, 0.08);
+  color: #8f5f00;
+}
+
+.mag-card { display: grid; gap: 12px; }
+
+.mag-hint-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(178, 80, 0, 0.22);
+  background: rgba(178, 80, 0, 0.08);
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.mag-hint-banner.soon {
+  border-color: rgba(176, 130, 0, 0.25);
+  background: rgba(176, 130, 0, 0.08);
+  color: color-mix(in srgb, #8f5f00 var(--ink), var(--text));
+}
+
+.mag-hint-banner span { flex: 1; }
+
+.mag-cal-panel {
+  display: grid;
+  gap: 16px;
+  width: min(920px, 100%);
+  max-height: min(92vh, 900px);
+}
+
+.mag-cal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.mag-cal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+}
+
+.mag-cal-title h3 { margin: 0; color: var(--text); }
+
+.mag-cal-steps {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.mag-cal-steps li {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-soft);
+  color: var(--text-muted);
+}
+
+.mag-cal-steps li.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.mag-cal-steps li.done { color: var(--text-dim); }
+
+.mag-cal-body { display: grid; gap: 14px; }
+
+.mag-cal-split {
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .mag-cal-split { grid-template-columns: 1fr; }
+  .mag-cal-steps { display: none; }
+}
+
+.mag-cal-copy { display: grid; gap: 12px; }
+.mag-cal-copy h4 { margin: 0; }
+
+.mag-cal-checklist {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.mag-cal-footnote { margin: 0; font-size: 12px; }
+
+/* The turning board. */
+.mag-turn {
+  --mag-board-pcb: #1f6b54;
+  --mag-board-pcb-edge: #17533f;
+  --mag-board-module: #c9ccd1;
+  --mag-board-antenna: #2f8a6d;
+  --mag-board-metal: #a7abb2;
+  --mag-board-plug: #f1ede2;
+  --mag-board-ic: #2b2b2e;
+  --mag-board-led: #f4f4f4;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  justify-items: center;
+}
+
+.mag-turn figcaption {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.mag-turn-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 260px;
+  perspective: 900px;
+  border-radius: var(--radius-md);
+  background: radial-gradient(ellipse at 50% 40%, var(--panel-soft), transparent 70%);
+}
+
+.mag-turn-board {
+  position: relative;
+  width: 120px;
+  height: 160px;
+  transform-style: preserve-3d;
+  animation: mag-turn-path 12s var(--ease-in-out) infinite;
+}
+
+.mag-turn-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+.mag-turn-face.back {
+  transform: rotateY(180deg);
+  border-radius: 6px;
+  background: var(--mag-board-pcb-edge);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+.mag-turn-svg { width: 100%; height: 100%; overflow: visible; }
+.mag-turn-pcb { fill: var(--mag-board-pcb); stroke: var(--mag-board-pcb-edge); stroke-width: 0.6; }
+.mag-turn-hole { fill: var(--panel); stroke: #c9b26a; stroke-width: 0.5; }
+
+.mag-turn-shadow {
+  position: absolute;
+  bottom: 18px;
+  width: 120px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.12);
+  filter: blur(4px);
+  animation: mag-turn-shadow 12s var(--ease-in-out) infinite;
+}
+
+/* A figure-8 (first third), then each face toward you in turn. */
+@keyframes mag-turn-path {
+  0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  6% { transform: rotateX(35deg) rotateY(40deg) rotateZ(10deg); }
+  12% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  18% { transform: rotateX(-35deg) rotateY(-40deg) rotateZ(-10deg); }
+  24% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  30% { transform: rotateX(35deg) rotateY(-40deg) rotateZ(-10deg); }
+  36% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
+  45% { transform: rotateX(0deg) rotateY(180deg) rotateZ(0deg); }
+  54% { transform: rotateX(0deg) rotateY(90deg) rotateZ(0deg); }
+  63% { transform: rotateX(0deg) rotateY(-90deg) rotateZ(0deg); }
+  72% { transform: rotateX(90deg) rotateY(0deg) rotateZ(0deg); }
+  81% { transform: rotateX(-90deg) rotateY(0deg) rotateZ(0deg); }
+  90%, 100% { transform: rotateX(0deg) rotateY(0deg) rotateZ(360deg); }
+}
+
+@keyframes mag-turn-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(0.55); opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mag-turn-board { animation: none; transform: rotateX(20deg) rotateY(-25deg); }
+  .mag-turn-shadow { animation: none; }
+}
+
+/* The coverage sphere and its ring. */
+.mag-sphere {
+  width: 100%;
+  height: 260px;
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.mag-sphere-canvas, .mag-sphere-canvas canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.mag-sphere-svg { width: 100%; height: 100%; }
+.mag-sphere-outline { fill: none; stroke: var(--line-strong); }
+.mag-sphere-outline.faint { stroke: var(--line); }
+.mag-sphere-sample { fill: var(--accent); opacity: 0.35; }
+.mag-sphere-marker { fill: var(--text-muted); opacity: 0.55; }
+.mag-sphere-marker.behind { opacity: 0.25; }
+.mag-sphere-marker.covered { fill: var(--accent); opacity: 1; }
+.mag-sphere-marker.next { fill: var(--warning); opacity: 1; animation: mag-pulse 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+@keyframes mag-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mag-sphere-marker.next { animation: none; }
+}
+
+.mag-cal-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.mag-cal-progress p { margin: 2px 0 0; }
+
+.mag-cal-ring { width: 64px; height: 64px; flex: none; }
+.mag-cal-ring .track { fill: none; stroke: var(--line-strong); stroke-width: 6; }
+.mag-cal-ring .value { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset var(--dur-med) var(--ease-out); }
+.mag-cal-ring.ready .value { stroke: var(--success); }
+.mag-cal-ring text { fill: var(--text); font-size: 13px; font-weight: 600; }
+
+/* Result. */
+.mag-result-plot { display: grid; gap: 8px; }
+
+.mag-result-planes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mag-result-planes figure {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+
+.mag-result-planes svg { width: 100%; max-width: 220px; aspect-ratio: 1; }
+.mag-result-planes figcaption { font-size: 12px; color: var(--text-muted); }
+.mag-plot-axis { stroke: var(--line-strong); stroke-width: 0.4; }
+.mag-plot-field { fill: none; stroke: var(--success); stroke-width: 0.6; stroke-dasharray: 2 1.5; }
+circle.mag-plot-before { fill: var(--text-muted); opacity: 0.45; }
+circle.mag-plot-after { fill: var(--accent); opacity: 0.8; }
+
+.mag-result-legend { display: flex; gap: 16px; justify-content: center; font-size: 12px; color: var(--text-dim); }
+.mag-result-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.mag-result-legend i.mag-plot-before { background: var(--text-muted); }
+.mag-result-legend i.mag-plot-after { background: var(--accent); }
+
+.mag-cal-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.mag-cal-facts div { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--panel-soft); }
+.mag-cal-facts dt { font-size: 12px; color: var(--text-muted); }
+.mag-cal-facts dd { margin: 4px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mag-cal-facts dd small { display: block; margin-top: 2px; font-weight: 400; color: var(--text-muted); }
+
+.mag-cal-numbers pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  font-size: 12px;
+}
+
+.device-main .mag-hint-badge { margin-top: 4px; align-self: flex-start; }

@@ -228,6 +228,8 @@ export function terminalHelpItems(): TerminalHelpItem[] {
     { command: "set-ota-config", description: "Configure firmware updates: boot-time auto update, update channel (stable / beta), optional custom manifest URL.", example: "set-ota-config --auto-apply-on-boot true --channel beta" },
     { command: "set-indicators", description: "Configure supported indicator hardware. Brightness expects decimal values such as 0.10, 0.35, 0.50, or 1.00.", example: "set-indicators --external-led-mode enabled --preset solid_marker --external-led-color teal --brightness 0.35 --oled-mode auto --oled-page live_status" },
     { command: "set-imu", description: "Enable or disable the optional IMU service.", example: "set-imu --enabled false" },
+    { command: "set-mag", description: "Enable or disable the magnetometer (off by default; calibrate it from Maintenance) and set the calibration reminder in days (0 = never).", example: "set-mag --enabled true --cal-interval-days 30" },
+    { command: "set-mag-calibration", description: "Clear the magnetometer's hard/soft-iron calibration. Calibrating is done from Maintenance.", example: "set-mag-calibration --clear true" },
     { command: "io-config", description: "Open the board-aware pin layout and overview helper in the terminal UI.", example: "io-config" },
     { command: "file-list", description: "List maintenance files. Use --scope proc for live kernel state.", example: "file-list --scope proc" },
     { command: "file-read-begin", description: "Begin a maintenance-mode file read.", example: "file-read-begin --scope logs --path device.log" },
@@ -455,6 +457,19 @@ export function compileTerminalCommand(commandLine: string, deviceCommands?: Ite
     case 'set-imu': {
       const parsed = parseOptions(args);
       return done('set_imu', { command: 'set_imu', enabled: asBool(opt(parsed, 'enabled', 'true')) });
+    }
+    case 'set-mag': {
+      const parsed = parseOptions(args);
+      const payload: Record<string, unknown> = { command: 'set_mag' };
+      if (parsed.has('enabled')) payload.enabled = asBool(parsed.get('enabled')!);
+      if (parsed.has('cal_interval_days')) payload.cal_interval_days = pyInt(parsed.get('cal_interval_days')!);
+      if (Object.keys(payload).length === 1) throw new Error('set_mag_requires_enabled_or_cal_interval_days');
+      return done('set_mag', payload);
+    }
+    case 'set-mag-calibration': {
+      const parsed = parseOptions(args);
+      if (!asBool(opt(parsed, 'clear', 'false'))) throw new Error('set_mag_calibration_terminal_only_clears');
+      return done('set_mag_calibration', { command: 'set_mag_calibration', clear: true });
     }
     case 'file-list': {
       const parsed = parseOptions(args);

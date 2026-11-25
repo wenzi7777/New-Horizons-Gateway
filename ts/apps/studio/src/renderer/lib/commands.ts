@@ -79,6 +79,19 @@ export function imuCommand(enabled: boolean): Payload {
   return { command: 'set_imu', enabled };
 }
 
+/** set_mag: the magnetometer switch and/or its calibration reminder (days, 0 = never). */
+export function magCommand(options: { enabled?: boolean; calIntervalDays?: number }): Payload {
+  const payload: Payload = { command: 'set_mag' };
+  if (options.enabled !== undefined) payload.enabled = options.enabled;
+  if (options.calIntervalDays !== undefined) payload.cal_interval_days = options.calIntervalDays;
+  return payload;
+}
+
+/** set_mag_calibration {clear}: back to the uncalibrated readings. */
+export function magClearCalibrationCommand(): Payload {
+  return { command: 'set_mag_calibration', clear: true };
+}
+
 export function rawAdcCommand(enabled: boolean): Payload {
   return { command: 'set_raw_adc', enabled };
 }

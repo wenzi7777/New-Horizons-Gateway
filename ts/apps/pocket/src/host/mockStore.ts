@@ -115,6 +115,8 @@ export class MockPocketStore implements PocketStore {
         online: true,
         mode: 'normal',
         hardwareModel: 'TIA-CTL v1.5.F',
+        // Off by default, as firmware v2.4 ships it.
+        magnetometer: { enabled: false, model: 'BMM350', state: 'disabled', calibration: { mode: 'none', interval_days: 30 } },
         firmwareVersion: 'v1.19.0',
         battery: { percent: 78, charging: false },
         fps: 60,
@@ -345,6 +347,13 @@ export class MockPocketStore implements PocketStore {
       // Earth's field (~45 µT, dipping) turning slowly, so the heading dial moves.
       mag: [Math.cos(t * 0.2) * 25, Math.sin(t * 0.2) * 25, -38],
     };
+    if (device.magnetometer) {
+      // A switchable one: nothing while off; on, a board turned through every
+      // direction (for the calibration wizard), seen through the calibration.
+      const mag = mockMagnetometer(device.magnetometer, Date.now());
+      if (mag) frame.mag = mag;
+      else delete frame.mag;
+    }
     for (const listener of [...(this.liveListeners.get(uid) ?? [])]) listener(frame);
   }
 
@@ -477,6 +486,34 @@ export class MockPocketStore implements PocketStore {
         device.pins = { analog: command.analogPins, select: command.selectPins };
         device.matrix = { rows: command.analogPins.length, cols: command.selectPins.length };
         break;
+      case 'mag':
+      case 'mag_calibration':
+      case 'mag_calibration_clear': {
+        const mag = device.magnetometer;
+        if (!mag) return { ok: false, message: 'magnetometer_not_supported', data: null };
+        const calibration = { ...mag.calibration };
+        if (command.kind === 'mag') {
+          if (command.enabled !== undefined) Object.assign(mag, { enabled: command.enabled, state: command.enabled ? 'ready' : 'disabled' });
+          if (command.calIntervalDays !== undefined) calibration.interval_days = command.calIntervalDays;
+          mag.calibration = calibration;
+        } else if (command.kind === 'mag_calibration_clear') {
+          mag.calibration = { mode: 'none', interval_days: calibration.interval_days ?? 30 };
+        } else {
+          const cal = command.calibration;
+          mag.calibration = {
+            mode: cal.mode,
+            offset: cal.offset,
+            matrix: cal.matrix,
+            field_ut: cal.fieldUt,
+            residual_pct: cal.residualPct,
+            calibrated_at_ms: command.nowMs,
+            suspect: false,
+            interval_days: calibration.interval_days ?? 30,
+          };
+        }
+        device.magnetometer = { ...mag };
+        break;
+      }
     }
     this.emit();
     return { ok: true, message: 'ok', data: { uid, command: command.kind } };
@@ -648,4 +685,19 @@ export function generateFrame(uid: string, rows: number, cols: number, nowMs: nu
 
 export function createMockStore(options?: MockStoreOptions): PocketStore {
   return new MockPocketStore(options);
+}
+
+/** A board turned slowly through every direction, with a board offset and stretch, then the stored calibration. */
+function mockMagnetometer(mag: NonNullable<DeviceView['magnetometer']>, nowMs: number): number[] | undefined {
+  if (!mag.enabled) return undefined;
+  const t = nowMs / 1000;
+  const z = Math.cos((t * 0.11) % Math.PI);
+  const r = Math.sqrt(Math.max(0, 1 - z * z));
+  const u = [Math.cos(t * 1.7) * r * 47, Math.sin(t * 1.7) * r * 47, z * 47];
+  const raw = [1.12 * u[0]! + 12, 0.93 * u[1]! - 8, 1.02 * u[2]! + 20];
+  const offset = Array.isArray(mag.calibration.offset) ? (mag.calibration.offset as unknown[]).map(Number) : null;
+  const m = Array.isArray(mag.calibration.matrix) ? (mag.calibration.matrix as unknown[]).map(Number) : null;
+  if (!offset || !m || offset.length !== 3 || m.length !== 9) return raw;
+  const d = [raw[0]! - offset[0]!, raw[1]! - offset[1]!, raw[2]! - offset[2]!];
+  return [0, 1, 2].map((row) => m[row * 3]! * d[0]! + m[row * 3 + 1]! * d[1]! + m[row * 3 + 2]! * d[2]!);
 }

@@ -13,6 +13,7 @@ import { useStudio, type T } from '../state/studio';
 import { DeviceOverview } from './device/DeviceOverview';
 import { DeviceSettings } from './device/DeviceSettings';
 import { DeviceCalibration } from './device/DeviceCalibration';
+import { MagHintBadge } from './device/mag/MagnetometerCard';
 
 type Props = { route: Extract<Route, { area: 'devices' }>; navigate: (route: Route) => void };
 
@@ -128,6 +129,7 @@ export function DevicesPage({ route, navigate }: Props) {
                                 : t('deviceOffline')}
                           {d.mode !== 'normal' && d.online && !d.takenOver ? ` · ${modeLabel(t, d.mode)}` : ''}
                         </span>
+                        {d.magnetometer ? <MagHintBadge magnetometer={d.magnetometer} /> : null}
                       </span>
                       {d.battery ? <BatteryIndicator percent={d.battery.percent} charging={d.battery.charging} label={`${t('infoBattery')}: ${batteryText(t, d)}`} /> : null}
                     </button>

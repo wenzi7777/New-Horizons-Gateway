@@ -6,6 +6,7 @@
 // handing them out.
 
 import type { Locale, ThemeMode } from '@nhgw/ui-tokens';
+import type { MagCalibration } from './magCalibration';
 import type { RfbBoardState } from './rfbLayout';
 
 export type ConnectionState = 'offline' | 'connecting' | 'online';
@@ -79,6 +80,22 @@ export interface DeviceView {
    * the app (GatewayRuntime.streamBlocked).
    */
   streamBlocked?: boolean;
+  /**
+   * status.magnetometer, on firmware that has the switch (v2.4+): whether it
+   * is on and its calibration as reported -- what a device list needs for the
+   * calibration reminder (magnetometerHint). Absent on older firmware and on
+   * boards without one.
+   */
+  magnetometer?: MagnetometerView;
+}
+
+export interface MagnetometerView {
+  enabled: boolean;
+  model: string;
+  /** 'disabled' | 'blocked' (GCU: the IMU hosting it is off) | 'ready' | 'error'. */
+  state: string;
+  /** status.magnetometer.calibration, as the device reports it. */
+  calibration: Record<string, unknown>;
 }
 
 /** Where a Vref sits against the GPIO45 boot strap (see vrefZone in views.ts). */
@@ -212,7 +229,12 @@ export type QuickCommand =
   /** v2.0.F: measure each row's Rfb (about 1.5 s). */
   | { kind: 'rfb_measure' }
   /** The matrix pins, in matrix order (the IO Visualizer's apply). */
-  | { kind: 'matrix_layout'; analogPins: number[]; selectPins: number[] };
+  | { kind: 'matrix_layout'; analogPins: number[]; selectPins: number[] }
+  /** The magnetometer switch and/or its calibration reminder (days, 0 = never). */
+  | { kind: 'mag'; enabled?: boolean; calIntervalDays?: number }
+  /** Store a calibration from the wizard; nowMs is the host's wall clock (calibrated_at_ms). */
+  | { kind: 'mag_calibration'; calibration: MagCalibration; nowMs: number }
+  | { kind: 'mag_calibration_clear' };
 
 /** The engine's full record of one device and its last status (plain JSON), for settings pages. */
 export interface DeviceDetail {

@@ -11,6 +11,7 @@ import type {
   HostClientType,
   RangeMode,
   VrefView,
+  MagnetometerView,
   VrefZone,
   HostSettings,
   RecordingSummary,
@@ -98,7 +99,16 @@ export function deviceView(entry: Record<string, unknown>, nowMono: number): Dev
     lastSeenMs: parseIsoMs(entry.last_seen_at),
     vref: vrefOf(status),
     pins: pinsOf(status),
+    ...magnetometerField(status),
   };
+}
+
+/** status.magnetometer -> { magnetometer } on firmware with the switch, else nothing. */
+function magnetometerField(status: Record<string, unknown>): { magnetometer?: MagnetometerView } {
+  const mag = dict(status.magnetometer);
+  const model = str(mag.model);
+  if (typeof mag.enabled !== 'boolean' || !model || model === 'none') return {};
+  return { magnetometer: { enabled: mag.enabled, model, state: str(mag.state) || (mag.enabled ? 'ready' : 'disabled'), calibration: dict(mag.calibration) } };
 }
 
 /** status.matrix_layout -> the pins in matrix order (older firmware: active_rows / active_cols). */

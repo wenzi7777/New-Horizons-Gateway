@@ -31,7 +31,7 @@ export type DeviceSettingsView = {
   scanTiming: ScanTiming;
   scanHealth: ScanHealthView;
   filter: { enabled: boolean; median: number; alpha: number };
-  imu: { enabled: boolean; state: string; sampleRateHz: number | null; lastError: string };
+  imu: { enabled: boolean; state: string; sampleRateHz: number | null; odrHz: number | null; lastError: string };
   rawAdc: boolean;
   streamBuffer: { enabled: boolean; mode: string; depthFrames: number | null };
   battery: BatteryStatusViewModel;
@@ -87,6 +87,7 @@ export function deviceSettingsView(detail: { record: unknown; status: unknown } 
       enabled: imu.enabled !== false,
       state: str(imu.state, imu.enabled === false ? 'disabled' : '-'),
       sampleRateHz: typeof imu.sample_rate_hz === 'number' ? imu.sample_rate_hz : null,
+      odrHz: typeof imu.odr_hz === 'number' ? imu.odr_hz : null,
       lastError: str(imu.last_error, ''),
     },
     rawAdc: (status.stream_raw_adc ?? runtime.stream_raw_adc) === true,

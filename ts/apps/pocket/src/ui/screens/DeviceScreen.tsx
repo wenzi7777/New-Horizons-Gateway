@@ -51,6 +51,7 @@ import { useAfterTransition } from '../useAfterTransition';
 import { syncErrorCode } from '../../host/sync';
 import { useTheme } from '../theme';
 import { ChoiceSegment } from '../components/ChoiceSegment';
+import { MagnetometerCard } from '../components/MagnetometerCard';
 
 type CommandKey = QuickCommand['kind'] | 'release' | 'recording';
 
@@ -295,6 +296,13 @@ export function DeviceScreen({ uid }: { uid: string }) {
         </View>
         {recState.error ? <Caption style={{ color: theme.colors.danger }}>{t('recordingError', { error: recState.error })}</Caption> : null}
       </Card>
+
+      <MagnetometerCard
+        device={device}
+        busy={busy === 'mag' || busy === 'mag_calibration_clear'}
+        run={(command) => run(command.kind, command)}
+        confirmClear={() => confirm({ title: t('magCalClear'), message: t('magCalClearConfirm'), confirmLabel: t('magCalClear'), destructive: true })}
+      />
 
       <SectionHeader title={t('quickActions')} />
       <Card padded={false}>

@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import {
+  Compass,
   Link2,
   Plus,
   Radar,
@@ -17,6 +18,7 @@ import { useI18n } from '../i18n';
 import { useDevices, useNearby, useStore } from '../store';
 import { useTheme } from '../theme';
 import { BatteryGlyph } from '../components/BatteryGlyph';
+import { magHint } from '../components/MagnetometerCard';
 
 function BatteryIcon({ device }: { device: DeviceView }) {
   const { colors } = useTheme();
@@ -33,9 +35,11 @@ function DeviceSubtitle({ device }: { device: DeviceView }) {
     ? [device.takenOverBy ? t('takenOverBy', { name: device.takenOverBy }) : t('takenOverByUnknown')]
     : [device.online ? t('deviceOnline') : t('deviceOffline')];
   if (device.online && device.fps > 0 && !device.takenOver) parts.push(t('fpsValue', { fps: device.fps }));
+  const hint = magHint(t, device.magnetometer, Date.now());
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       <Caption>{parts.join(' · ')}</Caption>
+      {hint ? <Badge label={hint.label} tone={hint.tone} icon={Compass} /> : null}
       {device.battery?.percent != null ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
           <BatteryIcon device={device} />

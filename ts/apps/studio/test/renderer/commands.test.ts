@@ -26,6 +26,9 @@ describe('device command payloads', () => {
     expect(c.filterCommand(false, 1, 0.6)).toEqual({ command: 'set_filter', enabled: false, median: 1, alpha: 0.6 });
     expect([c.filterAlphaValid(0.05), c.filterAlphaValid(0.6), c.filterAlphaValid(0.7), c.filterAlphaValid(0.01)]).toEqual([true, true, false, false]);
     expect(c.imuCommand(false)).toEqual({ command: 'set_imu', enabled: false });
+    expect(c.magCommand({ enabled: true })).toEqual({ command: 'set_mag', enabled: true });
+    expect(c.magCommand({ calIntervalDays: 0 })).toEqual({ command: 'set_mag', cal_interval_days: 0 });
+    expect(c.magClearCalibrationCommand()).toEqual({ command: 'set_mag_calibration', clear: true });
     expect(c.rawAdcCommand(true)).toEqual({ command: 'set_raw_adc', enabled: true });
     expect(c.streamBufferCommand(true, 'extended')).toEqual({ command: 'set_stream_buffer', enabled: true, mode: 'extended' });
   });

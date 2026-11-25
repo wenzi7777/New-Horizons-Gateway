@@ -45,6 +45,7 @@ export const MERGED_DEVICE_BLOCKS: readonly string[] = ['findme', 'gateway_state
 export const SETTING_REPLY_BLOCKS: readonly string[] = [
   'vref', 'range', 'imu', 'filter', 'stream_buffer', 'matrix_layout',
   'action_button', 'indicators', 'battery', 'power', 'logging', 'ota',
+  'magnetometer',
 ];
 
 export const CALIBRATION_STATUS_KEYS: readonly string[] = [

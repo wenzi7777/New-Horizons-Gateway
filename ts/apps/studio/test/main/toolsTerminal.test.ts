@@ -279,7 +279,7 @@ describe('compileTerminalCommand error codes and edge cases', () => {
 
   it('every help example compiles and validates', () => {
     const items = terminalHelpItems();
-    expect(items.length).toBe(81);
+    expect(items.length).toBe(83);
     for (const item of items) {
       if (item.command === 'io-config') continue;
       expect(() => validateDeviceCommandPayload(compileTerminalCommand(item.example).payload), item.example).not.toThrow();

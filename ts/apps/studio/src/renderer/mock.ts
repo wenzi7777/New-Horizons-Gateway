@@ -5,6 +5,7 @@
 // at ~30 per second, and every settings command changes the status the
 // settings pages read (deviceDetails[uid].status).
 
+import { quickCommandPayload } from '@nhgw/host';
 import type {
   CommandOutcome,
   DeviceView,
@@ -135,7 +136,23 @@ function deviceStatus(d: { uid: string; mode: string; hardwareModel: string; fir
       adc_cal_digi: [998, 985],
     },
     filter: { enabled: false, median: 3, alpha: 0.25 },
-    imu: { enabled: true, state: 'running', sample_rate_hz: d.fps },
+    imu: { enabled: true, state: 'running', sample_rate_hz: d.fps, odr_hz: d.fps <= 25 ? 25 : d.fps <= 50 ? 50 : d.fps <= 100 ? 100 : 200 },
+    // Off by default, as firmware v2.4 ships it.
+    magnetometer: {
+      model: 'BMM350',
+      enabled: false,
+      state: 'disabled',
+      initialized: false,
+      ready: false,
+      compensation: 'factory',
+      calibration: { mode: 'none', interval_days: 30 },
+      odr_hz: 100,
+      averaging: 4,
+      poll_interval_us: Math.round(1e6 / d.fps),
+      measured_rate_hz: 0,
+      sample_valid: false,
+      last_error: '',
+    },
     stream_raw_adc: false,
     stream_buffer: { enabled: true, mode: 'standard', depth_frames: 4 },
     battery: {
@@ -424,7 +441,10 @@ export class MockStudioApi implements StudioApi {
     if (!d || !d.online || !d.matrix || d.mode === 'maintenance') return null;
     const now = this.now();
     const values = generateFrame(uid, d.matrix.rows, d.matrix.cols, now, d.tare);
-    return { uid, values, rows: d.matrix.rows, cols: d.matrix.cols, timestampMs: now, fps: d.fps };
+    const frame: LiveFrame = { uid, values, rows: d.matrix.rows, cols: d.matrix.cols, timestampMs: now, fps: d.fps };
+    const mag = mockMagnetometer(record(d.status.magnetometer), now);
+    if (mag) frame.mag = mag;
+    return frame;
   }
 
   private emitFrame(uid: string): void {
@@ -558,6 +578,10 @@ export class MockStudioApi implements StudioApi {
         return this.sendCommand(uid, { command: 'rfb_measure' });
       case 'matrix_layout':
         return this.sendCommand(uid, { command: 'set_matrix_layout', analog_pins: command.analogPins, select_pins: command.selectPins });
+      case 'mag':
+      case 'mag_calibration':
+      case 'mag_calibration_clear':
+        return this.sendCommand(uid, quickCommandPayload(command));
     }
   }
 
@@ -620,6 +644,23 @@ export class MockStudioApi implements StudioApi {
       case 'set_imu':
         s.imu = { ...record(s.imu), enabled: payload.enabled === true, state: payload.enabled === true ? 'running' : 'disabled' };
         return ok({ imu: s.imu });
+      case 'set_mag': {
+        const mag = record(s.magnetometer);
+        const cal = record(mag.calibration);
+        if (typeof payload.enabled === 'boolean') {
+          Object.assign(mag, { enabled: payload.enabled, state: payload.enabled ? 'ready' : 'disabled', ready: payload.enabled, initialized: payload.enabled, sample_valid: payload.enabled, measured_rate_hz: payload.enabled ? 30 : 0 });
+        }
+        if (payload.cal_interval_days !== undefined) cal.interval_days = Number(payload.cal_interval_days);
+        return ok({ magnetometer: mag });
+      }
+      case 'set_mag_calibration': {
+        const mag = record(s.magnetometer);
+        const interval = record(mag.calibration).interval_days ?? 30;
+        mag.calibration = payload.clear === true
+          ? { mode: 'none', interval_days: interval }
+          : { mode: payload.mode, offset: payload.offset, matrix: payload.matrix, field_ut: payload.field_ut, residual_pct: payload.residual_pct, calibrated_at_ms: payload.calibrated_at_ms, suspect: false, field_median_ut: payload.field_ut, interval_days: interval };
+        return ok({ magnetometer: mag, message: payload.clear === true ? 'mag_calibration_cleared' : 'mag_calibration_stored' });
+      }
       case 'set_raw_adc':
         s.stream_raw_adc = payload.enabled === true;
         return ok({ stream_raw_adc: s.stream_raw_adc });
@@ -878,4 +919,28 @@ export class MockStudioApi implements StudioApi {
 
 export function createMockApi(options?: MockOptions): MockStudioApi {
   return new MockStudioApi(options);
+}
+
+/**
+ * A magnetometer being turned through every direction (a slow spiral over the
+ * sphere), seen through a board offset and a slight stretch -- what the
+ * calibration wizard needs to have something to fit in the mock.
+ */
+function mockMagnetometer(mag: Record<string, unknown>, nowMs: number): number[] | undefined {
+  if (mag.enabled !== true) return undefined;
+  const t = nowMs / 1000;
+  const z = Math.cos((t * 0.11) % Math.PI) ;
+  const r = Math.sqrt(Math.max(0, 1 - z * z));
+  const u = [Math.cos(t * 1.7) * r * 47, Math.sin(t * 1.7) * r * 47, z * 47];
+  const raw = [1.12 * u[0]! + 12, 0.93 * u[1]! - 8, 1.02 * u[2]! + 20];
+  const cal = record(mag.calibration);
+  const offset = Array.isArray(cal.offset) ? cal.offset.map(Number) : null;
+  const matrix = Array.isArray(cal.matrix) ? cal.matrix.map(Number) : null;
+  if (offset && matrix && offset.length === 3 && matrix.length === 9) {
+    const x = raw[0]! - offset[0]!;
+    const y = raw[1]! - offset[1]!;
+    const w = raw[2]! - offset[2]!;
+    return [matrix[0]! * x + matrix[1]! * y + matrix[2]! * w, matrix[3]! * x + matrix[4]! * y + matrix[5]! * w, matrix[6]! * x + matrix[7]! * y + matrix[8]! * w];
+  }
+  return raw;
 }

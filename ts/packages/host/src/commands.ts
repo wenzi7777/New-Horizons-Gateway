@@ -4,6 +4,7 @@
 // commands in NewHorizonsOS-OTA/spec/commands.md).
 import type { QuickCommand } from './contract';
 import { VREF_SAFE_MV } from './views';
+import { magCalibrationPayload } from './magCalibration';
 
 /** CalibrationWorkbench's ZERO_DURATION_MS: how long a tare averages. */
 export const TARE_DURATION_MS = 1000;
@@ -38,5 +39,15 @@ export function quickCommandPayload(command: QuickCommand): Record<string, unkno
       return { command: 'rfb_measure' };
     case 'matrix_layout':
       return { command: 'set_matrix_layout', analog_pins: command.analogPins, select_pins: command.selectPins };
+    case 'mag': {
+      const payload: Record<string, unknown> = { command: 'set_mag' };
+      if (command.enabled !== undefined) payload.enabled = command.enabled;
+      if (command.calIntervalDays !== undefined) payload.cal_interval_days = command.calIntervalDays;
+      return payload;
+    }
+    case 'mag_calibration':
+      return magCalibrationPayload(command.calibration, command.nowMs);
+    case 'mag_calibration_clear':
+      return { command: 'set_mag_calibration', clear: true };
   }
 }

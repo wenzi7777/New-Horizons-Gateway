@@ -558,6 +558,36 @@ export const COMMAND_BLOCKS: CommandBlock[] = [
       },
     ],
   },
+  {
+    command: "set-mag",
+    groupKey: "commandGroupConfig",
+    params: [
+      {
+        key: "enabled",
+        labelKey: "paramEnabled",
+        type: "select",
+        defaultValue: "true",
+        options: [
+          { labelKey: "optionTrue", value: "true" },
+          { labelKey: "optionFalse", value: "false" },
+        ],
+      },
+      { key: "cal-interval-days", labelKey: "paramCalIntervalDays", type: "number" },
+    ],
+  },
+  {
+    command: "set-mag-calibration",
+    groupKey: "commandGroupConfig",
+    params: [
+      {
+        key: "clear",
+        labelKey: "paramClearCalibration",
+        type: "select",
+        defaultValue: "true",
+        options: [{ labelKey: "optionTrue", value: "true" }],
+      },
+    ],
+  },
   { command: "io-config", groupKey: "commandGroupConfig", params: [] },
   {
     command: "file-list",
