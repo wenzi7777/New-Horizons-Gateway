@@ -20,6 +20,7 @@ function RootStack() {
   return (
     <Stack
       screenOptions={{
+        freezeOnBlur: true,
         headerStyle: { backgroundColor: nativeChromeColor(theme.colors) },
         headerTintColor: theme.colors.accent,
         headerTitleStyle: { color: theme.colors.text },

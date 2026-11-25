@@ -4,7 +4,7 @@
 // setStore(hostStore) from the host before/after the first render: every
 // screen re-renders against the new store, and the previous one is stopped).
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import type { LiveFrame, PocketStore } from '../host/contract';
 import { createPocketStore, getPocketSync } from '../host';
@@ -13,6 +13,7 @@ import { createMockStore } from '../host/mockStore';
 import type { PocketSync } from '../host/sync';
 import { getPocketUpdater } from '../host/updates';
 import type { PocketUpdater } from '../host/updater';
+import { shareData } from './shareData';
 
 // The real host on Android; the mock where the native module is missing
 // (Expo Go, iOS, web), so the screens still run there for review.
@@ -40,69 +41,80 @@ function subscribeSwap(listener: () => void): () => void {
   };
 }
 
-type StoreContextValue = { store: PocketStore; version: number };
-const StoreContext = createContext<StoreContextValue | null>(null);
+const StoreContext = createContext<PocketStore | null>(null);
 
 /**
- * Provides the current store and a version that changes with every store
- * notification. Snapshots are re-read per version, so hosts need not keep
- * their arrays referentially stable.
+ * Provides the current store. Screens read it through selector hooks
+ * (useStoreSelector), which re-render only when what they select changed:
+ * the host notifies about 4 Hz while a device streams, mostly with nothing
+ * new for a given screen.
  */
 export function StoreProvider({ children }: { children: ReactNode }) {
   const store = useSyncExternalStore(subscribeSwap, getStore, getStore);
-  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    setVersion((v) => v + 1);
-    const unsubscribe = store.subscribe(() => setVersion((v) => v + 1));
     // The service keeps running when the UI goes away (background relaying
     // and recording), so unmounting does not stop it; setStore() does.
     void store.start().catch(() => undefined);
-    return unsubscribe;
   }, [store]);
 
-  const value = useMemo(() => ({ store, version }), [store, version]);
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+  return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }
 
-function useStoreContext(): StoreContextValue {
+export function useStore(): PocketStore {
   const value = useContext(StoreContext);
   if (!value) throw new Error('StoreProvider missing');
   return value;
 }
 
-export function useStore(): PocketStore {
-  return useStoreContext().store;
+/**
+ * `select(store)`, re-read on every store notification but returned as the
+ * previous value (or with its unchanged parts reused, see shareData) when it
+ * is equal, so the caller re-renders only on a real change.
+ */
+export function useStoreSelector<T>(select: (store: PocketStore) => T): T {
+  const store = useStore();
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  const cache = useRef<{ store: PocketStore; value: T } | null>(null);
+  const subscribe = useCallback((listener: () => void) => store.subscribe(listener), [store]);
+  const getSnapshot = useCallback((): T => {
+    const prev = cache.current;
+    const value = shareData(prev && prev.store === store ? prev.value : undefined, selectRef.current(store));
+    if (!prev || prev.store !== store || prev.value !== value) cache.current = { store, value };
+    return value;
+  }, [store]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+const selectStatus = (store: PocketStore) => store.status();
+const selectSettings = (store: PocketStore) => store.settings();
+const selectDevices = (store: PocketStore) => store.devices();
+const selectNearby = (store: PocketStore) => store.nearby();
+const selectRecordings = (store: PocketStore) => store.recordings();
+
 export function useStatus() {
-  const { store, version } = useStoreContext();
-  return useMemo(() => store.status(), [store, version]);
+  return useStoreSelector(selectStatus);
 }
 
 export function useSettings() {
-  const { store, version } = useStoreContext();
-  return useMemo(() => store.settings(), [store, version]);
+  return useStoreSelector(selectSettings);
 }
 
 export function useDevices() {
-  const { store, version } = useStoreContext();
-  return useMemo(() => store.devices(), [store, version]);
+  return useStoreSelector(selectDevices);
 }
 
 export function useDevice(uid: string | undefined) {
-  const devices = useDevices();
-  return useMemo(() => devices.find((d) => d.uid === uid) ?? null, [devices, uid]);
+  return useStoreSelector((store) => store.devices().find((d) => d.uid === uid) ?? null);
 }
 
 export function useNearby() {
-  const { store, version } = useStoreContext();
-  return useMemo(() => store.nearby(), [store, version]);
+  return useStoreSelector(selectNearby);
 }
 
 export function useRecordings() {
-  const { store, version } = useStoreContext();
-  return useMemo(() => store.recordings(), [store, version]);
+  return useStoreSelector(selectRecordings);
 }
 
 /** The latest live frame of one device (null until the first arrives); paused while `enabled` is false. */

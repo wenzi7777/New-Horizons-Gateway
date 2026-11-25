@@ -56,3 +56,24 @@ export function colorForValue(value: number, range: PressureRange): string {
 
 /** Cell label ink on the scale (the Desktop draws labels in a dark ink on every cell). */
 export const CELL_INK = 'rgba(16, 19, 23, 0.62)';
+
+/** Colour steps a live map draws (the scale is smooth to the eye well before this). */
+export const COLOR_STEPS = 64;
+const stepCache = new Map<string, string[]>();
+
+/**
+ * colorForValue rounded to one of COLOR_STEPS steps, from a per-range table:
+ * a cell whose value moved within its step keeps the same string, so it is
+ * not redrawn.
+ */
+export function quantizedColor(value: number, range: PressureRange): string {
+  const key = `${range.min}:${range.max}`;
+  let table = stepCache.get(key);
+  if (!table) {
+    const span = Math.max(range.max - range.min, 1);
+    table = Array.from({ length: COLOR_STEPS }, (_, i) => colorForValue(range.min + (span * i) / (COLOR_STEPS - 1), range));
+    stepCache.set(key, table);
+  }
+  const step = Math.round(valueRatio(value, range) * (COLOR_STEPS - 1));
+  return table[step] ?? table[0]!;
+}

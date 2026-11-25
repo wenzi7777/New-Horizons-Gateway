@@ -8,7 +8,7 @@
 
 import { memo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Circle, Image as SvgImage, Rect, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, G, Image as SvgImage, Rect, Text as SvgText } from 'react-native-svg';
 import { fitProfileRect, profilePoints, type Profile } from '@nhgw/host';
 
 import {
@@ -21,7 +21,7 @@ import {
   streamSensorLabel,
 } from '../heatmapLayout';
 import { useI18n } from '../i18n';
-import { CELL_INK, colorForValue, type PressureRange } from '../pressureColor';
+import { CELL_INK, colorForValue, quantizedColor, type PressureRange } from '../pressureColor';
 import { useTheme } from '../theme';
 
 export const Heatmap = memo(function Heatmap({
@@ -51,6 +51,52 @@ export const Heatmap = memo(function Heatmap({
     return <ProfileDots values={values} range={range} maxHeight={maxHeight} profile={profile} />;
   }
   return <GridHeatmap values={values} rows={rows} cols={cols} range={range} maxHeight={maxHeight} pinLabels={pinLabels} indices={indices} />;
+});
+
+/**
+ * One cell: memoized on its quantized colour and text, so a new frame
+ * redraws only the cells whose colour step or value text changed.
+ */
+const HeatCell = memo(function HeatCell({
+  x,
+  y,
+  w,
+  h,
+  radius,
+  fill,
+  stroke,
+  label,
+  labelFont,
+  text,
+  valueFont,
+}: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  radius: number;
+  fill: string;
+  stroke: string | null;
+  label: string | null;
+  labelFont: number;
+  text: string | null;
+  valueFont: number;
+}) {
+  return (
+    <G>
+      <Rect x={x} y={y} width={w} height={h} rx={radius} ry={radius} fill={fill} stroke={stroke ?? undefined} strokeWidth={stroke ? 2 : 0} />
+      {label !== null ? (
+        <SvgText x={x + 3} y={y + 2 + labelFont} fontSize={labelFont} fontWeight="600" fill={CELL_INK}>
+          {label}
+        </SvgText>
+      ) : null}
+      {text !== null ? (
+        <SvgText x={x + w / 2} y={y + h / 2 + valueFont * 0.35} fontSize={valueFont} fill={HEATMAP_VALUE_INK} textAnchor="middle">
+          {text}
+        </SvgText>
+      ) : null}
+    </G>
+  );
 });
 
 const GridHeatmap = memo(function GridHeatmap({
@@ -85,40 +131,21 @@ const GridHeatmap = memo(function GridHeatmap({
         const value = values?.[i];
         const { x, y } = cellOrigin(layout, r, c);
         cells.push(
-          <Rect
-            key={`r${i}`}
+          <HeatCell
+            key={i}
             x={x}
             y={y}
-            width={layout.cellW}
-            height={layout.cellH}
-            rx={layout.radius}
-            ry={layout.radius}
-            fill={value === undefined ? theme.colors.panelSoft : colorForValue(value, range)}
-            stroke={i === sel ? theme.colors.accent : undefined}
-            strokeWidth={i === sel ? 2 : 0}
+            w={layout.cellW}
+            h={layout.cellH}
+            radius={layout.radius}
+            fill={value === undefined ? theme.colors.panelSoft : quantizedColor(value, range)}
+            stroke={i === sel ? theme.colors.accent : null}
+            label={layout.showLabels ? streamSensorLabel(indices?.[i] ?? i) : null}
+            labelFont={layout.labelFont}
+            text={layout.showText && value !== undefined ? cellValueText(value) : null}
+            valueFont={layout.valueFont}
           />,
         );
-        if (layout.showLabels) {
-          cells.push(
-            <SvgText key={`l${i}`} x={x + 3} y={y + 2 + layout.labelFont} fontSize={layout.labelFont} fontWeight="600" fill={CELL_INK}>
-              {streamSensorLabel(indices?.[i] ?? i)}
-            </SvgText>,
-          );
-        }
-        if (layout.showText && value !== undefined) {
-          cells.push(
-            <SvgText
-              key={`t${i}`}
-              x={x + layout.cellW / 2}
-              y={y + layout.cellH / 2 + layout.valueFont * 0.35}
-              fontSize={layout.valueFont}
-              fill={HEATMAP_VALUE_INK}
-              textAnchor="middle"
-            >
-              {cellValueText(value)}
-            </SvgText>,
-          );
-        }
       }
     }
   }
@@ -228,7 +255,7 @@ function ProfileDots({
                     cx={c.x}
                     cy={c.y}
                     r={dot}
-                    fill={colorForValue(values ? p.value : range.min, range)}
+                    fill={quantizedColor(values ? p.value : range.min, range)}
                     opacity={values ? 0.92 : 0.35}
                     stroke={p.index === selected ? theme.colors.accent : undefined}
                     strokeWidth={p.index === selected ? 2 : 0}
@@ -249,7 +276,7 @@ function ProfileDots({
 }
 
 /** The colour scale as a bar with its range and midpoint (the Desktop's legend). */
-export function HeatmapLegend({ range }: { range: PressureRange }) {
+export const HeatmapLegend = memo(function HeatmapLegend({ range }: { range: PressureRange }) {
   const theme = useTheme();
   const [width, setWidth] = useState(0);
   const steps = 32;
@@ -281,4 +308,4 @@ export function HeatmapLegend({ range }: { range: PressureRange }) {
       </View>
     </View>
   );
-}
+});

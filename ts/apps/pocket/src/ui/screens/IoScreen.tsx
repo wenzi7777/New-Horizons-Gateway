@@ -3,7 +3,7 @@
 // to tap in matrix order, applied with set_matrix_layout.
 import { Stack } from 'expo-router';
 import { Cpu } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, type ImageSourcePropType, Pressable, Text, View } from 'react-native';
 import { boardArtFor, boardPinsFor, togglePin, type BoardPinSlot, type BoardPins } from '@nhgw/host';
 
@@ -12,7 +12,7 @@ import { useConfirm, useToast } from '../components/feedback';
 import { PinMap } from '../components/PinMap';
 import { Body, Button, Caption, Card, Empty, Mono, Notice, Screen, SectionHeader } from '../components/primitives';
 import { useI18n } from '../i18n';
-import { useDevice, useSettings, useStore } from '../store';
+import { useSettings, useStore, useStoreSelector } from '../store';
 import { useTheme } from '../theme';
 
 const ARTWORK: Record<BoardPins['artwork'], ImageSourcePropType> = {
@@ -70,16 +70,22 @@ function PinList({ heading, pins, chosen, onToggle }: { heading: string; pins: B
 }
 
 export function IoScreen({ uid }: { uid: string }) {
-  const device = useDevice(uid);
+  // Only what this screen shows: the device's fps / battery ticking must not
+  // redraw the board and its pins.
+  const device = useStoreSelector((s) => {
+    const d = s.devices().find((entry) => entry.uid === uid);
+    return d ? { displayName: d.displayName, hardwareModel: d.hardwareModel, online: d.online, pins: d.pins ?? null } : null;
+  });
   const store = useStore();
   const toast = useToast();
   const confirm = useConfirm();
   const { t, locale } = useI18n();
-  const board = boardPinsFor(device?.hardwareModel);
+  const hardwareModel = device?.hardwareModel;
+  const board = useMemo(() => boardPinsFor(hardwareModel), [hardwareModel]);
   const { uiStyle } = useSettings();
   // Illustrated: the FPC contacts fanned out to tappable labels, in place of
   // the artwork and the two pin lists.
-  const art = uiStyle === 'modern' ? boardArtFor(device?.hardwareModel) : null;
+  const art = useMemo(() => (uiStyle === 'modern' ? boardArtFor(hardwareModel) : null), [uiStyle, hardwareModel]);
   const onDevice = device?.pins ?? null;
   const [analog, setAnalog] = useState<number[]>(() => (onDevice?.analog.length ? onDevice.analog : board.defaultAnalogPins));
   const [select, setSelect] = useState<number[]>(() => (onDevice?.select.length ? onDevice.select : board.defaultSelectPins));
@@ -87,13 +93,19 @@ export function IoScreen({ uid }: { uid: string }) {
   const [busy, setBusy] = useState(false);
 
   // Follow the device until the user starts picking.
-  const deviceKey = JSON.stringify(onDevice);
+  // (onDevice keeps its identity while unchanged: useStoreSelector shares it.)
   useEffect(() => {
     if (dirty || !onDevice) return;
     if (onDevice.analog.length) setAnalog(onDevice.analog);
     if (onDevice.select.length) setSelect(onDevice.select);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceKey, dirty]);
+  }, [onDevice, dirty]);
+
+  const toggle = useCallback((pin: BoardPinSlot) => {
+    if (!pin.role || pin.gpio === undefined) return;
+    setDirty(true);
+    if (pin.role === 'analog') setAnalog((current) => togglePin(current, Number(pin.gpio)));
+    else setSelect((current) => togglePin(current, Number(pin.gpio)));
+  }, []);
 
   if (!device) {
     return (
@@ -107,12 +119,6 @@ export function IoScreen({ uid }: { uid: string }) {
   }
 
   const artwork = ARTWORK[board.artwork];
-  const toggle = (pin: BoardPinSlot) => {
-    if (!pin.role || pin.gpio === undefined) return;
-    setDirty(true);
-    if (pin.role === 'analog') setAnalog((current) => togglePin(current, Number(pin.gpio)));
-    else setSelect((current) => togglePin(current, Number(pin.gpio)));
-  };
   const incomplete = !analog.length || !select.length;
 
   const apply = async () => {

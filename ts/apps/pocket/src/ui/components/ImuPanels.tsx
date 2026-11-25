@@ -14,6 +14,7 @@ import {
   vectorNorm,
   type ImuHistory,
   type ImuKey,
+  type ImuPoint,
   type Vec3,
 } from '@nhgw/host';
 import type { ReactNode } from 'react';
@@ -36,17 +37,20 @@ const AXES = ['X', 'Y', 'Z'] as const;
 const TREND_W = 200;
 const TREND_H = 56;
 const GAUGE = 64;
+/** Points per trend line on a phone (the Desktop draws up to 300). */
+const PHONE_POINTS = 120;
 
-function trendScale(history: ImuHistory, key: ImuKey, now: number): number {
+type TrendData = { points: ImuPoint[]; scale: number };
+
+/** One sensor's trend points and scale, computed once per render. */
+function trendData(history: ImuHistory, key: ImuKey, now: number): TrendData {
   const max = history.symmetricMax(key, now);
-  if (key === 'gyro') return gyroScale(max);
-  return niceScale(max, key === 'acc' ? 1 : 50);
+  const scale = key === 'gyro' ? gyroScale(max) : niceScale(max, key === 'acc' ? 1 : 50);
+  return { points: history.series(key, now, PHONE_POINTS), scale };
 }
 
-function Trend({ history, k, now }: { history: ImuHistory; k: ImuKey; now: number }) {
+function Trend({ data: { points, scale }, now, windowMs }: { data: TrendData; now: number; windowMs: number }) {
   const theme = useTheme();
-  const points = history.series(k, now);
-  const scale = trendScale(history, k, now);
   return (
     <View style={{ flex: 1, height: TREND_H, borderRadius: 6, overflow: 'hidden', backgroundColor: theme.colors.panel }}>
       <Svg width="100%" height={TREND_H} viewBox={`0 0 ${TREND_W} ${TREND_H}`} preserveAspectRatio="none">
@@ -54,7 +58,7 @@ function Trend({ history, k, now }: { history: ImuHistory; k: ImuKey; now: numbe
         {[0, 1, 2].map((axis) => (
           <Polyline
             key={axis}
-            points={trendPolyline(points, axis as 0 | 1 | 2, now, history.windowMs, scale, TREND_W, TREND_H) || `0,${TREND_H / 2}`}
+            points={trendPolyline(points, axis as 0 | 1 | 2, now, windowMs, scale, TREND_W, TREND_H) || `0,${TREND_H / 2}`}
             fill="none"
             stroke={IMU_AXIS_COLORS[axis]}
             strokeWidth={1.5}
@@ -171,9 +175,13 @@ function Extra({ children }: { children: ReactNode }) {
   return <Text style={{ color: theme.colors.textMuted, fontSize: 12, fontVariant: ['tabular-nums'] }}>{children}</Text>;
 }
 
-/** The three panels for one device; re-render on every frame (`now` moves the trend lines). */
+/** The three panels for one device; the live screen re-renders them a few times a second (`now` moves the trend lines). */
 export function ImuPanels({ history, now, labels }: { history: ImuHistory; now: number; labels: ImuPanelLabels }) {
   const theme = useTheme();
+  const w = history.windowMs;
+  const accTrend = trendData(history, 'acc', now);
+  const gyroTrend = trendData(history, 'gyro', now);
+  const magTrend = history.has('mag') ? trendData(history, 'mag', now) : null;
   const acc = history.latest('acc');
   const gyro = history.latest('gyro');
   const mag = history.latest('mag');
@@ -185,7 +193,7 @@ export function ImuPanels({ history, now, labels }: { history: ImuHistory; now: 
       <Panel title={labels.acc}>
         <View style={row}>
           <LevelGauge acc={acc} />
-          <Trend history={history} k="acc" now={now} />
+          <Trend data={accTrend} now={now} windowMs={w} />
         </View>
         <AxisValues v={acc} digits={2} unit="g" />
         <Extra>
@@ -194,17 +202,17 @@ export function ImuPanels({ history, now, labels }: { history: ImuHistory; now: 
       </Panel>
       <Panel title={labels.gyro}>
         <View style={row}>
-          <GyroBars gyro={gyro} scale={gyroScale(history.symmetricMax('gyro', now))} />
-          <Trend history={history} k="gyro" now={now} />
+          <GyroBars gyro={gyro} scale={gyroTrend.scale} />
+          <Trend data={gyroTrend} now={now} windowMs={w} />
         </View>
         <AxisValues v={gyro} digits={1} unit="°/s" />
       </Panel>
       <Panel title={labels.mag}>
-        {history.has('mag') ? (
+        {magTrend ? (
           <>
             <View style={row}>
               <HeadingDial heading={heading} />
-              <Trend history={history} k="mag" now={now} />
+              <Trend data={magTrend} now={now} windowMs={w} />
             </View>
             <AxisValues v={mag} digits={1} unit="µT" />
             <Extra>

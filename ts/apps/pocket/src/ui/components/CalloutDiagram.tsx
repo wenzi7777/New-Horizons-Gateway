@@ -3,7 +3,7 @@
 // dashed leader lines. The phone version of Studio's
 // components/callout/CalloutDiagram.tsx: same layout (calloutLayout), drawn
 // with react-native-svg. Tapping a value runs its onPress.
-import { useMemo, useState, type ReactNode } from 'react';
+import { memo, useMemo, useState, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, G, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { calloutLayout, type BoardArt, type BoardArtPart, type BoardArtTarget, type FpcContacts } from '@nhgw/host';
@@ -57,8 +57,8 @@ function Contacts({ fpc }: { fpc: FpcContacts }) {
   );
 }
 
-/** The board in mm; place it inside a transformed <G>. */
-export function BoardDrawingNative({ art, highlight, children }: { art: BoardArt; highlight?: ReadonlySet<BoardArtTarget> | null; children?: ReactNode }) {
+/** The board in mm; place it inside a transformed <G>. Memoized: the drawing is static, redrawn only for a new board, highlight or theme. */
+export const BoardDrawingNative = memo(function BoardDrawingNative({ art, highlight, children }: { art: BoardArt; highlight?: ReadonlySet<BoardArtTarget> | null; children?: ReactNode }) {
   const { colors } = useTheme();
   const base = { stroke: colors.lineStrong, strokeWidth: 0.14 };
   const shade = (amount: number) => ({ fill: colors.text, fillOpacity: amount });
@@ -156,7 +156,7 @@ export function BoardDrawingNative({ art, highlight, children }: { art: BoardArt
       {children}
     </G>
   );
-}
+});
 
 export function CalloutDiagram({ art, items, maxBoardHeight = 260, accessibilityLabel }: { art: BoardArt; items: readonly CalloutItem[]; maxBoardHeight?: number; accessibilityLabel: string }) {
   const { colors } = useTheme();

@@ -1,40 +1,25 @@
 // 3D pressure surface (the Desktop Visualization's 3D Surface, as NH Studio's
 // components/Surface3D.tsx): one vertex per (interpolated) sensor, height and
-// colour from the pressure scale, drawn with three.js on an expo-gl context.
-// One finger orbits, two fingers zoom. It draws only when something changed
-// (a new frame or a gesture), and not at all while `active` is false.
+// colour from the pressure scale, drawn on an expo-gl context by the small
+// WebGL 1 renderer in surfaceGl.ts (three.js needs WebGL 2, which expo-gl does
+// not fully provide on Android). One finger orbits, two fingers zoom. It
+// draws only when something changed (a new frame or a gesture), at most 30
+// times a second, and not at all while `active` is false. Any GL failure,
+// at setup or while drawing, stops it and calls `onUnavailable` (the screen
+// falls back to 2D) -- nothing is thrown out of the draw loop.
 
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { surfaceGeometry } from '@nhgw/host';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, View, type GestureResponderEvent } from 'react-native';
-import * as THREE from 'three';
 
 import { rgbForValue, valueRatio, type PressureRange } from '../pressureColor';
 import { useTheme } from '../theme';
+import { parseCssColor, SURFACE_START, SurfaceRenderer, type Orbit } from './surfaceGl';
 
-type Orbit = { theta: number; phi: number; distance: number };
+const MIN_FRAME_MS = 1000 / 30;
 
-const START: Orbit = { theta: 0, phi: 0.67, distance: 2.4 };
-const TARGET = new THREE.Vector3(0, 0.15, 0);
-
-type SceneState = {
-  gl: ExpoWebGLRenderingContext;
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
-  grid: THREE.GridHelper;
-  shape: string;
-};
-
-function safeColor(value: string, fallback: string): THREE.Color {
-  try {
-    return new THREE.Color().setStyle(value.startsWith('#') || value.startsWith('rgb') ? value : fallback);
-  } catch {
-    return new THREE.Color(fallback);
-  }
-}
+type GlState = { gl: ExpoWebGLRenderingContext; renderer: SurfaceRenderer };
 
 function touchDistance(e: GestureResponderEvent): number | null {
   const touches = e.nativeEvent.touches;
@@ -66,9 +51,12 @@ export function Surface3D({
   onUnavailable: () => void;
 }) {
   const theme = useTheme();
-  const sceneRef = useRef<SceneState | null>(null);
-  const orbit = useRef<Orbit>({ ...START });
+  const glRef = useRef<GlState | null>(null);
+  const orbit = useRef<Orbit>({ ...SURFACE_START });
   const dirty = useRef(true);
+  const geometryDirty = useRef(true);
+  const failed = useRef(false);
+  const mounted = useRef(true);
   const [ready, setReady] = useState(false);
   const latest = useRef({ values, rows, cols, range });
   latest.current = { values, rows, cols, range };
@@ -78,129 +66,105 @@ export function Surface3D({
   const colorsRef = useRef(colors);
   colorsRef.current = colors;
 
-  const placeCamera = () => {
-    const current = sceneRef.current;
-    if (!current) return;
-    const { theta, phi, distance } = orbit.current;
-    current.camera.position.set(
-      TARGET.x + distance * Math.sin(phi) * Math.sin(theta),
-      TARGET.y + distance * Math.cos(phi),
-      TARGET.z + distance * Math.sin(phi) * Math.cos(theta),
-    );
-    current.camera.lookAt(TARGET);
-    dirty.current = true;
-  };
-
-  const applyGeometry = () => {
-    const current = sceneRef.current;
-    const { values: v, rows: r, cols: c, range: rg } = latest.current;
-    if (!current || !v || r < 1 || c < 1) return;
-    const { positions, colors: vertexColors, indices } = surfaceGeometry(v, r, c, (x) => valueRatio(x, rg), (x) => rgbForValue(x, rg), rg.min);
-    const geometry = current.mesh.geometry;
-    const shape = `${r}x${c}`;
-    if (current.shape !== shape) {
-      geometry.setIndex(indices);
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute('color', new THREE.BufferAttribute(vertexColors, 3));
-      current.shape = shape;
-    } else {
-      (geometry.getAttribute('position') as THREE.BufferAttribute).copyArray(positions).needsUpdate = true;
-      (geometry.getAttribute('color') as THREE.BufferAttribute).copyArray(vertexColors).needsUpdate = true;
+  /** Stop drawing for good and let the screen fall back to 2D. */
+  const fail = () => {
+    if (failed.current) return;
+    failed.current = true;
+    const current = glRef.current;
+    glRef.current = null;
+    try {
+      current?.renderer.dispose();
+    } catch {
+      // The context is already unusable.
     }
-    dirty.current = true;
-  };
-
-  const applyTheme = () => {
-    const current = sceneRef.current;
-    if (!current) return;
-    current.renderer.setClearColor(safeColor(colorsRef.current.clear, '#333336'), 1);
-    const line = safeColor(colorsRef.current.line, '#8e8e93');
-    const materials = Array.isArray(current.grid.material) ? current.grid.material : [current.grid.material];
-    for (const material of materials) {
-      (material as THREE.LineBasicMaterial).color = line;
-      material.opacity = 0.35;
-      material.transparent = true;
-    }
-    dirty.current = true;
+    if (mounted.current) unavailable.current();
   };
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
+    if (!mounted.current || failed.current) return;
     try {
-      const width = gl.drawingBufferWidth;
-      const h = gl.drawingBufferHeight;
-      // three.js only needs a canvas-shaped object around expo-gl's context.
-      const canvas = {
-        width,
-        height: h,
-        style: {},
-        clientHeight: h,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-        getContext: () => gl,
-      } as unknown as HTMLCanvasElement;
-      const renderer = new THREE.WebGLRenderer({ canvas, context: gl as unknown as WebGL2RenderingContext, antialias: true });
-      renderer.setPixelRatio(1);
-      renderer.setSize(width, h, false);
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(42, width / Math.max(h, 1), 0.01, 100);
-      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-      mesh.frustumCulled = false;
-      scene.add(mesh);
-      const grid = new THREE.GridHelper(2.4, 12);
-      grid.position.y = -0.01;
-      scene.add(grid);
-      sceneRef.current = { gl, renderer, scene, camera, mesh, grid, shape: '' };
-      applyTheme();
-      placeCamera();
-      applyGeometry();
+      const renderer = new SurfaceRenderer(gl as unknown as WebGLRenderingContext);
+      glRef.current = { gl, renderer };
+      dirty.current = true;
+      geometryDirty.current = true;
       setReady(true);
     } catch {
-      unavailable.current();
+      fail();
     }
   };
 
-  // Draw loop: render only when dirty; stopped while inactive.
+  /** One draw, if anything changed; false once drawing has failed. */
+  const drawFrame = (): boolean => {
+    const current = glRef.current;
+    if (!current || failed.current) return false;
+    try {
+      const { renderer, gl } = current;
+      if (geometryDirty.current) {
+        geometryDirty.current = false;
+        const { values: v, rows: r, cols: c, range: rg } = latest.current;
+        if (v && r > 0 && c > 0) {
+          const { positions, colors: vertexColors, indices } = surfaceGeometry(v, r, c, (x) => valueRatio(x, rg), (x) => rgbForValue(x, rg), rg.min);
+          renderer.setGeometry(positions, vertexColors, indices);
+        }
+      }
+      renderer.setColors(parseCssColor(colorsRef.current.clear, [0.2, 0.2, 0.21]), parseCssColor(colorsRef.current.line, [0.56, 0.56, 0.58]));
+      renderer.draw(gl.drawingBufferWidth, gl.drawingBufferHeight, orbit.current);
+      gl.endFrameEXP();
+      return true;
+    } catch {
+      fail();
+      return false;
+    }
+  };
+
+  // Draw loop: only when dirty, at most 30 fps; stopped while inactive and after a failure.
   useEffect(() => {
     if (!ready || !active) return undefined;
     let frame = 0;
-    const loop = () => {
-      const current = sceneRef.current;
-      if (current && dirty.current) {
+    let last = 0;
+    let running = true;
+    const loop = (now: number) => {
+      if (!running || !mounted.current) return;
+      if (dirty.current && now - last >= MIN_FRAME_MS) {
         dirty.current = false;
-        current.renderer.render(current.scene, current.camera);
-        current.gl.endFrameEXP();
+        last = now;
+        if (!drawFrame()) return;
       }
       frame = requestAnimationFrame(loop);
     };
     dirty.current = true;
     frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      running = false;
+      cancelAnimationFrame(frame);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, active]);
 
   useEffect(() => {
-    if (ready) applyGeometry();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, values, rows, cols, range]);
+    geometryDirty.current = true;
+    dirty.current = true;
+  }, [values, rows, cols, range]);
 
   useEffect(() => {
-    if (ready) applyTheme();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, colors.clear, colors.line]);
+    dirty.current = true;
+  }, [colors.clear, colors.line]);
 
   useEffect(
     () => () => {
-      const current = sceneRef.current;
-      sceneRef.current = null;
-      if (!current) return;
-      current.mesh.geometry.dispose();
-      current.mesh.material.dispose();
-      current.grid.dispose();
-      current.renderer.dispose();
+      mounted.current = false;
+      const current = glRef.current;
+      glRef.current = null;
+      try {
+        current?.renderer.dispose();
+      } catch {
+        // Context already gone.
+      }
     },
     [],
   );
 
-  const gesture = useRef<{ x: number; y: number; pinch: number | null; start: Orbit }>({ x: 0, y: 0, pinch: null, start: START });
+  const gesture = useRef<{ x: number; y: number; pinch: number | null; start: Orbit }>({ x: 0, y: 0, pinch: null, start: SURFACE_START });
   const responder = useMemo(
     () =>
       PanResponder.create({
@@ -225,10 +189,9 @@ export function Surface3D({
               phi: Math.min(1.45, Math.max(0.12, start.phi - (g.dy - gesture.current.y) * 0.01)),
             };
           }
-          placeCamera();
+          dirty.current = true;
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
